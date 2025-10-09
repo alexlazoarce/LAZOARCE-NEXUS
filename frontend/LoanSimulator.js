@@ -1,10 +1,6 @@
-const API_BASE_URL = 'http://127.0.0.1:5000'; // Asumimos que el backend corre en este puerto
+const API_BASE_URL = 'http://127.0.0.1:5000';
 
-function LoanSimulator() {
-    const [token, setToken] = React.useState(null);
-    const [loginData, setLoginData] = React.useState({ email: 'cliente@test.com', password: 'password123' });
-    const [authError, setAuthError] = React.useState('');
-
+function LoanSimulator({ token }) { // Recibe el token como prop
     const [formData, setFormData] = React.useState({
         capital_solicitado: '1000',
         meses: '12',
@@ -16,42 +12,6 @@ function LoanSimulator() {
     const [simulationResult, setSimulationResult] = React.useState(null);
     const [loading, setLoading] = React.useState(false);
     const [error, setError] = React.useState('');
-
-    const handleLoginChange = (e) => {
-        setLoginData({ ...loginData, [e.target.name]: e.target.value });
-    };
-
-    const handleRegister = async () => {
-        setAuthError('');
-        try {
-            const res = await fetch(`${API_BASE_URL}/api/register`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...loginData, role: 'Cliente' }),
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.msg);
-            alert('Registro exitoso. Ahora puedes iniciar sesión.');
-        } catch (err) {
-            setAuthError(err.message);
-        }
-    };
-
-    const handleLogin = async () => {
-        setAuthError('');
-        try {
-            const res = await fetch(`${API_BASE_URL}/api/login`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(loginData),
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.msg);
-            setToken(data.access_token);
-        } catch (err) {
-            setAuthError(err.message);
-        }
-    };
 
     const handleFormChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -68,7 +28,7 @@ function LoanSimulator() {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
+                    'Authorization': `Bearer ${token}` // Usa el token recibido por props
                 },
                 body: JSON.stringify(formData),
             });
@@ -82,30 +42,10 @@ function LoanSimulator() {
         }
     };
 
-    if (!token) {
-        return (
-            <div className="login-container">
-                <h3>1. Iniciar Sesión o Registrarse</h3>
-                <p>La simulación requiere autenticación. Use las credenciales de prueba o regístrese.</p>
-                <div className="form-group">
-                    <label htmlFor="email">Email</label>
-                    <input type="email" name="email" value={loginData.email} onChange={handleLoginChange} />
-                </div>
-                <div className="form-group">
-                    <label htmlFor="password">Contraseña</label>
-                    <input type="password" name="password" value={loginData.password} onChange={handleLoginChange} />
-                </div>
-                {authError && <p style={{color: 'red'}}>{authError}</p>}
-                <button onClick={handleLogin}>Iniciar Sesión</button>
-                <button onClick={handleRegister} style={{marginLeft: '10px'}}>Registrarme</button>
-            </div>
-        );
-    }
-
     return (
         <div className="simulator-container">
             <section className="form-section">
-                <h3>2. Parámetros del Préstamo</h3>
+                <h3>Parámetros del Préstamo</h3>
                 <form onSubmit={handleSubmit}>
                     <div className="form-group">
                         <label>Capital Solicitado ($)</label>
@@ -141,7 +81,7 @@ function LoanSimulator() {
                 </form>
             </section>
             <section className="results-section">
-                <h3>3. Resultados de la Simulación</h3>
+                <h3>Resultados de la Simulación</h3>
                 {error && <p style={{color: 'red'}}>{error}</p>}
                 {simulationResult && (
                     <div>
@@ -174,7 +114,7 @@ function LoanSimulator() {
                                         <td>${row['Saldo Inicial'].toFixed(2)}</td>
                                         <td>${row['Interés'].toFixed(2)}</td>
                                         <td>${row['Com. Adm'].toFixed(2)}</td>
-                                        <td>${row['Com. Inic'].toFixed(2)}</td>
+                                        <td>${row['Com. Inic.'].toFixed(2)}</td>
                                         <td>${row['Amortización'].toFixed(2)}</td>
                                         <td>${row.Cuota.toFixed(2)}</td>
                                         <td>${row['Saldo Final'].toFixed(2)}</td>
