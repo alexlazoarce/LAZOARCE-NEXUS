@@ -1,6 +1,6 @@
 const API_BASE_URL = 'http://127.0.0.1:5000';
 
-function MyApplications({ token }) {
+function MyApplications({ token, onViewContract }) { // Añadir prop onViewContract
     const [applications, setApplications] = React.useState([]);
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState('');
@@ -62,7 +62,17 @@ function MyApplications({ token }) {
                                 <td>${app.requested_amount.toFixed(2)}</td>
                                 <td>{app.requested_term}</td>
                                 <td>{new Date(app.application_date).toLocaleDateString()}</td>
-                                <td>{app.status}</td>
+                                <td>
+                                    {app.status}
+                                    {app.status === 'Aprobado' && (
+                                        <button
+                                            onClick={() => onViewContract(app.id)}
+                                            className="contract-button"
+                                        >
+                                            Ver Contrato
+                                        </button>
+                                    )}
+                                </td>
                             </tr>
                         ))}
                     </tbody>

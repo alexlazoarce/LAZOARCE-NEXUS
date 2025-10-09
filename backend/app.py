@@ -42,6 +42,12 @@ class User(db.Model):
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
     role_id = db.Column(db.Integer, db.ForeignKey('role.id'), nullable=False)
+
+    # --- Campos de perfil para contratos ---
+    full_name = db.Column(db.String(120), nullable=True)
+    dui = db.Column(db.String(20), nullable=True, unique=True)
+    nit = db.Column(db.String(20), nullable=True, unique=True)
+
     loan_applications = db.relationship('LoanApplication', backref='applicant', lazy=True)
 
     def set_password(self, password):
@@ -140,6 +146,53 @@ def admin_test_route():
     return jsonify(logged_in_as=user_email), 200
 
 
+# --- API DE PERFIL DE USUARIO ---
+
+@app.route('/api/profile', methods=['GET'])
+@jwt_required()
+def get_profile():
+    """Obtiene el perfil del usuario autenticado."""
+    user_email = get_jwt_identity()
+    user = User.query.filter_by(email=user_email).first_or_404()
+
+    return jsonify({
+        "email": user.email,
+        "full_name": user.full_name,
+        "dui": user.dui,
+        "nit": user.nit,
+        "role": user.role.name
+    })
+
+@app.route('/api/profile', methods=['PUT'])
+@jwt_required()
+def update_profile():
+    """Actualiza el perfil del usuario autenticado."""
+    user_email = get_jwt_identity()
+    user = User.query.filter_by(email=user_email).first_or_404()
+
+    data = request.get_json()
+
+    # Validar unicidad si los campos cambian
+    new_dui = data.get('dui')
+    if new_dui and new_dui != user.dui and User.query.filter_by(dui=new_dui).first():
+        return jsonify({"msg": "El DUI ya está registrado por otro usuario."}), 409
+
+    new_nit = data.get('nit')
+    if new_nit and new_nit != user.nit and User.query.filter_by(nit=new_nit).first():
+        return jsonify({"msg": "El NIT ya está registrado por otro usuario."}), 409
+
+    user.full_name = data.get('full_name', user.full_name)
+    user.dui = new_dui or user.dui
+    user.nit = new_nit or user.nit
+
+    try:
+        db.session.commit()
+        return jsonify({"msg": "Perfil actualizado exitosamente."})
+    except Exception:
+        db.session.rollback()
+        return jsonify({"msg": "Error al actualizar el perfil."}), 500
+
+
 # --- API PARA PRODUCTOS DE PRÉSTAMO (CRUD - Solo Admin) ---
 @app.route('/api/products', methods=['POST'])
 @jwt_required()
@@ -236,6 +289,71 @@ def update_application_status(application_id):
     return jsonify({"msg": f"Estado de la solicitud {application_id} actualizado a '{new_status}'."})
 
 
+@app.route('/api/applications/<int:application_id>/contract-data', methods=['GET'])
+@jwt_required()
+def get_contract_data(application_id):
+    """
+    Recopila y devuelve todos los datos necesarios para generar un contrato
+    para una solicitud de préstamo aprobada.
+    """
+    user_email = get_jwt_identity()
+    user = User.query.filter_by(email=user_email).first_or_404()
+    application = LoanApplication.query.get_or_404(application_id)
+
+    # --- Verificación de permisos ---
+    # El usuario debe ser el solicitante o un administrador
+    if application.user_id != user.id and user.role.name not in ['Administrador General', 'Super Administrador']:
+        return jsonify({"msg": "Acceso no autorizado a esta solicitud."}), 403
+
+    # El préstamo debe estar aprobado para generar un contrato
+    if application.status != 'Aprobado':
+        return jsonify({"msg": "El contrato solo puede generarse para préstamos aprobados."}), 403
+
+    # --- Recopilación de datos ---
+    applicant_data = {
+        "full_name": application.applicant.full_name,
+        "dui": application.applicant.dui,
+        "nit": application.applicant.nit,
+        "email": application.applicant.email
+    }
+
+    loan_details = {
+        "application_id": application.id,
+        "product_name": application.product.name,
+        "requested_amount": application.requested_amount,
+        "requested_term": application.requested_term,
+        "interest_rate": application.product.default_interest_rate,
+        "admin_commission": application.product.default_admin_commission,
+        "application_date": application.application_date.isoformat()
+    }
+
+    company_info = {
+        "name": "GRUPO LAZO ARCE S.A.S. DE C.V.",
+        "nit": "0524-150825-101-2",
+        "nrc": "369047-1",
+        "address": "Dirección de la empresa, San Salvador", # Placeholder
+        "contact": "support@lazoarce.com" # Placeholder
+    }
+
+    # Generar la tabla de amortización para el contrato
+    amortization_data = generate_amortization_table(
+        capital_solicitado=application.requested_amount,
+        meses=application.requested_term,
+        tasa_interes_mensual=application.product.default_interest_rate,
+        comision_administracion=application.product.default_admin_commission
+    )
+
+    # --- Ensamblar la respuesta final ---
+    contract_data = {
+        "company": company_info,
+        "client": applicant_data,
+        "loan": loan_details,
+        "amortization": amortization_data
+    }
+
+    return jsonify(contract_data)
+
+
 @app.route('/api/loans/simulate', methods=['POST'])
 @jwt_required()
 def simulate_loan():
@@ -272,6 +390,19 @@ def initialize_database():
                 db.session.add(Role(name=role_name))
             db.session.commit()
             print("Base de datos y roles inicializados.")
+
+        # Crear usuario admin por defecto si no existe
+        if not User.query.filter_by(email='admin@lazoarce.com').first():
+            print("Creando usuario administrador por defecto...")
+            admin_role = Role.query.filter_by(name='Administrador General').first()
+            admin_user = User(
+                email='admin@lazoarce.com',
+                role_id=admin_role.id
+            )
+            admin_user.set_password('admin') # ¡Cambiar esto en producción!
+            db.session.add(admin_user)
+            db.session.commit()
+            print("Usuario administrador creado.")
 
 if __name__ == '__main__':
     initialize_database()

@@ -1,20 +1,37 @@
 function App() {
-    // Estado para gestionar si el usuario está logueado y su token
     const [token, setToken] = React.useState(null);
-    // Estado para gestionar la vista principal (login o el portal)
     const [view, setView] = React.useState('login');
-    // Estado para gestionar la vista dentro del portal
-    const [portalView, setPortalView] = React.useState('simulator');
+    const [portalView, setPortalView] = React.useState('products'); // Vista inicial: lista de productos
+    const [selectedProduct, setSelectedProduct] = React.useState(null);
+    const [viewingContractId, setViewingContractId] = React.useState(null);
 
     const handleLoginSuccess = (newToken) => {
         setToken(newToken);
-        setView('portal'); // Cambiar a la vista del portal al iniciar sesión
+        setView('portal');
     };
 
-    // Renderizado condicional basado en el estado `view`
+    const handleProductSelect = (product) => {
+        setSelectedProduct(product);
+        setPortalView('simulator'); // Cambiar a la vista del simulador
+    };
+
+    const handleApplicationSuccess = () => {
+        // Después de una solicitud exitosa, volver a la lista de solicitudes
+        setPortalView('applications');
+    };
+
     if (view === 'login') {
-        // Pasamos la función de éxito al componente de login/simulador
         return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
+    }
+
+    if (viewingContractId) {
+        return (
+            <ContractView
+                token={token}
+                applicationId={viewingContractId}
+                onBack={() => setViewingContractId(null)}
+            />
+        );
     }
 
     return (
@@ -24,9 +41,10 @@ function App() {
             </header>
             <Navbar setView={setPortalView} />
             <main>
-                {/* Renderizar el componente correcto dentro del portal */}
-                {portalView === 'simulator' && <LoanSimulator token={token} />}
-                {portalView === 'applications' && <MyApplications token={token} />}
+                {portalView === 'products' && <ProductList token={token} onProductSelect={handleProductSelect} />}
+                {portalView === 'simulator' && <LoanSimulator token={token} product={selectedProduct} onApplicationSuccess={handleApplicationSuccess} />}
+                {portalView === 'applications' && <MyApplications token={token} onViewContract={setViewingContractId} />}
+                {portalView === 'profile' && <Profile token={token} />}
             </main>
         </React.Fragment>
     );
