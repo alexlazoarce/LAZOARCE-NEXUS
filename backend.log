@@ -1,4 +1,3 @@
-Base de datos y roles inicializados.
  * Serving Flask app 'app'
  * Debug mode: on
 [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
@@ -8,4 +7,4 @@ Base de datos y roles inicializados.
 [33mPress CTRL+C to quit[0m
  * Restarting with stat
  * Debugger is active!
- * Debugger PIN: 116-510-711
+ * Debugger PIN: 148-452-288
