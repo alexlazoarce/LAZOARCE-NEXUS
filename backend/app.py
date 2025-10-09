@@ -13,6 +13,7 @@ from flask import make_response
 # Módulos locales
 from loan_calculator import generate_amortization_table
 from pdf_generator import create_contract_pdf
+from accounting_service import create_journal_entry
 
 # Cargar variables de entorno
 load_dotenv()
@@ -88,16 +89,46 @@ class LoanApplication(db.Model):
     def __repr__(self):
         return f'<LoanApplication ID: {self.id} - Status: {self.status}>'
 
+# --- Modelos de Contabilidad ---
+class Account(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    code = db.Column(db.String(20), unique=True, nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    account_type = db.Column(db.String(50), nullable=False) # e.g., Activo, Pasivo, Ingreso
+
+    def __repr__(self):
+        return f'<Account {self.code} - {self.name}>'
+
+class Transaction(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    description = db.Column(db.String(255), nullable=False)
+    entries = db.relationship('JournalEntry', backref='transaction', lazy=True, cascade="all, delete-orphan")
+
+class JournalEntry(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    transaction_id = db.Column(db.Integer, db.ForeignKey('transaction.id'), nullable=False)
+    account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=False)
+    debit = db.Column(db.Float, nullable=False, default=0.0)
+    credit = db.Column(db.Float, nullable=False, default=0.0)
+    account = db.relationship('Account')
+
 
 # --- DECORADORES DE AUTORIZACIÓN ---
-def role_required(required_role):
+def role_required(required_roles):
+    """
+    Decorador para restringir el acceso a rutas basado en una lista de roles permitidos.
+    """
+    if not isinstance(required_roles, list):
+        required_roles = [required_roles] # Aceptar un solo rol como string
+
     def decorator(fn):
         @wraps(fn)
         def wrapper(*args, **kwargs):
             verify_jwt_in_request()
             user_email = get_jwt_identity()
             user = User.query.filter_by(email=user_email).first()
-            if not user or user.role.name != required_role:
+            if not user or user.role.name not in required_roles:
                 return jsonify({"msg": "Acceso no autorizado para este rol"}), 403
             return fn(*args, **kwargs)
         return wrapper
@@ -284,12 +315,66 @@ def get_loan_applications():
 def update_application_status(application_id):
     application = LoanApplication.query.get_or_404(application_id)
     data = request.get_json()
+
     new_status = data.get('status')
     if not new_status:
         return jsonify({"msg": "El campo 'status' es requerido."}), 400
+
+    original_status = application.status
+
+    # Solo proceder si el estado realmente cambia
+    if original_status == new_status:
+        return jsonify({"msg": f"La solicitud ya se encuentra en el estado '{new_status}'."})
+
     application.status = new_status
+
+    # --- Integración Contable ---
+    # Si el estado cambia a 'Desembolsado', crear el asiento contable.
+    if new_status == 'Desembolsado':
+        try:
+            entries = [
+                {'account_code': '1201', 'debit': application.requested_amount, 'credit': 0}, # Cuentas por Cobrar
+                {'account_code': '1102', 'debit': 0, 'credit': application.requested_amount}  # Bancos
+            ]
+            description = f"Desembolso de prestamo ID: {application.id}"
+            create_journal_entry(description, entries)
+            print(f"Asiento de diario creado para el desembolso del prestamo {application.id}")
+        except Exception as e:
+            db.session.rollback() # Revertir el cambio de estado si la contabilidad falla
+            return jsonify({"msg": f"Error al crear el asiento contable: {str(e)}"}), 500
+
     db.session.commit()
+
     return jsonify({"msg": f"Estado de la solicitud {application_id} actualizado a '{new_status}'."})
+
+
+# --- API DE CONTABILIDAD ---
+
+@app.route('/api/accounting/journal', methods=['GET'])
+@jwt_required()
+@role_required(['Contador', 'Administrador General'])
+def get_journal():
+    """Obtiene todos los asientos del libro diario."""
+    transactions = Transaction.query.order_by(Transaction.date.desc()).all()
+
+    result = []
+    for t in transactions:
+        entries = []
+        for e in t.entries:
+            entries.append({
+                "account_code": e.account.code,
+                "account_name": e.account.name,
+                "debit": e.debit,
+                "credit": e.credit
+            })
+        result.append({
+            "transaction_id": t.id,
+            "date": t.date.isoformat(),
+            "description": t.description,
+            "entries": entries
+        })
+
+    return jsonify(result)
 
 
 @app.route('/api/applications/<int:application_id>/contract-data', methods=['GET'])
@@ -431,14 +516,50 @@ def initialize_database():
         if not User.query.filter_by(email='admin@lazoarce.com').first():
             print("Creando usuario administrador por defecto...")
             admin_role = Role.query.filter_by(name='Administrador General').first()
-            admin_user = User(
-                email='admin@lazoarce.com',
-                role_id=admin_role.id
-            )
-            admin_user.set_password('admin') # ¡Cambiar esto en producción!
-            db.session.add(admin_user)
+            if admin_role:
+                admin_user = User(
+                    email='admin@lazoarce.com',
+                    role_id=admin_role.id
+                )
+                admin_user.set_password('admin')
+                db.session.add(admin_user)
+                db.session.commit()
+                print("Usuario administrador creado.")
+                print("\n************************************************************")
+                print("*** ADVERTENCIA DE SEGURIDAD:                            ***")
+                print("*** Se ha creado un usuario administrador por defecto.   ***")
+                print("*** Email: admin@lazoarce.com                            ***")
+                print("*** Contraseña: admin                                    ***")
+                print("*** ¡CAMBIE ESTA CONTRASEÑA EN UN ENTORNO DE PRODUCCIÓN! ***")
+                print("************************************************************\n")
+
+        # Poblar el plan de cuentas si está vacío
+        if not Account.query.first():
+            print("Creando plan de cuentas por defecto...")
+            accounts = [
+                {'code': '1101', 'name': 'Caja', 'account_type': 'Activo'},
+                {'code': '1102', 'name': 'Bancos', 'account_type': 'Activo'},
+                {'code': '1201', 'name': 'Cuentas por Cobrar - Préstamos', 'account_type': 'Activo'},
+                {'code': '3101', 'name': 'Capital Social', 'account_type': 'Patrimonio'},
+                {'code': '4101', 'name': 'Ingresos por Intereses', 'account_type': 'Ingreso'},
+            ]
+            for acc_data in accounts:
+                account = Account(**acc_data)
+                db.session.add(account)
             db.session.commit()
-            print("Usuario administrador creado.")
+            print("Plan de cuentas creado.")
+
+        # Crear producto de préstamo por defecto si no existe
+        if not LoanProduct.query.first():
+            print("Creando producto de prestamo por defecto...")
+            default_product = LoanProduct(
+                name='Préstamo de Prueba', loan_type='Personal',
+                min_amount=500, max_amount=10000,
+                default_interest_rate=5, default_admin_commission=1
+            )
+            db.session.add(default_product)
+            db.session.commit()
+            print("Producto de prestamo por defecto creado.")
 
 if __name__ == '__main__':
     initialize_database()
