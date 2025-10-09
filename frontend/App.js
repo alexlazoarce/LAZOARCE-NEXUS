@@ -5,6 +5,7 @@ function App() {
     const [portalView, setPortalView] = React.useState('products');
     const [selectedProduct, setSelectedProduct] = React.useState(null);
     const [viewingContractId, setViewingContractId] = React.useState(null);
+    const [viewingPaymentsForAppId, setViewingPaymentsForAppId] = React.useState(null);
 
     const fetchUserProfile = async (apiToken) => {
         try {
@@ -41,13 +42,11 @@ function App() {
     }
 
     if (viewingContractId) {
-        return (
-            <ContractView
-                token={token}
-                applicationId={viewingContractId}
-                onBack={() => setViewingContractId(null)}
-            />
-        );
+        return <ContractView token={token} applicationId={viewingContractId} onBack={() => setViewingContractId(null)} />;
+    }
+
+    if (viewingPaymentsForAppId) {
+        return <PaymentHistory token={token} applicationId={viewingPaymentsForAppId} onBack={() => setViewingPaymentsForAppId(null)} />;
     }
 
     return (
@@ -59,9 +58,17 @@ function App() {
             <main>
                 {portalView === 'products' && <ProductList token={token} onProductSelect={handleProductSelect} />}
                 {portalView === 'simulator' && <LoanSimulator token={token} product={selectedProduct} onApplicationSuccess={handleApplicationSuccess} />}
-                {portalView === 'applications' && <MyApplications token={token} onViewContract={setViewingContractId} />}
+                {portalView === 'applications' && <MyApplications token={token} onViewContract={setViewingContractId} onViewPayments={setViewingPaymentsForAppId} />}
                 {portalView === 'profile' && <Profile token={token} />}
                 {portalView === 'journal' && <JournalView token={token} />}
+                {portalView === 'rrhh' && (
+                    <div>
+                        <h2>Recursos Humanos</h2>
+                        <EmployeeManagement token={token} />
+                        <hr />
+                        <PayrollView token={token} />
+                    </div>
+                )}
             </main>
         </React.Fragment>
     );

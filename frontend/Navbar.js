@@ -7,7 +7,10 @@ function Navbar({ setView, userRole }) {
             <button onClick={() => setView('applications')}>Mis Solicitudes</button>
             <button onClick={() => setView('profile')}>Mi Perfil</button>
             {isAdminOrAccountant && (
-                <button onClick={() => setView('journal')}>Libro Diario</button>
+                <React.Fragment>
+                    <button onClick={() => setView('journal')}>Libro Diario</button>
+                    <button onClick={() => setView('rrhh')}>RRHH</button>
+                </React.Fragment>
             )}
         </nav>
     );

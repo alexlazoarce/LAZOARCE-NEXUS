@@ -72,6 +72,14 @@ function MyApplications({ token, onViewContract }) { // Añadir prop onViewContr
                                             Ver Contrato
                                         </button>
                                     )}
+                                    {app.status === 'Desembolsado' && (
+                                        <button
+                                            onClick={() => onViewPayments(app.id)}
+                                            className="payments-button"
+                                        >
+                                            Ver Pagos
+                                        </button>
+                                    )}
                                 </td>
                             </tr>
                         ))}
