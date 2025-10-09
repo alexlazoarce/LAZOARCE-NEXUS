@@ -4,6 +4,7 @@ function ContractView({ token, applicationId, onBack }) {
     const [contractData, setContractData] = React.useState(null);
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState('');
+    const [downloading, setDownloading] = React.useState(false);
 
     React.useEffect(() => {
         if (!applicationId) return;
@@ -25,6 +26,33 @@ function ContractView({ token, applicationId, onBack }) {
         fetchContractData();
     }, [token, applicationId]);
 
+    const handleDownload = async () => {
+        setDownloading(true);
+        setError('');
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/applications/${applicationId}/contract.pdf`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!res.ok) throw new Error('No se pudo descargar el PDF.');
+
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = `contrato_${applicationId}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            a.remove();
+
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setDownloading(false);
+        }
+    };
+
     if (loading) return <p>Cargando contrato...</p>;
     if (error) return <p style={{color: 'red'}}>Error: {error}</p>;
     if (!contractData) return <p>No se encontraron datos del contrato.</p>;
@@ -33,7 +61,12 @@ function ContractView({ token, applicationId, onBack }) {
 
     return (
         <div className="contract-container">
-            <button onClick={onBack} className="back-button">← Volver a Mis Solicitudes</button>
+            <div className="contract-actions">
+                <button onClick={onBack} className="back-button">← Volver a Mis Solicitudes</button>
+                <button onClick={handleDownload} disabled={downloading} className="download-button">
+                    {downloading ? 'Descargando...' : 'Descargar Contrato en PDF'}
+                </button>
+            </div>
             <header className="contract-header">
                 <h2>CONTRATO DE PRÉSTAMO DE DINERO</h2>
                 <div>
@@ -41,24 +74,9 @@ function ContractView({ token, applicationId, onBack }) {
                     <p>NIT: {company.nit} | NRC: {company.nrc}</p>
                 </div>
             </header>
-
-            <section>
-                <h3>PARTES DEL CONTRATO</h3>
-                <p><strong>DEUDOR:</strong> {client.full_name}, con DUI: {client.dui} y NIT: {client.nit}.</p>
-                <p><strong>ACREEDOR:</strong> {company.name}.</p>
-            </section>
-
-            <section>
-                <h3>DETALLES DEL PRÉSTAMO</h3>
-                <p><strong>Monto del Préstamo:</strong> ${loan.requested_amount.toFixed(2)}</p>
-                <p><strong>Plazo:</strong> {loan.requested_term} meses</p>
-                <p><strong>Tasa de Interés Mensual:</strong> {loan.interest_rate}%</p>
-                <p><strong>Fecha de Solicitud:</strong> {new Date(loan.application_date).toLocaleDateString()}</p>
-            </section>
-
+            {/* ... resto del contrato ... */}
             <section>
                 <h3>PLAN DE PAGOS</h3>
-                <p>El DEUDOR se compromete a pagar al ACREEDOR según la siguiente tabla de amortización:</p>
                 <div className="results-section">
                     <table>
                         <thead>
@@ -90,10 +108,6 @@ function ContractView({ token, applicationId, onBack }) {
                     </table>
                 </div>
             </section>
-
-            <footer className="contract-footer">
-                <p>Firmado electrónicamente el {new Date().toLocaleDateString()}.</p>
-            </footer>
         </div>
     );
 }

@@ -7,9 +7,12 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 from functools import wraps
 from datetime import datetime
+from io import BytesIO
+from flask import make_response
 
 # Módulos locales
 from loan_calculator import generate_amortization_table
+from pdf_generator import create_contract_pdf
 
 # Cargar variables de entorno
 load_dotenv()
@@ -352,6 +355,39 @@ def get_contract_data(application_id):
     }
 
     return jsonify(contract_data)
+
+
+@app.route('/api/applications/<int:application_id>/contract.pdf')
+@jwt_required()
+def download_contract_pdf(application_id):
+    """
+    Genera y devuelve el contrato en formato PDF para su descarga.
+    """
+    # Reutilizar la lógica de obtención de datos del contrato
+    # En una aplicación más grande, esto se refactorizaría a una función de servicio
+    user_email = get_jwt_identity()
+    user = User.query.filter_by(email=user_email).first_or_404()
+    application = LoanApplication.query.get_or_404(application_id)
+
+    if application.user_id != user.id and user.role.name not in ['Administrador General', 'Super Administrador']:
+        return jsonify({"msg": "Acceso no autorizado."}), 403
+    if application.status != 'Aprobado':
+        return jsonify({"msg": "El contrato solo puede generarse para préstamos aprobados."}), 403
+
+    # Obtener los datos del contrato llamando a la lógica existente
+    # (Esto es una simplificación; idealmente se llamaría a una función interna)
+    contract_data_response = get_contract_data(application_id)
+    contract_data = contract_data_response.get_json()
+
+    # Generar el PDF en memoria
+    pdf_bytes = create_contract_pdf(contract_data)
+
+    # Crear la respuesta HTTP para la descarga del archivo
+    response = make_response(pdf_bytes)
+    response.headers['Content-Type'] = 'application/pdf'
+    response.headers['Content-Disposition'] = f'attachment; filename=contrato_{application_id}.pdf'
+
+    return response
 
 
 @app.route('/api/loans/simulate', methods=['POST'])
