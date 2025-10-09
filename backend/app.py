@@ -11,9 +11,15 @@ from io import BytesIO
 from flask import make_response
 
 # Módulos locales
-from loan_calculator import generate_amortization_table
-from pdf_generator import create_contract_pdf
-from accounting_service import create_journal_entry
+from .loan_calculator import generate_amortization_table
+from .pdf_generator import create_contract_pdf, convert_html_to_pdf
+from .accounting_service import create_journal_entry
+from .firma_service import (
+    validacion_identidad_estricta,
+    capturar_datos_biometricos,
+    generar_contrato_integracion,
+    firma_electronica_avanzada
+)
 
 # Cargar variables de entorno
 load_dotenv()
@@ -27,91 +33,16 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'un-secreto-muy-seguro')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///lazoarce.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'otro-secreto-muy-seguro')
+app.config['UPLOAD_FOLDER'] = 'uploads' # Carpeta para guardar documentos firmados
 
 # --- INICIALIZACIÓN DE EXTENSIONES ---
-db = SQLAlchemy(app)
+from .database import db
+db.init_app(app)
 jwt = JWTManager(app)
 
 # --- MODELOS DE BASE DE DATOS ---
-class Role(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(80), unique=True, nullable=False)
-    users = db.relationship('User', backref='role', lazy=True)
-
-    def __repr__(self):
-        return f'<Role {self.name}>'
-
-class User(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    email = db.Column(db.String(120), unique=True, nullable=False)
-    password_hash = db.Column(db.String(256), nullable=False)
-    role_id = db.Column(db.Integer, db.ForeignKey('role.id'), nullable=False)
-
-    # --- Campos de perfil para contratos ---
-    full_name = db.Column(db.String(120), nullable=True)
-    dui = db.Column(db.String(20), nullable=True, unique=True)
-    nit = db.Column(db.String(20), nullable=True, unique=True)
-
-    loan_applications = db.relationship('LoanApplication', backref='applicant', lazy=True)
-
-    def set_password(self, password):
-        self.password_hash = generate_password_hash(password)
-
-    def check_password(self, password):
-        return check_password_hash(self.password_hash, password)
-
-    def __repr__(self):
-        return f'<User {self.email}>'
-
-class LoanProduct(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
-    loan_type = db.Column(db.String(50), nullable=False) # 'Personal', 'Grupal', etc.
-    min_amount = db.Column(db.Float, nullable=False)
-    max_amount = db.Column(db.Float, nullable=False)
-    default_interest_rate = db.Column(db.Float, nullable=False) # Tasa mensual
-    default_admin_commission = db.Column(db.Float, nullable=False)
-    is_active = db.Column(db.Boolean, default=True)
-    applications = db.relationship('LoanApplication', backref='product', lazy=True)
-
-    def __repr__(self):
-        return f'<LoanProduct {self.name}>'
-
-class LoanApplication(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    product_id = db.Column(db.Integer, db.ForeignKey('loan_product.id'), nullable=False)
-    requested_amount = db.Column(db.Float, nullable=False)
-    requested_term = db.Column(db.Integer, nullable=False) # En meses
-    status = db.Column(db.String(50), default='Solicitud', nullable=False) # Solicitud, Análisis, Aprobación, etc.
-    application_date = db.Column(db.DateTime, default=datetime.utcnow)
-
-    def __repr__(self):
-        return f'<LoanApplication ID: {self.id} - Status: {self.status}>'
-
-# --- Modelos de Contabilidad ---
-class Account(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    code = db.Column(db.String(20), unique=True, nullable=False)
-    name = db.Column(db.String(100), nullable=False)
-    account_type = db.Column(db.String(50), nullable=False) # e.g., Activo, Pasivo, Ingreso
-
-    def __repr__(self):
-        return f'<Account {self.code} - {self.name}>'
-
-class Transaction(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-    description = db.Column(db.String(255), nullable=False)
-    entries = db.relationship('JournalEntry', backref='transaction', lazy=True, cascade="all, delete-orphan")
-
-class JournalEntry(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    transaction_id = db.Column(db.Integer, db.ForeignKey('transaction.id'), nullable=False)
-    account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=False)
-    debit = db.Column(db.Float, nullable=False, default=0.0)
-    credit = db.Column(db.Float, nullable=False, default=0.0)
-    account = db.relationship('Account')
+# Los modelos se importan después de inicializar db para evitar dependencias circulares.
+from .models import Role, User, LoanProduct, LoanApplication, Account, Transaction, JournalEntry, Cliente, ContratoIntegracion
 
 
 # --- DECORADORES DE AUTORIZACIÓN ---
@@ -178,6 +109,173 @@ def login():
 def admin_test_route():
     user_email = get_jwt_identity()
     return jsonify(logged_in_as=user_email), 200
+
+
+# --- API DE CLIENTES (NUEVO CON FIRMA) ---
+
+@app.route('/api/clientes/nuevo', methods=['POST'])
+@jwt_required()
+def crear_nuevo_cliente():
+    """
+    Endpoint principal para crear nuevo cliente con validación completa y firma electrónica.
+    """
+    try:
+        data = request.get_json()
+
+        # 1. Validar datos básicos
+        datos_requeridos = ['nombre_completo', 'dui', 'email', 'telefono', 'direccion']
+        for campo in datos_requeridos:
+            if campo not in data:
+                return jsonify({'error': f'Campo requerido: {campo}'}), 400
+
+        # 2. Validación de identidad estricta
+        if not validacion_identidad_estricta(data):
+            # La función interna ya imprime el error específico
+            return jsonify({'error': 'Validación de identidad falló. Verifique los datos o si el cliente ya existe.'}), 400
+
+        # 3. Capturar datos biométricos (simulado)
+        datos_biometricos = capturar_datos_biometricos()
+        if not datos_biometricos:
+            return jsonify({'error': 'Error en la captura de datos biométricos.'}), 500
+
+        # 4. Generar contrato de integración
+        contrato_id = generar_contrato_integracion(data)
+        if not contrato_id:
+            return jsonify({'error': 'No se pudo generar el contrato de integración.'}), 500
+
+        # 5. Proceso de firma electrónica (simulado)
+        resultado_firma = firma_electronica_avanzada(contrato_id, data, datos_biometricos)
+        if not resultado_firma.get('valida'):
+            # Revertir la creación del contrato si la firma falla
+            contrato = ContratoIntegracion.query.filter_by(contrato_id=contrato_id).first()
+            if contrato:
+                db.session.delete(contrato)
+                db.session.commit()
+            return jsonify({'error': 'El proceso de firma electrónica falló.', 'detalle': resultado_firma.get('error')}), 400
+
+        # 6. Crear el cliente en la base de datos FINALMENTE
+        cliente = Cliente(
+            nombre_completo=data['nombre_completo'],
+            dui=data['dui'],
+            email=data['email'],
+            telefono=data['telefono'],
+            direccion=data['direccion'],
+            contrato_integracion_id=contrato_id,
+            firma_electronica_id=resultado_firma['firma_id'],
+            estado='ACTIVO'
+        )
+
+        db.session.add(cliente)
+        db.session.commit()
+
+        return jsonify({
+            'success': True,
+            'cliente_id': cliente.id,
+            'contrato_id': contrato_id,
+            'firma_id': resultado_firma['firma_id'],
+            'certificado_id': resultado_firma['certificado_id'],
+            'mensaje': 'Cliente creado y contrato firmado exitosamente con validación completa.'
+        }), 201
+
+    except Exception as e:
+        db.session.rollback()
+        # Log the exception e for debugging
+        print(f"ERROR FATAL en /api/clientes/nuevo: {str(e)}")
+        return jsonify({'error': 'Ocurrió un error inesperado en el servidor.', 'detalle': str(e)}), 500
+
+
+# --- API DE DOCUMENTOS Y FIRMA MANUAL ---
+
+@app.route('/api/contratos/<string:contrato_id>/descargar', methods=['GET'])
+@jwt_required()
+def descargar_contrato_pdf(contrato_id):
+    """
+    Genera y devuelve el contrato de integración en formato PDF para su descarga.
+    """
+    contrato = ContratoIntegracion.query.filter_by(contrato_id=contrato_id).first_or_404()
+
+    # Lógica de permisos (ej. solo el cliente o un admin puede descargar)
+    # ... (implementar si es necesario)
+
+    pdf_bytes = convert_html_to_pdf(contrato.contrato_html)
+
+    if not pdf_bytes:
+        return jsonify({"error": "No se pudo generar el PDF del contrato."}), 500
+
+    response = make_response(pdf_bytes)
+    response.headers['Content-Type'] = 'application/pdf'
+    response.headers['Content-Disposition'] = f'attachment; filename=contrato_{contrato_id}.pdf'
+
+    return response
+
+@app.route('/api/contratos/<string:contrato_id>/subir-firmado', methods=['POST'])
+@jwt_required()
+def subir_contrato_firmado(contrato_id):
+    """
+    Sube el contrato firmado manualmente por el cliente.
+    """
+    contrato = ContratoIntegracion.query.filter_by(contrato_id=contrato_id).first_or_404()
+
+    if 'file' not in request.files:
+        return jsonify({'error': 'No se encontró el archivo'}), 400
+
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'Ningún archivo seleccionado'}), 400
+
+    if file:
+        # Guardar el archivo de forma segura
+        filename = f"manual_{contrato_id}_{file.filename}"
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+
+        if not os.path.exists(app.config['UPLOAD_FOLDER']):
+            os.makedirs(app.config['UPLOAD_FOLDER'])
+
+        file.save(filepath)
+
+        # Actualizar el estado del contrato
+        contrato.documento_firmado_url = filepath
+        contrato.estado = 'PENDIENTE_VALIDACION_MANUAL'
+        contrato.tipo_firma = 'MANUAL'
+        db.session.commit()
+
+        return jsonify({'success': True, 'mensaje': 'Documento subido, pendiente de validación.'})
+
+    return jsonify({'error': 'Error al subir el archivo'}), 500
+
+@app.route('/api/contratos/<string:contrato_id>/validar-manual', methods=['POST'])
+@jwt_required()
+@role_required(['Administrador General', 'Super Administrador'])
+def validar_contrato_manual(contrato_id):
+    """
+    Un administrador valida el contrato firmado manualmente.
+    """
+    contrato = ContratoIntegracion.query.filter_by(contrato_id=contrato_id).first_or_404()
+
+    if contrato.estado != 'PENDIENTE_VALIDACION_MANUAL':
+        return jsonify({'error': 'Este contrato no está pendiente de validación manual.'}), 400
+
+    data = request.get_json()
+    es_valido = data.get('es_valido', False)
+
+    if es_valido:
+        contrato.estado = 'FIRMADO_MANUALMENTE'
+        contrato.fecha_firma = datetime.utcnow()
+
+        # Actualizar estado del cliente
+        cliente = Cliente.query.filter_by(contrato_integracion_id=contrato.contrato_id).first()
+        if cliente:
+            cliente.estado = 'ACTIVO'
+
+        mensaje = 'Contrato validado y aceptado.'
+    else:
+        contrato.estado = 'RECHAZADO'
+        mensaje = 'El contrato ha sido rechazado.'
+        # Opcional: Limpiar la URL del documento si se rechaza
+        # contrato.documento_firmado_url = None
+
+    db.session.commit()
+    return jsonify({'success': True, 'mensaje': mensaje})
 
 
 # --- API DE PERFIL DE USUARIO ---

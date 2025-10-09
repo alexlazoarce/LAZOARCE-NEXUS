@@ -1,4 +1,5 @@
-from .app import db, Account, Transaction, JournalEntry
+from .database import db
+from .models import Account, Transaction, JournalEntry
 from datetime import datetime
 
 def create_journal_entry(description, entries, date=None):
