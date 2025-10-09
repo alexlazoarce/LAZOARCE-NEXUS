@@ -7,3 +7,4 @@ SQLAlchemy==1.4.45
 Flask-SQLAlchemy==2.5.1
 fpdf2==2.7.4
 xhtml2pdf==0.2.11
+python-dateutil==2.8.2

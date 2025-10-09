@@ -150,3 +150,23 @@ class CertificadoValidacion(db.Model):
     pdf_certificado = db.Column(db.Text)  # Base64 del PDF
     fecha_generacion = db.Column(db.DateTime, default=datetime.utcnow)
     valido_hasta = db.Column(db.DateTime)
+
+
+class ProductoCredito(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(100), nullable=False)
+    tasa_interes_anual = db.Column(db.Float, nullable=False)
+    comision_apertura = db.Column(db.Float, default=0.0)  # Porcentaje o monto fijo
+    comision_administracion = db.Column(db.Float, default=0.0)  # Porcentaje mensual
+    seguro = db.Column(db.Float, default=0.0)  # Porcentaje mensual
+    plazo_maximo = db.Column(db.Integer, nullable=False)  # En meses
+    monto_minimo = db.Column(db.Float, nullable=False)
+    monto_maximo = db.Column(db.Float, nullable=False)
+
+    # OPCIONES DE CÁLCULO
+    comisiones_generan_intereses = db.Column(db.Boolean, default=False)
+    comisiones_se_agregan_capital = db.Column(db.Boolean, default=False)
+    comisiones_se_descuentan_capital = db.Column(db.Boolean, default=True)
+    aplicar_tea = db.Column(db.Boolean, default=True)
+
+    estado = db.Column(db.String(20), default='ACTIVO')

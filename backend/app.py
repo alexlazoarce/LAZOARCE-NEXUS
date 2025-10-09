@@ -11,7 +11,7 @@ from io import BytesIO
 from flask import make_response
 
 # Módulos locales
-from .loan_calculator import generate_amortization_table
+from .loan_calculator import calcular_prestamo_completo
 from .pdf_generator import create_contract_pdf, convert_html_to_pdf
 from .accounting_service import create_journal_entry
 from .firma_service import (
@@ -42,7 +42,7 @@ jwt = JWTManager(app)
 
 # --- MODELOS DE BASE DE DATOS ---
 # Los modelos se importan después de inicializar db para evitar dependencias circulares.
-from .models import Role, User, LoanProduct, LoanApplication, Account, Transaction, JournalEntry, Cliente, ContratoIntegracion
+from .models import Role, User, LoanProduct, LoanApplication, Account, Transaction, JournalEntry, Cliente, ContratoIntegracion, ProductoCredito
 
 
 # --- DECORADORES DE AUTORIZACIÓN ---
@@ -521,20 +521,52 @@ def get_contract_data(application_id):
         "contact": "support@lazoarce.com" # Placeholder
     }
 
-    # Generar la tabla de amortización para el contrato
-    amortization_data = generate_amortization_table(
-        capital_solicitado=application.requested_amount,
-        meses=application.requested_term,
-        tasa_interes_mensual=application.product.default_interest_rate,
-        comision_administracion=application.product.default_admin_commission
+    # --- Adaptar y usar el nuevo motor de cálculo ---
+    # Crear un objeto ProductoCredito temporal a partir del LoanProduct existente
+    temp_product = ProductoCredito(
+        tasa_interes_anual=application.product.default_interest_rate * 12,
+        comision_administracion=application.product.default_admin_commission / 100,
+        # Usar valores por defecto para los campos no presentes en el modelo antiguo
+        comision_apertura=0.0,
+        seguro=0.0,
+        comisiones_se_descuentan_capital=False,
+        comisiones_se_agregan_capital=False,
+        aplicar_tea=False
     )
+
+    # Generar la tabla de amortización con el nuevo calculador
+    new_amortization_data = calcular_prestamo_completo(
+        monto_solicitado=application.requested_amount,
+        producto=temp_product,
+        plazo_meses=application.requested_term
+    )
+
+    # --- Re-mapear las claves para que coincidan con lo que espera el generador de PDF antiguo ---
+    remapped_table = []
+    if "tabla_amortizacion" in new_amortization_data:
+        for row in new_amortization_data["tabla_amortizacion"]:
+            remapped_table.append({
+                'Mes': row['mes'],
+                'Fecha Vencimiento': row['fecha_vencimiento'],
+                'Saldo Inicial': row['saldo_inicial'],
+                'Interes': row['interes'],
+                'Com. Adm.': row['comision_administracion'],
+                'Amortizacion': row['amortizacion'],
+                'Cuota': row['cuota_total']
+            })
+
+    # Mantener la estructura de datos que espera el PDF
+    amortization_data_for_pdf = {
+        "summary": new_amortization_data.get("resumen_costos", {}),
+        "amortization_table": remapped_table
+    }
 
     # --- Ensamblar la respuesta final ---
     contract_data = {
         "company": company_info,
         "client": applicant_data,
         "loan": loan_details,
-        "amortization": amortization_data
+        "amortization": amortization_data_for_pdf
     }
 
     return jsonify(contract_data)
@@ -573,30 +605,55 @@ def download_contract_pdf(application_id):
     return response
 
 
-@app.route('/api/loans/simulate', methods=['POST'])
+@app.route('/api/loans/calculate', methods=['POST'])
 @jwt_required()
-def simulate_loan():
-    data = request.get_json()
-    capital = data.get('capital_solicitado')
-    meses = data.get('meses')
-    tasa_interes = data.get('tasa_interes_mensual')
-    if not all([capital, meses, tasa_interes]):
-        return jsonify({"msg": "Los parámetros 'capital_solicitado', 'meses', y 'tasa_interes_mensual' son requeridos."}), 400
+def calculate_loan():
+    """
+    Endpoint para cálculo de préstamos con todas las opciones.
+    """
     try:
-        capital = float(capital)
-        meses = int(meses)
-        tasa_interes = float(tasa_interes)
-        com_admin = float(data.get('comision_administracion', 0))
-        com_iniciales = float(data.get('comisiones_iniciales', 0))
-    except (ValueError, TypeError):
-        return jsonify({"msg": "Parámetros inválidos. Asegúrese de que los valores sean numéricos."}), 400
-    commission_method = data.get('commission_method', 'no_interest')
-    if commission_method not in ['no_interest', 'add_to_capital', 'subtract_from_capital']:
-        return jsonify({"msg": "El valor de 'commission_method' no es válido."}), 400
-    resultado = generate_amortization_table(capital_solicitado=capital, meses=meses, tasa_interes_mensual=tasa_interes, comision_administracion=com_admin, comisiones_iniciales=com_iniciales, commission_method=commission_method)
-    if not resultado or not resultado.get("amortization_table"):
-        return jsonify({"msg": "No se pudo generar la tabla de amortización con los parámetros proporcionados."}), 500
-    return jsonify(resultado)
+        data = request.get_json()
+
+        # Parámetros obligatorios
+        monto = float(data.get('monto', 0))
+        producto_id = int(data.get('producto_id', 0))
+        plazo = int(data.get('plazo_meses', 0))
+
+        # Opciones de cálculo (opcionales)
+        comisiones_intereses = data.get('comisiones_generan_intereses', None)
+        comisiones_agregan_capital = data.get('comisiones_se_agregan_capital', None)
+        comisiones_descuentan_capital = data.get('comisiones_se_descuentan_capital', None)
+        aplicar_tea = data.get('aplicar_tea', True)
+
+        # Validaciones básicas
+        if monto <= 0 or plazo <= 0:
+            return jsonify({"error": "Monto y plazo deben ser mayores a 0"}), 400
+
+        # Obtener producto y actualizar opciones si se enviaron
+        producto = ProductoCredito.query.get(producto_id)
+        if not producto:
+            return jsonify({"error": "Producto no encontrado"}), 404
+
+        # Sobrescribir configuración si se envió en la petición
+        if comisiones_intereses is not None:
+            producto.comisiones_generan_intereses = comisiones_intereses
+        if comisiones_agregan_capital is not None:
+            producto.comisiones_se_agregan_capital = comisiones_agregan_capital
+        if comisiones_descuentan_capital is not None:
+            producto.comisiones_se_descuentan_capital = comisiones_descuentan_capital
+        if aplicar_tea is not None:
+            producto.aplicar_tea = aplicar_tea
+
+        # Realizar cálculo
+        resultado = calcular_prestamo_completo(monto, producto, plazo)
+
+        if "error" in resultado:
+            return jsonify(resultado), 400
+
+        return jsonify(resultado)
+
+    except Exception as e:
+        return jsonify({"error": f"Error en cálculo: {str(e)}"}), 500
 
 
 # --- FUNCIONES AUXILIARES ---
@@ -658,6 +715,25 @@ def initialize_database():
             db.session.add(default_product)
             db.session.commit()
             print("Producto de prestamo por defecto creado.")
+
+        # Crear producto de crédito avanzado por defecto si no existe
+        if not ProductoCredito.query.first():
+            print("Creando producto de crédito avanzado por defecto...")
+            default_credit_product = ProductoCredito(
+                nombre='Crédito Avanzado de Prueba',
+                tasa_interes_anual=24.0,  # 24%
+                comision_apertura=0.02, # 2%
+                comision_administracion=0.005, # 0.5% mensual
+                seguro=0.001, # 0.1% mensual
+                plazo_maximo=60,
+                monto_minimo=1000,
+                monto_maximo=50000,
+                comisiones_se_descuentan_capital=True,
+                aplicar_tea=True
+            )
+            db.session.add(default_credit_product)
+            db.session.commit()
+            print("Producto de crédito avanzado por defecto creado.")
 
 if __name__ == '__main__':
     initialize_database()
