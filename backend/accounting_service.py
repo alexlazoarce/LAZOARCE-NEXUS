@@ -1,55 +1,42 @@
-from app import db, Account, Transaction, JournalEntry
-from datetime import datetime
+from models import db, Account, JournalEntry
+from sqlalchemy import func
 
-def create_journal_entry(description, entries, date=None):
+def get_general_ledger():
     """
-    Crea una transacción y sus asientos de diario correspondientes.
+    Calculates the general ledger (Libro Mayor) for all accounts.
 
-    Args:
-        description (str): La descripción de la transacción.
-        entries (list): Una lista de diccionarios, donde cada diccionario
-                        representa un asiento con 'account_code', 'debit', 'credit'.
-        date (datetime, optional): La fecha de la transacción. Si es None, se usa la fecha actual.
+    For each account in the chart of accounts, this function calculates the
+    sum of all debit and credit entries and determines the final balance
+    based on the account's type.
 
     Returns:
-        Transaction: La transacción creada.
-
-    Raises:
-        ValueError: Si los débitos y créditos no cuadran o si una cuenta no existe.
+        A list of dictionaries, where each dictionary represents an account
+        with its total debits, credits, and final balance.
     """
-    total_debits = sum(entry.get('debit', 0) for entry in entries)
-    total_credits = sum(entry.get('credit', 0) for entry in entries)
+    # Get all accounts from the chart of accounts
+    accounts = Account.query.order_by(Account.code).all()
 
-    if round(total_debits, 2) != round(total_credits, 2):
-        raise ValueError("El total de debitos y creditos no cuadra.")
+    ledger = []
 
-    if not date:
-        date = datetime.utcnow()
+    for account in accounts:
+        # For each account, calculate the sum of debits and credits from journal entries
+        total_debits = db.session.query(func.sum(JournalEntry.debit)).filter(JournalEntry.account_id == account.id).scalar() or 0.0
+        total_credits = db.session.query(func.sum(JournalEntry.credit)).filter(JournalEntry.account_id == account.id).scalar() or 0.0
 
-    # Iniciar una transacción de base de datos
-    try:
-        new_transaction = Transaction(description=description, date=date)
-        db.session.add(new_transaction)
+        # Determine the final balance based on the account type's normal balance
+        balance = 0.0
+        if account.account_type in ['Activo', 'Gasto']:
+            balance = total_debits - total_credits
+        elif account.account_type in ['Pasivo', 'Patrimonio', 'Ingreso']:
+            balance = total_credits - total_debits
 
-        # Crear los asientos de diario
-        for entry_data in entries:
-            account_code = entry_data.get('account_code')
-            account = Account.query.filter_by(code=account_code).first()
+        ledger.append({
+            'account_code': account.code,
+            'account_name': account.name,
+            'account_type': account.account_type,
+            'total_debits': total_debits,
+            'total_credits': total_credits,
+            'final_balance': balance
+        })
 
-            if not account:
-                raise ValueError(f"La cuenta con el codigo '{account_code}' no existe.")
-
-            journal_entry = JournalEntry(
-                transaction=new_transaction,
-                account_id=account.id,
-                debit=entry_data.get('debit', 0),
-                credit=entry_data.get('credit', 0)
-            )
-            db.session.add(journal_entry)
-
-        db.session.commit()
-        return new_transaction
-
-    except Exception as e:
-        db.session.rollback()
-        raise e
+    return ledger

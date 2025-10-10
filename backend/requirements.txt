@@ -1,8 +1,0 @@
-Flask==2.2.2
-Werkzeug<3.0
-Flask-Cors==3.0.10
-python-dotenv==0.21.0
-Flask-JWT-Extended==4.4.4
-SQLAlchemy==1.4.45
-Flask-SQLAlchemy==2.5.1
-fpdf2==2.7.4
