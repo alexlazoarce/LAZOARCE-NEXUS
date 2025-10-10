@@ -8,6 +8,8 @@ from models import db, User, Role, Account, LoanProduct, LoanApplication, Paymen
 # Import services
 from accounting_service import get_general_ledger, create_disbursement_journal_entry, create_repayment_journal_entry
 from loan_calculator import generate_amortization_table
+from pdf_generator import create_contract_pdf
+from flask import make_response
 
 def create_app():
     """
@@ -150,6 +152,90 @@ def create_app():
             return jsonify(amortization_data)
         except ValueError as e:
             return jsonify({"msg": str(e)}), 400
+
+    @app.route('/api/applications/<int:app_id>/contract-data', methods=['GET'])
+    @jwt_required()
+    def get_contract_data(app_id):
+        application = LoanApplication.query.get_or_404(app_id)
+        # Security check: ensure the user requesting is the applicant or an admin
+        current_user_email = get_jwt_identity()
+        user = User.query.filter_by(email=current_user_email).first()
+        if user.id != application.user_id and user.role.name != 'Admin':
+            return jsonify({"msg": "Unauthorized"}), 403
+
+        product = application.product
+        applicant = application.applicant
+
+        amortization_data = generate_amortization_table(
+            capital=application.requested_amount,
+            interest_rate=product.interest_rate,
+            term_months=application.requested_term,
+            commission_type='A', # Placeholder
+            admin_commission_rate=0.0 # Placeholder
+        )
+
+        contract_data = {
+            "client": {
+                "name": applicant.full_name or "N/A",
+                "dui": applicant.dui or "N/A",
+                "nit": applicant.nit or "N/A",
+                "email": applicant.email,
+            },
+            "loan": {
+                "id": application.id,
+                "product_name": product.name,
+                "amount_text": f"${application.requested_amount:,.2f}",
+                "term_months": application.requested_term,
+                "interest_rate_annual": f"{(product.interest_rate * 100):.2f}%",
+                "monthly_payment": f"${amortization_data['summary']['fixed_monthly_payment']:,.2f}",
+                "application_date": application.application_date.strftime('%d de %B de %Y')
+            },
+            "company": {
+                "name": "GRUPO LAZO ARCE S.A.S. DE C.V.",
+                "nit": "0123-456789-123-4", # Placeholder
+                "legal_rep": "Representante Legal Placeholder" # Placeholder
+            },
+            "amortization_table": amortization_data.get('schedule', [])
+        }
+        return jsonify(contract_data)
+
+    @app.route('/api/applications/<int:app_id>/contract.pdf', methods=['GET'])
+    @jwt_required()
+    def download_contract_pdf(app_id):
+        # Re-use the contract data logic
+        application = LoanApplication.query.get_or_404(app_id)
+        current_user_email = get_jwt_identity()
+        user = User.query.filter_by(email=current_user_email).first()
+        if user.id != application.user_id and user.role.name not in ['Admin', 'Contador']:
+            return jsonify({"msg": "Unauthorized"}), 403
+
+        # This logic is duplicated, in a larger app it would be a shared service function
+        product = application.product
+        applicant = application.applicant
+        amortization_data = generate_amortization_table(
+            capital=application.requested_amount, interest_rate=product.interest_rate,
+            term_months=application.requested_term, commission_type='A', admin_commission_rate=0.0
+        )
+        contract_data = {
+            "client": {"name": applicant.full_name, "dui": applicant.dui, "nit": applicant.nit},
+            "loan": {
+                "amount_text": f"${application.requested_amount:,.2f}",
+                "term_months": application.requested_term,
+                "interest_rate_annual": f"{(product.interest_rate * 100):.2f}%",
+                "monthly_payment": f"${amortization_data['summary']['fixed_monthly_payment']:,.2f}"
+            },
+            "company": {"name": "GRUPO LAZO ARCE S.A.S. DE C.V.", "legal_rep": "Representante Legal Placeholder"},
+            "amortization_table": amortization_data.get('schedule', [])
+        }
+
+        # Generate PDF in memory
+        pdf_buffer = create_contract_pdf(contract_data)
+
+        # Create and send the response
+        response = make_response(pdf_buffer.getvalue())
+        response.headers['Content-Type'] = 'application/pdf'
+        response.headers['Content-Disposition'] = f'attachment; filename=contrato_{app_id}.pdf'
+        return response
 
     # --- ACCOUNTING ROUTES ---
     @app.route('/api/accounting/general-ledger', methods=['GET'])

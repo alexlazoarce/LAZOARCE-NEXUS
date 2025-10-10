@@ -1,25 +1,25 @@
-function MyApplications({ token, onViewDetails }) {
+function MyApplications({ token, onViewDetails, onViewContract }) {
     const [applications, setApplications] = React.useState([]);
     const [error, setError] = React.useState('');
     const [isLoading, setIsLoading] = React.useState(true);
 
+    const fetchApplications = async () => {
+        setIsLoading(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/loan-applications`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.msg || 'Failed to fetch applications');
+            setApplications(data);
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     React.useEffect(() => {
-        const fetchApplications = async () => {
-            try {
-                const res = await fetch(`${API_BASE_URL}/api/loan-applications`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                const data = await res.json();
-                if (!res.ok) {
-                    throw new Error(data.msg || 'Failed to fetch applications');
-                }
-                setApplications(data);
-            } catch (err) {
-                setError(err.message);
-            } finally {
-                setIsLoading(false);
-            }
-        };
         fetchApplications();
     }, [token]);
 
@@ -34,15 +34,16 @@ function MyApplications({ token, onViewDetails }) {
     return (
         <div>
             <h2>Mis Solicitudes de Préstamo</h2>
+            <button onClick={fetchApplications}>Recargar</button>
             {applications.length === 0 ? (
                 <p>No has enviado ninguna solicitud.</p>
             ) : (
-                <table>
+                <table style={{marginTop: '1em'}}>
                     <thead>
                         <tr>
-                            <th>ID de Solicitud</th>
+                            <th>ID</th>
                             <th>Producto</th>
-                            <th>Monto Solicitado</th>
+                            <th>Monto</th>
                             <th>Fecha</th>
                             <th>Estado</th>
                             <th>Acciones</th>
@@ -58,9 +59,10 @@ function MyApplications({ token, onViewDetails }) {
                                 <td>{app.status}</td>
                                 <td>
                                     {app.status === 'Desembolsado' && (
-                                        <button onClick={() => onViewDetails(app.id)}>
-                                            Ver Detalles
-                                        </button>
+                                        <>
+                                            <button onClick={() => onViewDetails(app.id)}>Detalles</button>
+                                            <button onClick={() => onViewContract(app.id)} style={{marginLeft: '5px'}}>Contrato</button>
+                                        </>
                                     )}
                                 </td>
                             </tr>
