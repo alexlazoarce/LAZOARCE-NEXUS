@@ -1,5 +1,41 @@
-from models import db, Account, JournalEntry
+from models import db, Account, JournalEntry, Transaction
 from sqlalchemy import func
+
+def create_disbursement_journal_entry(application):
+    """
+    Creates a journal entry for a loan disbursement.
+    - Debits 'Cuentas por Cobrar Préstamos'
+    - Credits 'Bancos'
+    """
+    # Find the required accounts
+    loan_receivable_account = Account.query.filter_by(name='Cuentas por Cobrar Préstamos').first()
+    bancos_account = Account.query.filter_by(name='Bancos').first()
+
+    if not loan_receivable_account or not bancos_account:
+        raise Exception("Required accounts for disbursement are not configured in the chart of accounts.")
+
+    # Create the main transaction record
+    disbursement_transaction = Transaction(
+        description=f"Desembolso de préstamo para solicitud #{application.id}"
+    )
+    db.session.add(disbursement_transaction)
+
+    # Create the debit and credit entries
+    debit_entry = JournalEntry(
+        transaction=disbursement_transaction,
+        account_id=loan_receivable_account.id,
+        debit=application.requested_amount,
+        credit=0.0
+    )
+    credit_entry = JournalEntry(
+        transaction=disbursement_transaction,
+        account_id=bancos_account.id,
+        debit=0.0,
+        credit=application.requested_amount
+    )
+
+    db.session.add_all([debit_entry, credit_entry])
+    # The session will be committed in the route handler to ensure atomicity.
 
 def get_general_ledger():
     """

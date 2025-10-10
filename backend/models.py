@@ -28,6 +28,7 @@ class User(db.Model):
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
     role_id = db.Column(db.Integer, db.ForeignKey('role.id'), nullable=False)
+    loan_applications = db.relationship('LoanApplication', back_populates='applicant', lazy=True)
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -37,6 +38,45 @@ class User(db.Model):
 
     def __repr__(self):
         return f'<User {self.email}>'
+
+
+# --- LOAN MODELS ---
+
+class LoanProduct(db.Model):
+    """
+    Defines a specific type of loan that the company offers.
+    e.g., 'Personal Loan', 'Mortgage'
+    """
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False, unique=True)
+    min_amount = db.Column(db.Float, nullable=False)
+    max_amount = db.Column(db.Float, nullable=False)
+    interest_rate = db.Column(db.Float, nullable=False) # Annual interest rate
+    term_months = db.Column(db.Integer, nullable=False) # Default term in months
+    is_active = db.Column(db.Boolean, default=True)
+
+    def __repr__(self):
+        return f'<LoanProduct {self.name}>'
+
+class LoanApplication(db.Model):
+    """
+    Represents a loan application submitted by a user.
+    """
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    product_id = db.Column(db.Integer, db.ForeignKey('loan_product.id'), nullable=False)
+    requested_amount = db.Column(db.Float, nullable=False)
+    requested_term = db.Column(db.Integer, nullable=False) # Term in months
+    # Status can be 'Solicitud', 'Aprobado', 'Rechazado', 'Desembolsado'
+    status = db.Column(db.String(50), default='Solicitud', nullable=False)
+    application_date = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Explicitly define the bidirectional relationship with User
+    applicant = db.relationship('User', back_populates='loan_applications')
+    product = db.relationship('LoanProduct')
+
+    def __repr__(self):
+        return f'<LoanApplication ID: {self.id} - Status: {self.status}>'
 
 
 # --- ACCOUNTING MODELS ---

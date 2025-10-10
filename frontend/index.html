@@ -29,13 +29,18 @@
     <!-- 3. Babel to transpile JSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <!-- 4. React Component -->
+    <!-- 4. React Components -->
+    <script type="text/babel" src="Login.js"></script>
+    <script type="text/babel" src="LoanProducts.js"></script>
+    <script type="text/babel" src="LoanApplicationForm.js"></script>
+    <script type="text/babel" src="MyApplications.js"></script>
     <script type="text/babel" src="GeneralLedgerView.js"></script>
+    <script type="text/babel" src="App.js"></script>
 
     <!-- 5. Render the main component -->
     <script type="text/babel">
         const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<GeneralLedgerView />);
+        root.render(<App />);
     </script>
 </body>
 </html>
