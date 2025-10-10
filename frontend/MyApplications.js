@@ -1,4 +1,4 @@
-function MyApplications({ token }) {
+function MyApplications({ token, onViewDetails }) {
     const [applications, setApplications] = React.useState([]);
     const [error, setError] = React.useState('');
     const [isLoading, setIsLoading] = React.useState(true);
@@ -45,6 +45,7 @@ function MyApplications({ token }) {
                             <th>Monto Solicitado</th>
                             <th>Fecha</th>
                             <th>Estado</th>
+                            <th>Acciones</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -55,6 +56,13 @@ function MyApplications({ token }) {
                                 <td>${app.requested_amount.toFixed(2)}</td>
                                 <td>{new Date(app.application_date).toLocaleDateString()}</td>
                                 <td>{app.status}</td>
+                                <td>
+                                    {app.status === 'Desembolsado' && (
+                                        <button onClick={() => onViewDetails(app.id)}>
+                                            Ver Detalles
+                                        </button>
+                                    )}
+                                </td>
                             </tr>
                         ))}
                     </tbody>

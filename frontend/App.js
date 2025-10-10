@@ -1,39 +1,62 @@
 function App() {
-    // Attempt to get the token from localStorage on initial load
     const [token, setToken] = React.useState(localStorage.getItem('jwt_token'));
-    // Default view is 'login' if no token, otherwise 'products'
     const [view, setView] = React.useState(token ? 'products' : 'login');
     const [selectedProduct, setSelectedProduct] = React.useState(null);
+    const [viewingLoanId, setViewingLoanId] = React.useState(null); // State for loan detail view
 
-    // Effect to switch view based on token presence
     React.useEffect(() => {
-        if (token) {
-            setView('products');
-        } else {
+        if (!token) {
             setView('login');
+        } else if (!viewingLoanId) {
+            // Don't change the view if we are looking at details
+            // This allows returning to the previous view.
         }
     }, [token]);
 
     const handleLoginSuccess = (newToken) => {
         localStorage.setItem('jwt_token', newToken);
         setToken(newToken);
+        setView('products');
     };
 
     const handleLogout = () => {
         localStorage.removeItem('jwt_token');
         setToken(null);
+        setViewingLoanId(null);
     };
 
     const handleSelectProduct = (product) => {
         setSelectedProduct(product);
         setView('apply');
-    }
+    };
 
-    // This function will be called after a successful application
     const handleApplicationSuccess = () => {
-        // Switch view to show the user their applications list
         setView('applications');
     };
+
+    const handleViewDetails = (loanId) => {
+        setViewingLoanId(loanId);
+    };
+
+    const handleBackToList = () => {
+        setViewingLoanId(null);
+        setView('applications');
+    }
+
+    // If a loan detail is being viewed, render it exclusively.
+    if (token && viewingLoanId) {
+        return (
+             <div className="container">
+                <header>
+                    <h1>Sistema de Préstamos Lazo Arce</h1>
+                    <button onClick={handleLogout} style={{float: 'right'}}>Cerrar Sesión</button>
+                </header>
+                <main>
+                    <LoanDetailView token={token} loanId={viewingLoanId} onBack={handleBackToList} />
+                </main>
+            </div>
+        );
+    }
 
     const renderView = () => {
         switch (view) {
@@ -44,12 +67,11 @@ function App() {
             case 'apply':
                 return <LoanApplicationForm token={token} product={selectedProduct} onApplicationSuccess={handleApplicationSuccess} />;
             case 'applications':
-                return <MyApplications token={token} />;
+                return <MyApplications token={token} onViewDetails={handleViewDetails} />;
             case 'ledger':
                 return <GeneralLedgerView token={token} />;
             default:
-                // Fallback to products view if logged in, otherwise login
-                return token ? <LoanProducts token={token} onSelectProduct={handleSelectProduct} /> : <Login onLoginSuccess={handleLoginSuccess} />;
+                return <Login onLoginSuccess={handleLoginSuccess} />;
         }
     };
 

@@ -37,6 +37,42 @@ def create_disbursement_journal_entry(application):
     db.session.add_all([debit_entry, credit_entry])
     # The session will be committed in the route handler to ensure atomicity.
 
+def create_repayment_journal_entry(payment):
+    """
+    Creates a journal entry for a loan repayment.
+    - Debits 'Bancos' (or 'Caja' depending on method)
+    - Credits 'Cuentas por Cobrar Préstamos'
+    """
+    # For now, we assume all payments go to 'Bancos'. This could be extended.
+    cash_account = Account.query.filter_by(name='Bancos').first()
+    loan_receivable_account = Account.query.filter_by(name='Cuentas por Cobrar Préstamos').first()
+
+    if not cash_account or not loan_receivable_account:
+        raise Exception("Required accounts for repayment are not configured in the chart of accounts.")
+
+    # Create the main transaction record
+    repayment_transaction = Transaction(
+        description=f"Pago recibido para préstamo #{payment.application_id}"
+    )
+    db.session.add(repayment_transaction)
+
+    # Create the debit and credit entries
+    debit_entry = JournalEntry(
+        transaction=repayment_transaction,
+        account_id=cash_account.id,
+        debit=payment.amount,
+        credit=0.0
+    )
+    credit_entry = JournalEntry(
+        transaction=repayment_transaction,
+        account_id=loan_receivable_account.id,
+        debit=0.0,
+        credit=payment.amount
+    )
+
+    db.session.add_all([debit_entry, credit_entry])
+    # The session will be committed in the route handler.
+
 def get_general_ledger():
     """
     Calculates the general ledger (Libro Mayor) for all accounts.

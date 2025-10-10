@@ -74,9 +74,26 @@ class LoanApplication(db.Model):
     # Explicitly define the bidirectional relationship with User
     applicant = db.relationship('User', back_populates='loan_applications')
     product = db.relationship('LoanProduct')
+    payments = db.relationship('Payment', backref='application', lazy='dynamic')
 
     def __repr__(self):
         return f'<LoanApplication ID: {self.id} - Status: {self.status}>'
+
+class Payment(db.Model):
+    """
+    Represents a payment made towards a loan application.
+    """
+    id = db.Column(db.Integer, primary_key=True)
+    application_id = db.Column(db.Integer, db.ForeignKey('loan_application.id'), nullable=False)
+    amount = db.Column(db.Float, nullable=False)
+    payment_date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    # The user who recorded the payment (e.g., a collector or admin)
+    recorded_by_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+
+    recorder = db.relationship('User', backref=db.backref('recorded_payments', lazy=True))
+
+    def __repr__(self):
+        return f'<Payment ID: {self.id} for App ID: {self.application_id} - Amount: {self.amount}>'
 
 
 # --- ACCOUNTING MODELS ---
