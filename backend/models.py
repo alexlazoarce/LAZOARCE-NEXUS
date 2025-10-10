@@ -39,9 +39,67 @@ class User(db.Model):
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
 
+    employee_profile = db.relationship('Employee', backref='user', uselist=False, cascade="all, delete-orphan")
+
     def __repr__(self):
         return f'<User {self.email}>'
 
+# --- HR & PAYROLL MODELS ---
+
+class Employee(db.Model):
+    """
+    Stores employee-specific data, linked to a User account.
+    """
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, unique=True)
+    position = db.Column(db.String(100), nullable=False)
+    base_salary = db.Column(db.Float, nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    payslips = db.relationship('PaySlip', backref='employee', lazy=True)
+
+    def __repr__(self):
+        return f'<Employee {self.user.full_name if self.user else self.id}>'
+
+class PayrollLog(db.Model):
+    """
+    Represents a record of a payroll run for a specific period.
+    """
+    id = db.Column(db.Integer, primary_key=True)
+    period_name = db.Column(db.String(100), nullable=False) # e.g., "Enero 2025"
+    pay_date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+
+    creator = db.relationship('User', backref='created_payrolls')
+    payslips = db.relationship('PaySlip', backref='payroll_log', lazy=True, cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f'<PayrollLog {self.period_name}>'
+
+class PaySlip(db.Model):
+    """
+    Stores the detailed calculation for a single employee for a single payroll period.
+    """
+    id = db.Column(db.Integer, primary_key=True)
+    payroll_log_id = db.Column(db.Integer, db.ForeignKey('payroll_log.id'), nullable=False)
+    employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
+
+    # Salary components
+    gross_salary = db.Column(db.Float, nullable=False)
+
+    # Deductions
+    afp_employee = db.Column(db.Float, nullable=False)
+    isss_employee = db.Column(db.Float, nullable=False)
+    renta_tax = db.Column(db.Float, nullable=False)
+
+    # Final amounts
+    net_salary = db.Column(db.Float, nullable=False)
+
+    # Employer contributions (for accounting purposes)
+    afp_employer = db.Column(db.Float, nullable=False)
+    isss_employer = db.Column(db.Float, nullable=False)
+
+    def __repr__(self):
+        return f'<PaySlip for Employee ID: {self.employee_id}>'
 
 # --- LOAN MODELS ---
 
@@ -56,6 +114,9 @@ class LoanProduct(db.Model):
     max_amount = db.Column(db.Float, nullable=False)
     interest_rate = db.Column(db.Float, nullable=False) # Annual interest rate
     term_months = db.Column(db.Integer, nullable=False) # Default term in months
+    # Defines how commission is calculated: 'A' (on principal), 'B' (on interest), 'C' (on principal + interest)
+    commission_type = db.Column(db.String(1), default='A', nullable=False)
+    admin_commission_rate = db.Column(db.Float, default=0.0, nullable=False)
     is_active = db.Column(db.Boolean, default=True)
 
     def __repr__(self):
@@ -73,6 +134,11 @@ class LoanApplication(db.Model):
     # Status can be 'Solicitud', 'Aprobado', 'Rechazado', 'Desembolsado'
     status = db.Column(db.String(50), default='Solicitud', nullable=False)
     application_date = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Fields for signature tracking
+    # PENDIENTE, EN_PROCESO_ELECTRONICO, FIRMADO_MANUAL, VALIDADO
+    signature_status = db.Column(db.String(50), default='PENDIENTE', nullable=False)
+    signed_document_url = db.Column(db.String(255), nullable=True)
 
     # Explicitly define the bidirectional relationship with User
     applicant = db.relationship('User', back_populates='loan_applications')

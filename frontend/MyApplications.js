@@ -59,11 +59,9 @@ function MyApplications({ token, onViewDetails, onViewContract }) {
                                 <td>{app.status}</td>
                                 <td>
                                     {app.status === 'Desembolsado' && (
-                                        <>
-                                            <button onClick={() => onViewDetails(app.id)}>Detalles</button>
-                                            <button onClick={() => onViewContract(app.id)} style={{marginLeft: '5px'}}>Contrato</button>
-                                        </>
+                                        <button onClick={() => onViewContract(app.id)}>Contrato/Firma</button>
                                     )}
+                                    <button onClick={() => onViewDetails(app.id)} style={{marginLeft: '5px'}}>Detalles de Pago</button>
                                 </td>
                             </tr>
                         ))}

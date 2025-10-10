@@ -1,30 +1,45 @@
 function App() {
     const [token, setToken] = React.useState(localStorage.getItem('jwt_token'));
-    const [view, setView] = React.useState(token ? 'products' : 'login');
+    const [user, setUser] = React.useState(null);
+    const [view, setView] = React.useState('login');
     const [selectedProduct, setSelectedProduct] = React.useState(null);
     const [viewingLoanId, setViewingLoanId] = React.useState(null);
     const [viewingContractId, setViewingContractId] = React.useState(null);
 
     React.useEffect(() => {
-        if (!token) {
+        const currentToken = localStorage.getItem('jwt_token');
+        if (currentToken) {
+            setToken(currentToken);
+            try {
+                const payload = JSON.parse(atob(currentToken.split('.')[1]));
+                setUser({ email: payload.sub, role: payload.role });
+                if (!viewingLoanId && !viewingContractId) {
+                    setView('products');
+                }
+            } catch (e) {
+                console.error("Invalid token:", e);
+                handleLogout();
+            }
+        } else {
             setView('login');
-            setViewingLoanId(null);
-            setViewingContractId(null);
-        } else if (!viewingLoanId && !viewingContractId) {
-            // Only change view if not in a detail/contract view
-            // This prevents resetting the view when it shouldn't be.
+            setUser(null);
         }
-    }, [token]);
+    }, []);
 
     const handleLoginSuccess = (newToken) => {
         localStorage.setItem('jwt_token', newToken);
         setToken(newToken);
+        const payload = JSON.parse(atob(newToken.split('.')[1]));
+        setUser({ email: payload.sub, role: payload.role });
         setView('products');
     };
 
     const handleLogout = () => {
         localStorage.removeItem('jwt_token');
         setToken(null);
+        setUser(null);
+        setViewingLoanId(null);
+        setViewingContractId(null);
     };
 
     const handleSelectProduct = (product) => {
@@ -54,7 +69,6 @@ function App() {
         setView('applications');
     };
 
-    // Exclusive view for Loan Details
     if (token && viewingLoanId) {
         return (
             <div className="container">
@@ -64,7 +78,6 @@ function App() {
         );
     }
 
-    // Exclusive view for Contract
     if (token && viewingContractId) {
         return (
             <div className="container">
@@ -88,6 +101,13 @@ function App() {
                 return <GeneralLedgerView token={token} />;
             case 'profile':
                 return <Profile token={token} />;
+            case 'rrhh':
+                return (
+                    <div>
+                        <EmployeeManagement token={token} />
+                        <PayrollView token={token} />
+                    </div>
+                );
             default:
                 return <Login onLoginSuccess={handleLoginSuccess} />;
         }
@@ -106,6 +126,9 @@ function App() {
                     <button onClick={() => setView('applications')} style={{ marginLeft: '10px' }}>Mis Solicitudes</button>
                     <button onClick={() => setView('ledger')} style={{ marginLeft: '10px' }}>Ver Libro Mayor</button>
                     <button onClick={() => setView('profile')} style={{ marginLeft: '10px' }}>Mi Perfil</button>
+                    {user && user.role === 'Admin' && (
+                        <button onClick={() => setView('rrhh')} style={{ marginLeft: '10px' }}>RRHH</button>
+                    )}
                 </nav>
             )}
 

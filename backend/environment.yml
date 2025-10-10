@@ -1,0 +1,18 @@
+name: prestamos-backend
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.12
+  - flask
+  - flask-cors
+  - flask-sqlalchemy
+  - flask-jwt-extended
+  - python-dotenv
+  - fpdf2
+  - pandas
+  - numpy-financial
+  - pip:
+    - numpy_financial # numpy-financial is often installed via pip
+    # It's good practice to list pip packages separately.
+    # The other packages have robust conda-forge distributions.

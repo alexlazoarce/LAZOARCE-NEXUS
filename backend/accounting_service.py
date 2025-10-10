@@ -73,6 +73,55 @@ def create_repayment_journal_entry(payment):
     db.session.add_all([debit_entry, credit_entry])
     # The session will be committed in the route handler.
 
+def create_payroll_journal_entry(payroll_log_id, totals):
+    """
+    Creates a comprehensive journal entry for a completed payroll run.
+    - Debits salary and contribution expenses.
+    - Credits cash and various withholding accounts.
+    """
+    # Define account names to look up
+    account_names = {
+        "salaries_expense": "Gastos por Salarios",
+        "afp_employer_expense": "Gastos por Prestaciones (AFP Patronal)",
+        "isss_employer_expense": "Gastos por Prestaciones (ISSS Patronal)",
+        "cash": "Bancos", # Assuming payroll is paid from the bank
+        "afp_payable": "Retenciones por Pagar (AFP)",
+        "isss_payable": "Retenciones por Pagar (ISSS)",
+        "renta_payable": "Retenciones por Pagar (Renta)"
+    }
+
+    # Fetch all necessary accounts in a single query
+    accounts = Account.query.filter(Account.name.in_(account_names.values())).all()
+    accounts_map = {acc.name: acc.id for acc in accounts}
+
+    # Verify all accounts were found
+    for name, acc_name in account_names.items():
+        if acc_name not in accounts_map:
+            raise Exception(f"La cuenta contable '{acc_name}' es necesaria para la planilla y no se encontró.")
+
+    # Create the main transaction record
+    payroll_transaction = Transaction(
+        description=f"Partida de planilla para el período ID: {payroll_log_id}"
+    )
+    db.session.add(payroll_transaction)
+
+    # Prepare all journal entries
+    entries_to_add = [
+        # Debits (Expenses)
+        JournalEntry(transaction=payroll_transaction, account_id=accounts_map[account_names["salaries_expense"]], debit=totals['total_gross'], credit=0),
+        JournalEntry(transaction=payroll_transaction, account_id=accounts_map[account_names["afp_employer_expense"]], debit=totals['total_afp_employer'], credit=0),
+        JournalEntry(transaction=payroll_transaction, account_id=accounts_map[account_names["isss_employer_expense"]], debit=totals['total_isss_employer'], credit=0),
+
+        # Credits (Liabilities and Cash Out)
+        JournalEntry(transaction=payroll_transaction, account_id=accounts_map[account_names["cash"]], debit=0, credit=totals['total_net']),
+        JournalEntry(transaction=payroll_transaction, account_id=accounts_map[account_names["afp_payable"]], debit=0, credit=totals['total_afp_employee'] + totals['total_afp_employer']),
+        JournalEntry(transaction=payroll_transaction, account_id=accounts_map[account_names["isss_payable"]], debit=0, credit=totals['total_isss_employee'] + totals['total_isss_employer']),
+        JournalEntry(transaction=payroll_transaction, account_id=accounts_map[account_names["renta_payable"]], debit=0, credit=totals['total_renta']),
+    ]
+
+    db.session.add_all(entries_to_add)
+    # The session is committed in the route handler.
+
 def get_general_ledger():
     """
     Calculates the general ledger (Libro Mayor) for all accounts.
