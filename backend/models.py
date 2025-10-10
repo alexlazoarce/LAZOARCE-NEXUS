@@ -170,3 +170,23 @@ class ProductoCredito(db.Model):
     aplicar_tea = db.Column(db.Boolean, default=True)
 
     estado = db.Column(db.String(20), default='ACTIVO')
+
+
+# --- Modelos de Planillas (Payroll) ---
+
+class Empleado(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(150), nullable=False)
+    salario_base = db.Column(db.Float, nullable=False)
+    # Se pueden agregar otros campos relevantes como DUI, NIT, cargo, etc.
+    planillas = db.relationship('Planilla', backref='empleado', lazy=True)
+
+class Planilla(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    empleado_id = db.Column(db.Integer, db.ForeignKey('empleado.id'), nullable=False)
+    salario_base = db.Column(db.Float, nullable=False)
+    isss = db.Column(db.Float, nullable=False)
+    afp = db.Column(db.Float, nullable=False)
+    renta = db.Column(db.Float, nullable=False)
+    salario_neto = db.Column(db.Float, nullable=False)
+    fecha_calculo = db.Column(db.DateTime, default=datetime.utcnow)

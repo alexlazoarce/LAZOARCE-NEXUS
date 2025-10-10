@@ -20,6 +20,7 @@ from .firma_service import (
     generar_contrato_integracion,
     firma_electronica_avanzada
 )
+from .payroll_service import calcular_planilla
 
 # Cargar variables de entorno
 load_dotenv()
@@ -42,7 +43,7 @@ jwt = JWTManager(app)
 
 # --- MODELOS DE BASE DE DATOS ---
 # Los modelos se importan después de inicializar db para evitar dependencias circulares.
-from .models import Role, User, LoanProduct, LoanApplication, Account, Transaction, JournalEntry, Cliente, ContratoIntegracion, ProductoCredito
+from .models import Role, User, LoanProduct, LoanApplication, Account, Transaction, JournalEntry, Cliente, ContratoIntegracion, ProductoCredito, Empleado, Planilla
 
 
 # --- DECORADORES DE AUTORIZACIÓN ---
@@ -605,6 +606,56 @@ def download_contract_pdf(application_id):
     return response
 
 
+# --- API DE PLANILLAS (PAYROLL) ---
+
+@app.route('/api/payroll/calculate', methods=['POST'])
+@jwt_required()
+@role_required(['Contador', 'Administrador General'])
+def calculate_payroll_for_employee():
+    """
+    Calcula la planilla para un empleado específico y guarda el registro.
+    """
+    data = request.get_json()
+    empleado_id = data.get('empleado_id')
+
+    if not empleado_id:
+        return jsonify({'error': 'El campo empleado_id es requerido.'}), 400
+
+    empleado = Empleado.query.get(empleado_id)
+    if not empleado:
+        return jsonify({'error': 'Empleado no encontrado.'}), 404
+
+    # Realizar el cálculo usando el servicio de planillas
+    resultado_calculo = calcular_planilla(empleado.salario_base)
+
+    if not resultado_calculo.get('success'):
+        return jsonify({'error': 'Error al calcular la planilla.', 'detalle': resultado_calculo.get('error')}), 500
+
+    try:
+        # Crear un nuevo registro de planilla
+        nueva_planilla = Planilla(
+            empleado_id=empleado.id,
+            salario_base=resultado_calculo['salario_base'],
+            isss=resultado_calculo['isss'],
+            afp=resultado_calculo['afp'],
+            renta=resultado_calculo['renta'],
+            salario_neto=resultado_calculo['salario_neto']
+        )
+        db.session.add(nueva_planilla)
+        db.session.commit()
+
+        # Devolver el resultado del cálculo
+        return jsonify({
+            "success": True,
+            "planilla_id": nueva_planilla.id,
+            "calculo": resultado_calculo
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': 'Error al guardar el registro de la planilla.', 'detalle': str(e)}), 500
+
+
 @app.route('/api/loans/calculate', methods=['POST'])
 @jwt_required()
 def calculate_loan():
@@ -734,6 +785,17 @@ def initialize_database():
             db.session.add(default_credit_product)
             db.session.commit()
             print("Producto de crédito avanzado por defecto creado.")
+
+        # Crear un empleado de prueba si no existe
+        if not Empleado.query.first():
+            print("Creando empleado de prueba por defecto...")
+            default_empleado = Empleado(
+                nombre='Juan Ejemplo Perez',
+                salario_base=1500.00
+            )
+            db.session.add(default_empleado)
+            db.session.commit()
+            print("Empleado de prueba creado.")
 
 if __name__ == '__main__':
     initialize_database()
