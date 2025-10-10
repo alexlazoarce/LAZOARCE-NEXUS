@@ -11,6 +11,5 @@ dependencies:
   - flake8
   - python-dateutil
   - fpdf2
+  - xhtml2pdf
   - pip
-  - pip:
-    - xhtml2pdf
