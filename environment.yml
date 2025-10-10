@@ -1,0 +1,12 @@
+name: prestamos-backend
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - xhtml2pdf
+  - flake8
+  - pytest
+  # Añade aquí otros paquetes que uses en tu proyecto, por ejemplo:
+  # - numpy
+  # - requests
+  # - pandas
