@@ -22,6 +22,7 @@ jobs:
           conda config --add channels conda-forge
           conda config --set channel_priority strict
           conda env create -f environment.yml
+          source ~/.bashrc
           conda activate prestamos-backend
 
       - name: Lint with flake8
