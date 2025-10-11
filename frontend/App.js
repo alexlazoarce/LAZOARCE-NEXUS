@@ -17,7 +17,6 @@ function App() {
                     setView('products');
                 }
             } catch (e) {
-                console.error("Invalid token:", e);
                 handleLogout();
             }
         } else {
@@ -42,99 +41,47 @@ function App() {
         setViewingContractId(null);
     };
 
-    const handleSelectProduct = (product) => {
-        setSelectedProduct(product);
-        setView('apply');
-    };
-
-    const handleApplicationSuccess = () => {
-        setView('applications');
-    };
-
-    const handleViewDetails = (loanId) => {
-        setViewingLoanId(loanId);
-    };
-
+    const handleViewDetails = (loanId) => setViewingLoanId(loanId);
+    const handleViewContract = (loanId) => setViewingContractId(loanId);
     const handleBackToList = () => {
         setViewingLoanId(null);
-        setView('applications');
-    };
-
-    const handleViewContract = (loanId) => {
-        setViewingContractId(loanId);
-    };
-
-    const handleBackFromContract = () => {
         setViewingContractId(null);
         setView('applications');
     };
 
     if (token && viewingLoanId) {
-        return (
-            <div className="container">
-                <header><h1>Sistema de Préstamos Lazo Arce</h1><button onClick={handleLogout} style={{float: 'right'}}>Cerrar Sesión</button></header>
-                <main><LoanDetailView token={token} loanId={viewingLoanId} onBack={handleBackToList} /></main>
-            </div>
-        );
+        return <div className="container"><header><h1>Sistema de Préstamos Lazo Arce</h1><button onClick={handleLogout} style={{float: 'right'}}>Cerrar Sesión</button></header><main><LoanDetailView token={token} loanId={viewingLoanId} onBack={handleBackToList} /></main></div>;
     }
-
     if (token && viewingContractId) {
-        return (
-            <div className="container">
-                <header><h1>Sistema de Préstamos Lazo Arce</h1><button onClick={handleLogout} style={{float: 'right'}}>Cerrar Sesión</button></header>
-                <main><ContractView token={token} loanId={viewingContractId} onBack={handleBackFromContract} /></main>
-            </div>
-        );
+        return <div className="container"><header><h1>Sistema de Préstamos Lazo Arce</h1><button onClick={handleLogout} style={{float: 'right'}}>Cerrar Sesión</button></header><main><ContractView token={token} loanId={viewingContractId} onBack={handleBackToList} /></main></div>;
     }
 
     const renderView = () => {
+        if (!token) return <Login onLoginSuccess={handleLoginSuccess} />;
         switch (view) {
-            case 'login':
-                return <Login onLoginSuccess={handleLoginSuccess} />;
-            case 'products':
-                return <LoanProducts token={token} onSelectProduct={handleSelectProduct} />;
-            case 'apply':
-                return <LoanApplicationForm token={token} product={selectedProduct} onApplicationSuccess={handleApplicationSuccess} />;
-            case 'applications':
-                return <MyApplications token={token} onViewDetails={handleViewDetails} onViewContract={handleViewContract} />;
-            case 'ledger':
-                return <GeneralLedgerView token={token} />;
-            case 'profile':
-                return <Profile token={token} />;
-            case 'rrhh':
-                return (
-                    <div>
-                        <EmployeeManagement token={token} />
-                        <PayrollView token={token} />
-                    </div>
-                );
-            default:
-                return <Login onLoginSuccess={handleLoginSuccess} />;
+            case 'products': return <LoanProducts token={token} onSelectProduct={(p) => { setSelectedProduct(p); setView('apply'); }} />;
+            case 'apply': return <LoanApplicationForm token={token} product={selectedProduct} onApplicationSuccess={() => setView('applications')} />;
+            case 'applications': return <MyApplications token={token} onViewDetails={handleViewDetails} onViewContract={handleViewContract} />;
+            case 'ledger': return <GeneralLedgerView token={token} />;
+            case 'profile': return <Profile token={token} />;
+            case 'rrhh': return user.role === 'Admin' ? <div><EmployeeManagement token={token} /><PayrollView token={token} /></div> : <p>Acceso no autorizado.</p>;
+            default: return <p>Vista no encontrada.</p>;
         }
     };
 
     return (
         <div className="container">
-            <header>
-                <h1>Sistema de Préstamos Lazo Arce</h1>
-                {token && <button onClick={handleLogout} style={{float: 'right'}}>Cerrar Sesión</button>}
-            </header>
-
+            <header><h1>Sistema de Préstamos Lazo Arce</h1>{token && <button onClick={handleLogout} style={{float: 'right'}}>Cerrar Sesión</button>}</header>
             {token && (
-                <nav style={{ margin: '1em 0', borderBottom: '1px solid #ddd', paddingBottom: '1em' }}>
-                    <button onClick={() => setView('products')}>Ver Productos</button>
-                    <button onClick={() => setView('applications')} style={{ marginLeft: '10px' }}>Mis Solicitudes</button>
-                    <button onClick={() => setView('ledger')} style={{ marginLeft: '10px' }}>Ver Libro Mayor</button>
-                    <button onClick={() => setView('profile')} style={{ marginLeft: '10px' }}>Mi Perfil</button>
-                    {user && user.role === 'Admin' && (
-                        <button onClick={() => setView('rrhh')} style={{ marginLeft: '10px' }}>RRHH</button>
-                    )}
+                <nav>
+                    <button onClick={() => setView('products')}>Productos</button>
+                    <button onClick={() => setView('applications')} style={{marginLeft: '10px'}}>Mis Solicitudes</button>
+                    <button onClick={() => setView('ledger')} style={{marginLeft: '10px'}}>Libro Mayor</button>
+                    <button onClick={() => setView('profile')} style={{marginLeft: '10px'}}>Mi Perfil</button>
+                    {user && user.role === 'Admin' && (<button onClick={() => setView('rrhh')} style={{marginLeft: '10px'}}>RRHH</button>)}
                 </nav>
             )}
-
-            <main>
-                {renderView()}
-            </main>
+            <main>{renderView()}</main>
         </div>
     );
 }

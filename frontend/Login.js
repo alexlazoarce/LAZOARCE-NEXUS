@@ -1,19 +1,14 @@
 function Login({ onLoginSuccess }) {
-    const [credentials, setCredentials] = React.useState({
-        email: 'contador@test.com', // Default for easy testing
-        password: 'password123'
-    });
+    const [credentials, setCredentials] = React.useState({ email: '', password: '' });
     const [error, setError] = React.useState('');
     const [isLoading, setIsLoading] = React.useState(false);
 
-    const handleInputChange = (e) => {
-        setCredentials({ ...credentials, [e.target.name]: e.target.value });
-    };
+    const handleInputChange = (e) => setCredentials({ ...credentials, [e.target.name]: e.target.value });
 
     const handleLogin = async (e) => {
         e.preventDefault();
-        setError('');
         setIsLoading(true);
+        setError('');
         try {
             const res = await fetch(`${API_BASE_URL}/api/login`, {
                 method: 'POST',
@@ -21,9 +16,7 @@ function Login({ onLoginSuccess }) {
                 body: JSON.stringify(credentials),
             });
             const data = await res.json();
-            if (!res.ok) {
-                throw new Error(data.msg || 'Failed to log in');
-            }
+            if (!res.ok) throw new Error(data.msg || 'Error de autenticación');
             onLoginSuccess(data.access_token);
         } catch (err) {
             setError(err.message);
@@ -36,17 +29,9 @@ function Login({ onLoginSuccess }) {
         <div className="login-form">
             <h2>Iniciar Sesión</h2>
             <form onSubmit={handleLogin}>
-                <div>
-                    <label>Email: </label>
-                    <input type="email" name="email" value={credentials.email} onChange={handleInputChange} required />
-                </div>
-                <div style={{ marginTop: '10px' }}>
-                    <label>Contraseña: </label>
-                    <input type="password" name="password" value={credentials.password} onChange={handleInputChange} required />
-                </div>
-                <button type="submit" disabled={isLoading} style={{ marginTop: '10px' }}>
-                    {isLoading ? 'Iniciando sesión...' : 'Iniciar Sesión'}
-                </button>
+                <input name="email" type="email" value={credentials.email} onChange={handleInputChange} placeholder="Email" required />
+                <input name="password" type="password" value={credentials.password} onChange={handleInputChange} placeholder="Contraseña" required />
+                <button type="submit" disabled={isLoading}>{isLoading ? 'Iniciando...' : 'Iniciar Sesión'}</button>
                 {error && <p style={{ color: 'red' }}>{error}</p>}
             </form>
         </div>

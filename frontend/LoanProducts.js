@@ -1,35 +1,18 @@
-function LoanProducts({ onSelectProduct, token }) {
+function LoanProducts({ token, onSelectProduct }) {
     const [products, setProducts] = React.useState([]);
-    const [error, setError] = React.useState('');
     const [isLoading, setIsLoading] = React.useState(true);
+    const [error, setError] = React.useState('');
 
     React.useEffect(() => {
-        const fetchProducts = async () => {
-            try {
-                const res = await fetch(`${API_BASE_URL}/api/loan-products`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                const data = await res.json();
-                if (!res.ok) {
-                    throw new Error(data.msg || 'Failed to fetch products');
-                }
-                setProducts(data);
-            } catch (err) {
-                setError(err.message);
-            } finally {
-                setIsLoading(false);
-            }
-        };
-        fetchProducts();
+        fetch(`${API_BASE_URL}/api/loan-products`, { headers: { 'Authorization': `Bearer ${token}` } })
+            .then(res => res.ok ? res.json() : Promise.reject(res.json()))
+            .then(setProducts)
+            .catch(err => err.then(e => setError(e.msg)))
+            .finally(() => setIsLoading(false));
     }, [token]);
 
-    if (isLoading) {
-        return <p>Cargando productos...</p>;
-    }
-
-    if (error) {
-        return <p style={{ color: 'red' }}>{error}</p>;
-    }
+    if (isLoading) return <p>Cargando productos...</p>;
+    if (error) return <p style={{ color: 'red' }}>Error: {error}</p>;
 
     return (
         <div>
@@ -40,24 +23,18 @@ function LoanProducts({ onSelectProduct, token }) {
                         <th>Nombre</th>
                         <th>Tasa de Interés</th>
                         <th>Plazo (Meses)</th>
-                        <th>Monto Mínimo</th>
-                        <th>Monto Máximo</th>
+                        <th>Monto</th>
                         <th>Acción</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {products.map(product => (
-                        <tr key={product.id}>
-                            <td>{product.name}</td>
-                            <td>{(product.interest_rate * 100).toFixed(2)}%</td>
-                            <td>{product.term_months}</td>
-                            <td>${product.min_amount.toFixed(2)}</td>
-                            <td>${product.max_amount.toFixed(2)}</td>
-                            <td>
-                                <button onClick={() => onSelectProduct(product)}>
-                                    Solicitar
-                                </button>
-                            </td>
+                    {products.map(p => (
+                        <tr key={p.id}>
+                            <td>{p.name}</td>
+                            <td>{(p.interest_rate * 100).toFixed(2)}%</td>
+                            <td>{p.term_months}</td>
+                            <td>${p.min_amount.toFixed(2)} - ${p.max_amount.toFixed(2)}</td>
+                            <td><button onClick={() => onSelectProduct(p)}>Solicitar</button></td>
                         </tr>
                     ))}
                 </tbody>

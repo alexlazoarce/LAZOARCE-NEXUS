@@ -3,49 +3,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Verificación - Libro Mayor</title>
-    <style>
-        body { font-family: sans-serif; margin: 2em; }
-        table { border-collapse: collapse; width: 100%; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-        th { background-color: #f2f2f2; }
-        .container { max-width: 800px; margin: auto; }
-        .login-form, .ledger-view { margin-top: 2em; }
-    </style>
+    <title>Sistema de Gestión Financiera - Lazo Arce</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
 
-    <!-- 1. Global Configuration -->
-    <script>
-        const API_BASE_URL = 'http://127.0.0.1:5001';
-    </script>
+    <!-- Global Config -->
+    <script>const API_BASE_URL = 'http://127.0.0.1:5001';</script>
 
-    <!-- 2. React Libraries -->
-    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
-
-    <!-- 3. Babel to transpile JSX -->
+    <!-- React Libraries -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <!-- 4. React Components -->
+    <!-- App Components -->
     <script type="text/babel" src="Login.js"></script>
     <script type="text/babel" src="LoanProducts.js"></script>
     <script type="text/babel" src="LoanApplicationForm.js"></script>
     <script type="text/babel" src="MyApplications.js"></script>
     <script type="text/babel" src="LoanDetailView.js"></script>
-    <script type="text/babel" src="GeneralLedgerView.js"></script>
-    <script type="text/babel" src="Profile.js"></script>
     <script type="text/babel" src="ContractView.js"></script>
+    <script type="text/babel" src="Profile.js"></script>
+    <script type="text/babel" src="GeneralLedgerView.js"></script>
     <script type="text/babel" src="EmployeeManagement.js"></script>
     <script type="text/babel" src="PayrollView.js"></script>
     <script type="text/babel" src="App.js"></script>
 
-    <!-- 5. Render the main component -->
+    <!-- Render App -->
     <script type="text/babel">
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
     </script>
 </body>
 </html>
