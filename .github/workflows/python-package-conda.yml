@@ -15,21 +15,20 @@ jobs:
           export PATH="$HOME/miniconda/bin:$PATH"
           conda init bash
 
-      - name: Create and activate environment
+      - name: Create environment
         shell: bash -l {0}
         run: |
           conda config --add channels conda-forge
           conda config --set channel_priority strict
           conda env create -f environment.yml
-          conda activate prestamos-backend
 
       - name: Lint with flake8
         shell: bash -l {0}
         run: |
-          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          conda run -n prestamos-backend flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
           flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
       - name: Test with pytest
         shell: bash -l {0}
         run: |
-          pytest
+          conda run -n prestamos-backend pytest
