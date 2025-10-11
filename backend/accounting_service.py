@@ -1,83 +1,47 @@
-from models import db, Account, JournalEntry, Transaction
-from sqlalchemy import func
+from .models import db, Account, JournalEntry, Transaction
+from decimal import Decimal, ROUND_HALF_UP
 
-def get_general_ledger():
-    """Calculates the general ledger for all accounts."""
-    accounts = Account.query.order_by(Account.code).all()
-    ledger = []
-    for account in accounts:
-        total_debits = db.session.query(func.sum(JournalEntry.debit)).filter(JournalEntry.account_id == account.id).scalar() or 0.0
-        total_credits = db.session.query(func.sum(JournalEntry.credit)).filter(JournalEntry.account_id == account.id).scalar() or 0.0
-        balance = 0.0
-        if account.account_type in ['Activo', 'Gasto']:
-            balance = total_debits - total_credits
-        else:
-            balance = total_credits - total_debits
-        ledger.append({
-            'account_code': account.code,
-            'account_name': account.name,
-            'total_debits': round(total_debits, 2),
-            'total_credits': round(total_credits, 2),
-            'final_balance': round(balance, 2)
-        })
-    return ledger
+def create_journal_entry(date, description, transactions_data):
+    """
+    Creates a new journal entry with the given transactions.
+    Ensures that the entry is balanced before committing.
 
-def create_disbursement_journal_entry(application):
-    """Creates a journal entry for a loan disbursement."""
-    loan_receivable_account = Account.query.filter_by(name='Cuentas por Cobrar Préstamos').first()
-    bancos_account = Account.query.filter_by(name='Bancos').first()
-    if not loan_receivable_account or not bancos_account:
-        raise Exception("Required accounts for disbursement not found.")
+    :param date: The date of the journal entry.
+    :param description: A description of the entry.
+    :param transactions_data: A list of dicts, where each dict is:
+                              {'account_name': str, 'type': 'Debit'/'Credit', 'amount': float}
+    :return: The newly created JournalEntry object.
+    :raises ValueError: If the journal entry is not balanced.
+    """
+    total_debits = Decimal('0.00')
+    total_credits = Decimal('0.00')
 
-    transaction = Transaction(description=f"Desembolso de préstamo para solicitud #{application.id}")
-    db.session.add(transaction)
+    for t_data in transactions_data:
+        amount = Decimal(str(t_data['amount'])).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        if t_data['type'] == 'Debit':
+            total_debits += amount
+        elif t_data['type'] == 'Credit':
+            total_credits += amount
 
-    debit = JournalEntry(transaction=transaction, account_id=loan_receivable_account.id, debit=application.requested_amount, credit=0.0)
-    credit = JournalEntry(transaction=transaction, account_id=bancos_account.id, debit=0.0, credit=application.requested_amount)
-    db.session.add_all([debit, credit])
+    if total_debits != total_credits:
+        raise ValueError(f"El asiento contable no está balanceado. Débitos: {total_debits}, Créditos: {total_credits}")
 
-def create_repayment_journal_entry(payment):
-    """Creates a journal entry for a loan repayment."""
-    bancos_account = Account.query.filter_by(name='Bancos').first()
-    loan_receivable_account = Account.query.filter_by(name='Cuentas por Cobrar Préstamos').first()
-    if not bancos_account or not loan_receivable_account:
-        raise Exception("Required accounts for repayment not found.")
+    # If balanced, create the entry and transactions
+    new_entry = JournalEntry(date=date, description=description)
+    db.session.add(new_entry)
 
-    transaction = Transaction(description=f"Pago recibido para préstamo #{payment.application_id}")
-    db.session.add(transaction)
+    for t_data in transactions_data:
+        account = Account.query.filter_by(name=t_data['account_name']).first()
+        if not account:
+            raise ValueError(f"La cuenta '{t_data['account_name']}' no fue encontrada.")
 
-    debit = JournalEntry(transaction=transaction, account_id=bancos_account.id, debit=payment.amount, credit=0.0)
-    credit = JournalEntry(transaction=transaction, account_id=loan_receivable_account.id, debit=0.0, credit=payment.amount)
-    db.session.add_all([debit, credit])
+        transaction = Transaction(
+            journal_entry=new_entry,
+            account_id=account.id,
+            type=t_data['type'],
+            amount=float(t_data['amount'])
+        )
+        db.session.add(transaction)
 
-def create_payroll_journal_entry(payroll_log_id, totals):
-    """Creates a journal entry for a payroll run."""
-    account_names = {
-        "salaries_expense": "Gastos por Salarios",
-        "afp_employer_expense": "Gastos por Prestaciones (AFP Patronal)",
-        "isss_employer_expense": "Gastos por Prestaciones (ISSS Patronal)",
-        "cash": "Bancos",
-        "afp_payable": "Retenciones por Pagar (AFP)",
-        "isss_payable": "Retenciones por Pagar (ISSS)",
-        "renta_payable": "Retenciones por Pagar (Renta)"
-    }
-    accounts = Account.query.filter(Account.name.in_(account_names.values())).all()
-    accounts_map = {acc.name: acc.id for acc in accounts}
-
-    for name, acc_name in account_names.items():
-        if acc_name not in accounts_map:
-            raise Exception(f"Account '{acc_name}' not found.")
-
-    transaction = Transaction(description=f"Partida de planilla para el período ID: {payroll_log_id}")
-    db.session.add(transaction)
-
-    entries = [
-        JournalEntry(transaction=transaction, account_id=accounts_map[account_names["salaries_expense"]], debit=totals['total_gross'], credit=0),
-        JournalEntry(transaction=transaction, account_id=accounts_map[account_names["afp_employer_expense"]], debit=totals['total_afp_employer'], credit=0),
-        JournalEntry(transaction=transaction, account_id=accounts_map[account_names["isss_employer_expense"]], debit=totals['total_isss_employer'], credit=0),
-        JournalEntry(transaction=transaction, account_id=accounts_map[account_names["cash"]], debit=0, credit=totals['total_net']),
-        JournalEntry(transaction=transaction, account_id=accounts_map[account_names["afp_payable"]], debit=0, credit=totals['total_afp_employee'] + totals['total_afp_employer']),
-        JournalEntry(transaction=transaction, account_id=accounts_map[account_names["isss_payable"]], debit=0, credit=totals['total_isss_employee'] + totals['total_isss_employer']),
-        JournalEntry(transaction=transaction, account_id=accounts_map[account_names["renta_payable"]], debit=0, credit=totals['total_renta']),
-    ]
-    db.session.add_all(entries)
+    # The session commit will happen in the route after calling this service
+    return new_entry

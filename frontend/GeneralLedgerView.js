@@ -1,44 +1,52 @@
-function GeneralLedgerView({ token }) {
-    const [ledgerData, setLedgerData] = React.useState([]);
-    const [isLoading, setIsLoading] = React.useState(true);
+const GeneralLedgerView = ({ token, onShowJournal }) => {
+    const [ledger, setLedger] = React.useState([]);
+    const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState('');
 
-    const fetchLedger = () => {
-        setIsLoading(true);
-        fetch(`${API_BASE_URL}/api/accounting/general-ledger`, { headers: { 'Authorization': `Bearer ${token}` } })
-            .then(res => res.ok ? res.json() : Promise.reject(res.json()))
-            .then(setLedgerData)
-            .catch(err => err.then(e => setError(e.msg)))
-            .finally(() => setIsLoading(false));
-    };
+    React.useEffect(() => {
+        const fetchLedger = async () => {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/accounting/general-ledger`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!response.ok) throw new Error('No se pudo cargar el libro mayor.');
+                const data = await response.json();
+                setLedger(data);
+            } catch (err) {
+                setError(err.message);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchLedger();
+    }, [token]);
 
-    React.useEffect(fetchLedger, [token]);
-
-    if (isLoading) return <p>Cargando libro mayor...</p>;
-    if (error) return <p style={{ color: 'red' }}>Error: {error}</p>;
+    if (loading) return <p>Cargando libro mayor...</p>;
+    if (error) return <p className="error" style={{color: 'red'}}>{error}</p>;
 
     return (
         <div>
-            <h2>Libro Mayor General</h2>
-            <button onClick={fetchLedger}>Recargar</button>
-            <table>
+            <h3>Libro Mayor</h3>
+            <button onClick={onShowJournal}>Ver Libro Diario</button>
+            <hr />
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                     <tr>
-                        <th>Código</th><th>Cuenta</th><th>Débitos</th><th>Créditos</th><th>Saldo Final</th>
+                        <th style={{ textAlign: 'left' }}>Cuenta</th>
+                        <th style={{ textAlign: 'left' }}>Categoría</th>
+                        <th style={{ textAlign: 'right' }}>Saldo</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {ledgerData.map(acc => (
-                        <tr key={acc.account_code}>
-                            <td>{acc.account_code}</td>
-                            <td>{acc.account_name}</td>
-                            <td>${acc.total_debits.toFixed(2)}</td>
-                            <td>${acc.total_credits.toFixed(2)}</td>
-                            <td>${acc.final_balance.toFixed(2)}</td>
+                    {ledger.map(account => (
+                        <tr key={account.account_id}>
+                            <td>{account.account_name}</td>
+                            <td>{account.account_category}</td>
+                            <td style={{ textAlign: 'right' }}>${account.balance.toFixed(2)}</td>
                         </tr>
                     ))}
                 </tbody>
             </table>
         </div>
     );
-}
+};

@@ -1,82 +1,54 @@
-from models import db, Employee, PayrollLog, PaySlip
+from decimal import Decimal, ROUND_HALF_UP
 
-def calculate_payslip_details(base_salary):
-    """Calculates all payroll components for a single employee based on Salvadoran law."""
-    ISSS_EMPLOYEE_RATE = 0.03
-    ISSS_EMPLOYER_RATE = 0.075
-    ISSS_MAX_CONTRIBUTION_BASE = 1000.00
-    AFP_EMPLOYEE_RATE = 0.0725
-    AFP_EMPLOYER_RATE = 0.0875
+# --- Constantes de Nómina para El Salvador (Valores de ejemplo, deben ser verificados) ---
+ISSS_EMPLOYEE_RATE = Decimal('0.03')
+ISSS_MAX_CONTRIBUTION = Decimal('30.00') # 3% sobre un máximo de $1000
+AFP_EMPLOYEE_RATE = Decimal('0.0725')
 
-    isss_contribution_base = min(base_salary, ISSS_MAX_CONTRIBUTION_BASE)
-    isss_employee = isss_contribution_base * ISSS_EMPLOYEE_RATE
-    isss_employer = isss_contribution_base * ISSS_EMPLOYER_RATE
+# Tramos de Renta (mensual)
+# Formato: (límite_inferior, límite_superior, tasa, cuota_fija, sobre_exceso_de)
+RENTA_BRACKETS = [
+    (Decimal('0.01'), Decimal('472.00'), Decimal('0.0'), Decimal('0.0'), Decimal('0.0')),
+    (Decimal('472.01'), Decimal('895.24'), Decimal('0.10'), Decimal('17.67'), Decimal('472.00')),
+    (Decimal('895.25'), Decimal('2038.10'), Decimal('0.20'), Decimal('60.00'), Decimal('895.24')),
+    (Decimal('2038.11'), Decimal('999999.99'), Decimal('0.30'), Decimal('288.57'), Decimal('2038.10'))
+]
 
-    afp_employee = base_salary * AFP_EMPLOYEE_RATE
-    afp_employer = base_salary * AFP_EMPLOYER_RATE
+def _quantize(d):
+    """Redondea un Decimal a 2 decimales."""
+    return d.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
-    taxable_income = base_salary - isss_employee - afp_employee
+def calculate_payslip_details(monthly_salary):
+    """
+    Calcula las deducciones y el salario neto para un salario mensual dado.
+    """
+    salary = Decimal(str(monthly_salary))
 
-    renta_tax = 0.00
-    if taxable_income > 2038.10:
-        renta_tax = ((taxable_income - 2038.10) * 0.30) + 288.57
-    elif taxable_income > 895.24:
-        renta_tax = ((taxable_income - 895.24) * 0.20) + 60.00
-    elif taxable_income > 472.00:
-        renta_tax = ((taxable_income - 472.00) * 0.10) + 17.67
+    # 1. Calcular deducción de ISSS
+    isss_deduction = min(salary * ISSS_EMPLOYEE_RATE, ISSS_MAX_CONTRIBUTION)
 
-    renta_tax = max(0, renta_tax)
+    # 2. Calcular deducción de AFP
+    afp_deduction = salary * AFP_EMPLOYEE_RATE
 
-    total_deductions = isss_employee + afp_employee + renta_tax
-    net_salary = base_salary - total_deductions
+    # 3. Calcular base imponible para Renta
+    taxable_income = salary - isss_deduction - afp_deduction
+
+    # 4. Calcular deducción de Renta
+    renta_deduction = Decimal('0.0')
+    if taxable_income > RENTA_BRACKETS[0][0]:
+        for _, upper, rate, fixed_fee, excess_over in RENTA_BRACKETS:
+            if taxable_income <= upper:
+                renta_deduction = ((taxable_income - excess_over) * rate) + fixed_fee
+                break
+
+    # 5. Calcular Salario Neto
+    total_deductions = isss_deduction + afp_deduction + renta_deduction
+    net_salary = salary - total_deductions
 
     return {
-        "gross_salary": base_salary,
-        "isss_employee": round(isss_employee, 2),
-        "afp_employee": round(afp_employee, 2),
-        "renta_tax": round(renta_tax, 2),
-        "net_salary": round(net_salary, 2),
-        "isss_employer": round(isss_employer, 2),
-        "afp_employer": round(afp_employer, 2),
-        "total_deductions": round(total_deductions, 2)
+        "gross_salary": float(_quantize(salary)),
+        "isss_deduction": float(_quantize(isss_deduction)),
+        "afp_deduction": float(_quantize(afp_deduction)),
+        "renta_deduction": float(_quantize(renta_deduction)),
+        "net_salary": float(_quantize(net_salary)),
     }
-
-def calculate_payroll_for_all(period_name, created_by_user_id):
-    """
-    Calculates payroll for all active employees, creating logs and payslips.
-    """
-    active_employees = Employee.query.filter_by(is_active=True).all()
-    if not active_employees:
-        raise ValueError("No active employees found.")
-
-    new_payroll_log = PayrollLog(period_name=period_name, created_by_user_id=created_by_user_id)
-    db.session.add(new_payroll_log)
-
-    totals = {
-        "total_gross": 0.0, "total_net": 0.0, "total_isss_employee": 0.0,
-        "total_afp_employee": 0.0, "total_renta": 0.0, "total_isss_employer": 0.0,
-        "total_afp_employer": 0.0
-    }
-
-    for employee in active_employees:
-        payslip_data = calculate_payslip_details(employee.base_salary)
-
-        new_payslip = PaySlip(
-            payroll_log=new_payroll_log,
-            employee_id=employee.id,
-            **payslip_data
-        )
-        db.session.add(new_payslip)
-
-        for key, value in payslip_data.items():
-            if key.startswith('total_'):
-                totals[key] += value
-            elif key in ['gross_salary', 'net_salary', 'isss_employee', 'afp_employee', 'renta_tax', 'isss_employer', 'afp_employer']:
-                 totals[f"total_{key.replace('_salary','').replace('_employee','_emp').replace('_employer','_empr')}"] += value
-
-
-    # Round totals to 2 decimal places
-    for key in totals:
-        totals[key] = round(totals[key], 2)
-
-    return new_payroll_log, totals

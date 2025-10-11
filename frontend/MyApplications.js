@@ -1,49 +1,84 @@
-function MyApplications({ token, onViewDetails, onViewContract }) {
+const MyApplications = ({ token, onViewContract }) => {
     const [applications, setApplications] = React.useState([]);
-    const [isLoading, setIsLoading] = React.useState(true);
+    const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState('');
+    const [selectedAppId, setSelectedAppId] = React.useState(null);
 
-    const fetchApplications = () => {
-        setIsLoading(true);
-        fetch(`${API_BASE_URL}/api/loan-applications`, { headers: { 'Authorization': `Bearer ${token}` } })
-            .then(res => res.ok ? res.json() : Promise.reject(res.json()))
-            .then(setApplications)
-            .catch(err => err.then(e => setError(e.msg)))
-            .finally(() => setIsLoading(false));
-    };
+    React.useEffect(() => {
+        const fetchApplications = async () => {
+            try {
+                setLoading(true);
+                const response = await fetch(`${API_BASE_URL}/api/applications`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!response.ok) {
+                    const errData = await response.json();
+                    throw new Error(errData.message || 'No se pudieron cargar las solicitudes.');
+                }
+                const data = await response.json();
+                setApplications(data);
+            } catch (err) {
+                setError(err.message);
+            } finally {
+                setLoading(false);
+            }
+        };
 
-    React.useEffect(fetchApplications, [token]);
+        if (token && !selectedAppId) { // Only fetch list if no detail is being viewed
+            fetchApplications();
+        }
+    }, [token, selectedAppId]);
 
-    if (isLoading) return <p>Cargando solicitudes...</p>;
-    if (error) return <p style={{ color: 'red' }}>Error: {error}</p>;
+    if (selectedAppId) {
+        return <LoanStatementView token={token} applicationId={selectedAppId} onBack={() => setSelectedAppId(null)} />;
+    }
+
+    if (loading) return <p>Cargando solicitudes...</p>;
+    if (error) return <p className="error" style={{color: 'red'}}>{error}</p>;
 
     return (
         <div>
-            <h2>Mis Solicitudes de Préstamo</h2>
-            <button onClick={fetchApplications}>Recargar</button>
-            <table>
-                <thead>
-                    <tr>
-                        <th>ID</th><th>Producto</th><th>Monto</th><th>Fecha</th><th>Estado</th><th>Firma</th><th>Acciones</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {applications.map(app => (
-                        <tr key={app.id}>
-                            <td>{app.id}</td>
-                            <td>{app.product_name}</td>
-                            <td>${app.requested_amount.toFixed(2)}</td>
-                            <td>{new Date(app.application_date).toLocaleDateString()}</td>
-                            <td>{app.status}</td>
-                            <td>{app.signature_status}</td>
-                            <td>
-                                {app.status === 'Desembolsado' && <button onClick={() => onViewContract(app.id)}>Contrato/Firma</button>}
-                                <button onClick={() => onViewDetails(app.id)} style={{marginLeft: '5px'}}>Detalles</button>
-                            </td>
+            <h3>Mis Solicitudes de Préstamo</h3>
+            {applications.length === 0 ? (
+                <p>No tienes solicitudes de préstamo todavía.</p>
+            ) : (
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Producto</th>
+                            <th>Monto Solicitado</th>
+                            <th>Estado</th>
+                            <th>Acciones</th>
                         </tr>
-                    ))}
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        {applications.map(app => (
+                            <tr key={app.id}>
+                                <td>
+                                    {app.status === 'Desembolsada' ? (
+                                        <button className="link-button" onClick={() => setSelectedAppId(app.id)}>
+                                            #{app.id} (Ver Estado de Cuenta)
+                                        </button>
+                                    ) : (
+                                        `#${app.id}`
+                                    )}
+                                </td>
+                                <td>{app.product_name}</td>
+                                <td>${app.amount_requested.toFixed(2)}</td>
+                                <td>{app.status}</td>
+                                <td>
+                                    {['Aprobada', 'Desembolsada'].includes(app.status) && (
+                                        <button onClick={() => onViewContract(app.id)}>
+                                            Ver Contrato
+                                        </button>
+                                    )}
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            )}
         </div>
     );
-}
+};

@@ -1,49 +1,63 @@
-function PayrollView({ token }) {
-    const [periodName, setPeriodName] = React.useState('');
-    const [isLoading, setIsLoading] = React.useState(false);
+const PayrollView = ({ token, onViewPaySlips }) => {
+    const [startDate, setStartDate] = React.useState('');
+    const [endDate, setEndDate] = React.useState('');
+    const [loading, setLoading] = React.useState(false);
+    const [message, setMessage] = React.useState('');
     const [error, setError] = React.useState('');
-    const [result, setResult] = React.useState(null);
+    const [lastPayrollLogId, setLastPayrollLogId] = React.useState(null);
 
-    const handleCalculatePayroll = async (e) => {
-        e.preventDefault();
-        setIsLoading(true);
+    const handleRunPayroll = async () => {
+        setLoading(true);
+        setMessage('');
         setError('');
-        setResult(null);
+        setLastPayrollLogId(null);
+
         try {
-            const res = await fetch(`${API_BASE_URL}/api/payroll/calculate`, {
+            const response = await fetch(`${API_BASE_URL}/api/payroll/calculate`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ period_name: periodName })
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ start_date: startDate, end_date: endDate }),
             });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.msg || 'Error al calcular la planilla');
-            setResult(data);
-            alert('Planilla calculada y registrada en contabilidad.');
+
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.message || 'Error al procesar la nómina.');
+            }
+            setMessage(`¡Éxito! ${data.message} Se procesaron ${data.employees_processed} empleados.`);
+            setLastPayrollLogId(data.payroll_log_id);
         } catch (err) {
             setError(err.message);
         } finally {
-            setIsLoading(false);
+            setLoading(false);
         }
     };
 
     return (
-        <div style={{ marginTop: '2em' }}>
-            <h2>Calcular Planilla</h2>
-            <form onSubmit={handleCalculatePayroll}>
-                <input type="text" value={periodName} onChange={(e) => setPeriodName(e.target.value)} placeholder="Nombre del Período (ej. Enero 2025)" required />
-                <button type="submit" disabled={isLoading}>{isLoading ? 'Calculando...' : 'Ejecutar Cálculo'}</button>
-            </form>
-            {error && <p style={{ color: 'red' }}>{error}</p>}
-            {result && (
-                <div>
-                    <h3>Resultados del Cálculo (ID: {result.log_id})</h3>
-                    <ul>
-                        <li><strong>Total Bruto:</strong> ${result.totals.total_gross.toFixed(2)}</li>
-                        <li><strong>Total Neto a Pagar:</strong> ${result.totals.total_net.toFixed(2)}</li>
-                        <li><strong>Total Retenciones:</strong> ${(result.totals.total_isss_employee + result.totals.total_afp_employee + result.totals.total_renta).toFixed(2)}</li>
-                    </ul>
-                </div>
-            )}
+        <div>
+            <h3>Procesamiento de Nómina</h3>
+            <div style={{ border: '1px solid #ccc', padding: '10px' }}>
+                <h4>Ejecutar Nómina para un Período</h4>
+                <label>Fecha de Inicio:</label>
+                <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} required />
+                <label>Fecha de Fin:</label>
+                <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} required />
+
+                <button onClick={handleRunPayroll} disabled={loading || !startDate || !endDate}>
+                    {loading ? 'Procesando...' : 'Ejecutar Cálculo de Nómina'}
+                </button>
+
+                {message && <p style={{ color: 'green' }}>{message}</p>}
+                {error && <p style={{ color: 'red' }}>{error}</p>}
+
+                {lastPayrollLogId && (
+                    <button onClick={() => onViewPaySlips(lastPayrollLogId)} style={{marginTop: '10px'}}>
+                        Ver Recibos de Pago Generados
+                    </button>
+                )}
+            </div>
         </div>
     );
-}
+};

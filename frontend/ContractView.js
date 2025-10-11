@@ -1,67 +1,128 @@
-function ContractView({ token, loanId, onBack }) {
+const ContractView = ({ token, applicationId, onBack }) => {
     const [contractData, setContractData] = React.useState(null);
-    const [isLoading, setIsLoading] = React.useState(true);
+    const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState('');
-    const [userRole, setUserRole] = React.useState('');
-
-    const fetchContractData = () => {
-        setIsLoading(true);
-        fetch(`${API_BASE_URL}/api/loan-applications/${loanId}/contract-data`, { headers: { 'Authorization': `Bearer ${token}` } })
-            .then(res => res.ok ? res.json() : Promise.reject(res.json()))
-            .then(setContractData)
-            .catch(err => err.then(e => setError(e.msg)))
-            .finally(() => setIsLoading(false));
-    };
 
     React.useEffect(() => {
-        fetchContractData();
-        try {
-            setUserRole(JSON.parse(atob(token.split('.')[1])).role);
-        } catch (e) { console.error(e); }
-    }, [loanId, token]);
-
-    const handleSignatureAction = async (action) => {
-        const actions = {
-            'request_electronic': { url: `${API_BASE_URL}/api/loan-applications/${loanId}/request-signature`, method: 'POST', body: null },
-            'upload_manual': { url: `${API_BASE_URL}/api/loan-applications/${loanId}/upload-signed-document`, method: 'POST', body: JSON.stringify({ file_url: `/uploads/contrato_${loanId}_firmado.pdf` }) },
-            'validate_manual': { url: `${API_BASE_URL}/api/loan-applications/${loanId}/validate-signature`, method: 'POST', body: null }
+        const fetchContractData = async () => {
+            if (!applicationId) return;
+            try {
+                setLoading(true);
+                const response = await fetch(`${API_BASE_URL}/api/applications/${applicationId}/contract-data`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!response.ok) {
+                    const errData = await response.json();
+                    throw new Error(errData.message || 'No se pudieron cargar los datos del contrato.');
+                }
+                const data = await response.json();
+                setContractData(data);
+            } catch (err) {
+                setError(err.message);
+            } finally {
+                setLoading(false);
+            }
         };
-        const { url, method, body } = actions[action];
+        fetchContractData();
+    }, [token, applicationId]);
+
+    if (loading) return <p>Cargando contrato...</p>;
+    if (error) return <p className="error" style={{ color: 'red' }}>{error}</p>;
+    if (!contractData) return null;
+
+    const { application, client, company, amortization_table } = contractData;
+
+    const handleDownloadPdf = async () => {
         try {
-            const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.msg || 'Error en la acción');
-            alert(data.message || data.msg || 'Acción completada');
-            fetchContractData();
+            const response = await fetch(`${API_BASE_URL}/api/applications/${applicationId}/contract.pdf`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error('Error al generar el PDF.');
+            }
+
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = `contrato_lazo_arce_${applicationId}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+
         } catch (err) {
             setError(err.message);
         }
     };
 
-    const handleDownloadPdf = () => { /* ... download logic ... */ };
-
-    if (isLoading) return <p>Cargando contrato...</p>;
-    if (error) return <p style={{ color: 'red' }}>Error: {error}</p>;
-    if (!contractData) return <p>No hay datos de contrato.</p>;
-
-    const { client, loan, company, amortization_table } = contractData;
-
     return (
-        <div>
-            <button onClick={onBack}>&larr; Volver</button>
-            <button onClick={handleDownloadPdf}>Descargar PDF</button>
-            <div style={{border: '1px solid blue', padding: '1em', margin: '1em 0'}}>
-                <h4>Gestión de Firma</h4>
-                <p><strong>Estado:</strong> {loan.signature_status}</p>
-                {loan.signature_status === 'PENDIENTE' && userRole !== 'Admin' && <button onClick={() => handleSignatureAction('upload_manual')}>Subir Documento Firmado</button>}
-                {loan.signature_status === 'FIRMADO_MANUAL' && userRole === 'Admin' && <button onClick={() => handleSignatureAction('validate_manual')}>Validar Firma</button>}
-                {loan.signature_status === 'VALIDADO' && <p>✓ Contrato Validado</p>}
-            </div>
-            <div className="contract-preview">
-                <h2>Contrato de Préstamo</h2>
-                <p><strong>Deudor:</strong> {client.name} (DUI: {client.dui})</p>
-                {/* ... more contract details ... */}
+        <div className="contract-container">
+            <button onClick={onBack}>Volver a Mis Solicitudes</button>
+            <button onClick={handleDownloadPdf} style={{marginLeft: '10px'}}>Descargar PDF</button>
+
+            <h2 style={{textAlign: 'center', marginTop: '20px'}}>CONTRATO DE PRÉSTAMO</h2>
+
+            <p>
+                Este Contrato de Préstamo se celebra el {new Date().toLocaleDateString()} entre
+                <strong> {company.name}</strong> (en adelante, "el Prestamista") y
+                <strong> {client.full_name}</strong> (en adelante, "el Prestatario").
+            </p>
+
+            <h4>CLÁUSULAS</h4>
+            <ol>
+                <li><strong>Monto del Préstamo:</strong> El Prestamista acuerda prestar al Prestatario la suma de ${application.amount_requested.toFixed(2)}.</li>
+                <li><strong>Tasa de Interés:</strong> El préstamo devengará un interés anual del {(application.product.interest_rate * 100).toFixed(2)}%.</li>
+                <li><strong>Plazo:</strong> El préstamo será reembolsado en {application.term_months} cuotas mensuales.</li>
+                <li><strong>Cuota Mensual:</strong> El Prestatario se compromete a pagar una cuota mensual de ${application.monthly_payment.toFixed(2)}.</li>
+                <li><strong>Comisiones:</strong> Se aplicará una comisión del {(application.product.commission_rate * 100).toFixed(2)}% mensual, calculada con el método: {application.commission_calculation_method}.</li>
+            </ol>
+
+            <h4>TABLA DE AMORTIZACIÓN</h4>
+            <table border="1" cellPadding="5" style={{width: '100%', borderCollapse: 'collapse'}}>
+                <thead>
+                    <tr>
+                        <th>Mes</th>
+                        <th>Saldo Inicial</th>
+                        <th>Cuota</th>
+                        <th>Interés</th>
+                        <th>Comisión</th>
+                        <th>Amortización</th>
+                        <th>Saldo Final</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {amortization_table.map(row => (
+                        <tr key={row.month}>
+                            <td>{row.month}</td>
+                            <td>${row.initial_balance.toFixed(2)}</td>
+                            <td>${row.payment.toFixed(2)}</td>
+                            <td>${row.interest.toFixed(2)}</td>
+                            <td>${row.commission.toFixed(2)}</td>
+                            <td>${row.principal.toFixed(2)}</td>
+                            <td>${row.final_balance.toFixed(2)}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+
+            <div className="signatures" style={{marginTop: '50px', display: 'flex', justifyContent: 'space-around'}}>
+                <div>
+                    <p>_________________________</p>
+                    <p>{company.name}</p>
+                    <p>El Prestamista</p>
+                </div>
+                <div>
+                    <p>_________________________</p>
+                    <p>{client.full_name}</p>
+                    <p>El Prestatario</p>
+                </div>
             </div>
         </div>
     );
-}
+};
