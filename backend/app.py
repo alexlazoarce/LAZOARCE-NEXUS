@@ -229,5 +229,7 @@ def setup_database(app):
 if __name__ == '__main__':
     app = create_app()
     with app.app_context():
-        setup_database(app) # Ensure db is created and seeded
-    app.run(debug=True, port=5001)
+        setup_database(app)
+    
+    port = int(os.environ.get('FLASK_RUN_PORT', 5001))
+    app.run(debug=True, host='0.0.0.0', port=port)
