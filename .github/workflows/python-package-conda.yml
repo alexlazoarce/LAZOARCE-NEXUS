@@ -8,30 +8,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install conda
-        run: |
-          wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
-          bash miniconda.sh -b -p $HOME/miniconda
-          echo "export PATH=$HOME/miniconda/bin:$PATH" >> ~/.bashrc
-          source ~/.bashrc
-          conda init bash
-
-      - name: Create and activate environment
-        shell: bash -l {0}
-        run: |
-          conda config --add channels conda-forge
-          conda config --set channel_priority strict
-          conda env create -f environment.yml
-          source ~/.bashrc
-          conda activate prestamos-backend
+      - name: Set up Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          environment-file: environment.yml
+          activate-environment: prestamos-backend
+          miniforge-variant: Mambaforge
+          channels: conda-forge
+          channel-priority: strict
 
       - name: Lint with flake8
-        shell: bash -l {0}
         run: |
-          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+          conda run -n prestamos-backend flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          conda run -n prestamos-backend flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
       - name: Test with pytest
-        shell: bash -l {0}
         run: |
-          pytest
+          conda run -n prestamos-backend pytest
