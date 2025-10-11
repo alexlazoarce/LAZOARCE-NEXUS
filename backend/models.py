@@ -21,6 +21,7 @@ class User(db.Model):
     applications = db.relationship('LoanApplication', backref='applicant', lazy=True)
     communication_logs = db.relationship('CommunicationLog', backref='user', lazy='dynamic')
     audit_logs = db.relationship('AuditLog', backref='user', lazy='dynamic')
+    tickets = db.relationship('Ticket', backref='created_by_user', lazy='dynamic', foreign_keys='Ticket.user_id')
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -163,6 +164,7 @@ class Employee(db.Model):
     afp_number = db.Column(db.String(20), nullable=True, unique=True)
 
     payslips = db.relationship('PaySlip', backref='employee', lazy=True)
+    assigned_tickets = db.relationship('Ticket', backref='assigned_employee', lazy='dynamic', foreign_keys='Ticket.assigned_to_id')
 
     def to_dict(self):
         return {
@@ -342,4 +344,135 @@ class AuditLog(db.Model):
             'action': self.action,
             'details': self.details,
             'timestamp': self.timestamp.isoformat(),
+        }
+
+class Opportunity(db.Model):
+    """Represents a sales opportunity or a deal."""
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(255), nullable=False)
+
+    # The value of the potential deal
+    amount = db.Column(db.Float, nullable=True)
+
+    # e.g., 'Calificación', 'Propuesta', 'Negociación', 'Ganada', 'Perdida'
+    stage = db.Column(db.String(50), nullable=False, default='Calificación')
+
+    close_date = db.Column(db.Date, nullable=True)
+
+    # Link to the original lead and the converted user/client
+    lead_id = db.Column(db.Integer, db.ForeignKey('lead.id'), nullable=True)
+    lead = db.relationship('Lead')
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    client = db.relationship('User')
+
+    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+    updated_at = db.Column(db.DateTime, default=db.func.current_timestamp(), onupdate=db.func.current_timestamp())
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'amount': self.amount,
+            'stage': self.stage,
+            'close_date': self.close_date.isoformat() if self.close_date else None,
+            'client_name': self.client.full_name if self.client else (self.lead.full_name if self.lead else None)
+        }
+
+# --- Marketing Models ---
+
+mailing_list_members = db.Table('mailing_list_members',
+    db.Column('mailing_list_id', db.Integer, db.ForeignKey('mailing_list.id'), primary_key=True),
+    db.Column('user_id', db.Integer, db.ForeignKey('user.id'), primary_key=True)
+)
+
+class MailingList(db.Model):
+    """Represents a list of users for marketing campaigns."""
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), unique=True, nullable=False)
+    description = db.Column(db.String(255), nullable=True)
+
+    members = db.relationship('User', secondary=mailing_list_members, lazy='dynamic',
+                              backref=db.backref('mailing_lists', lazy=True))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'description': self.description,
+            'member_count': self.members.count()
+        }
+
+class Campaign(db.Model):
+    """Represents a marketing email campaign."""
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(150), nullable=False)
+    subject = db.Column(db.String(255), nullable=False)
+
+    # e.g., 'Draft', 'Scheduled', 'Sent'
+    status = db.Column(db.String(50), nullable=False, default='Draft')
+
+    mailing_list_id = db.Column(db.Integer, db.ForeignKey('mailing_list.id'), nullable=False)
+    mailing_list = db.relationship('MailingList')
+
+    template_id = db.Column(db.Integer, db.ForeignKey('notification_template.id'), nullable=False)
+    template = db.relationship('NotificationTemplate')
+
+    sent_at = db.Column(db.DateTime, nullable=True)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'subject': self.subject,
+            'status': self.status,
+            'mailing_list_name': self.mailing_list.name,
+            'template_slug': self.template.slug,
+            'sent_at': self.sent_at.isoformat() if self.sent_at else None,
+        }
+
+# --- Helpdesk / Ticketing Models ---
+
+class Ticket(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    subject = db.Column(db.String(255), nullable=False)
+
+    # e.g., 'Abierto', 'En Progreso', 'Cerrado'
+    status = db.Column(db.String(50), nullable=False, default='Abierto')
+    # e.g., 'Baja', 'Normal', 'Alta'
+    priority = db.Column(db.String(50), nullable=False, default='Normal')
+
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    assigned_to_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=True)
+
+    comments = db.relationship('TicketComment', backref='ticket', lazy='dynamic', cascade="all, delete-orphan")
+
+    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+    updated_at = db.Column(db.DateTime, default=db.func.current_timestamp(), onupdate=db.func.current_timestamp())
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'subject': self.subject,
+            'status': self.status,
+            'priority': self.priority,
+            'created_by': self.created_by_user.full_name,
+            'assigned_to': self.assigned_employee.full_name if self.assigned_employee else 'Sin asignar',
+            'created_at': self.created_at.isoformat(),
+            'updated_at': self.updated_at.isoformat(),
+        }
+
+class TicketComment(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    ticket_id = db.Column(db.Integer, db.ForeignKey('ticket.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False) # User who made the comment
+    comment_text = db.Column(db.Text, nullable=False)
+    timestamp = db.Column(db.DateTime, default=db.func.current_timestamp())
+
+    def to_dict(self):
+        commenter = User.query.get(self.user_id)
+        return {
+            'id': self.id,
+            'commenter_name': commenter.full_name,
+            'comment_text': self.comment_text,
+            'timestamp': self.timestamp.isoformat()
         }

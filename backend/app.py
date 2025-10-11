@@ -3,7 +3,7 @@ from flask import Flask, jsonify, request, make_response
 from flask_cors import CORS
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, JWTManager, get_jwt
 
-from models import db, Role, User, LoanProduct, LoanApplication, Account, Employee, PayrollLog, PaySlip, Lead, CommunicationLog, Payment, NotificationTemplate, AuditLog
+from models import db, Role, User, LoanProduct, LoanApplication, Account, Employee, PayrollLog, PaySlip, Lead, CommunicationLog, Payment, NotificationTemplate, AuditLog, Opportunity, MailingList, Campaign, Ticket, TicketComment
 from loan_calculator import calculate_loan_details
 from pdf_generator import generate_contract_pdf
 import accounting_service
@@ -71,6 +71,16 @@ from datetime import datetime, date, timedelta
         user.nit = data.get('nit', user.nit)
         db.session.commit()
         return jsonify({"message": "Perfil actualizado exitosamente"})
+
+    @app.route('/api/users', methods=['GET'])
+    @jwt_required()
+    def get_users():
+        claims = get_jwt()
+        if 'Admin' not in claims.get('roles', []):
+            return jsonify({"message": "Acceso no autorizado"}), 403
+
+        users = User.query.all()
+        return jsonify([{'id': u.id, 'full_name': u.full_name, 'email': u.email} for u in users])
 
     # --- LOAN PRODUCT ROUTES ---
     @app.route('/api/products', methods=['GET', 'POST'])
@@ -718,19 +728,60 @@ from datetime import datetime, date, timedelta
             # Mark the lead as converted
             lead.status = 'Convertido a Cliente'
 
+            # Create a new opportunity for the converted lead
+            new_opportunity = Opportunity(
+                name=f"Oportunidad para {lead.full_name}",
+                stage='Calificación', # Initial stage after conversion
+                lead_id=lead.id,
+                user_id=new_user.id
+            )
+
             db.session.add(new_user)
+            db.session.add(new_opportunity)
             db.session.commit()
 
             print(f"--- NOTIFICACIÓN SIMULADA: Lead {lead.full_name} convertido a cliente. Email: {lead.email}, Pass Temporal: {temp_password} ---")
 
             return jsonify({
-                "message": "Lead convertido a cliente exitosamente.",
-                "user_id": new_user.id
+                "message": "Lead convertido a cliente y oportunidad creada exitosamente.",
+                "user_id": new_user.id,
+                "opportunity_id": new_opportunity.id
             }), 200
 
         except Exception as e:
             db.session.rollback()
             return jsonify({"message": f"Error al convertir el lead: {str(e)}"}), 500
+
+    # --- CRM / Opportunity Management API ROUTES ---
+
+    @app.route('/api/opportunities', methods=['GET'])
+    @jwt_required()
+    def get_opportunities():
+        claims = get_jwt()
+        user_roles = claims.get('roles', [])
+        if 'Admin' not in user_roles and 'Ejecutivo de Crédito' not in user_roles:
+            return jsonify({"message": "Acceso no autorizado"}), 403
+
+        opportunities = Opportunity.query.order_by(Opportunity.created_at.desc()).all()
+        return jsonify([opp.to_dict() for opp in opportunities])
+
+    @app.route('/api/opportunities/<int:opp_id>', methods=['PUT'])
+    @jwt_required()
+    def update_opportunity(opp_id):
+        claims = get_jwt()
+        user_roles = claims.get('roles', [])
+        if 'Admin' not in user_roles and 'Ejecutivo de Crédito' not in user_roles:
+            return jsonify({"message": "Acceso no autorizado"}), 403
+
+        opp = Opportunity.query.get_or_404(opp_id)
+        data = request.get_json()
+
+        # For now, only stage updates are the primary use case
+        if 'stage' in data:
+            opp.stage = data['stage']
+
+        db.session.commit()
+        return jsonify(opp.to_dict())
 
     # --- HR / Payroll Processing API ROUTES ---
 
@@ -986,6 +1037,209 @@ from datetime import datetime, date, timedelta
                 sent_count += 1
 
         return jsonify({"message": f"Se enviaron {sent_count} recordatorios de pago."})
+
+    # --- MARKETING / MAILING LIST API ROUTES ---
+
+    @app.route('/api/mailing-lists', methods=['GET', 'POST'])
+    @jwt_required()
+    def handle_mailing_lists():
+        claims = get_jwt()
+        if 'Admin' not in claims.get('roles', []):
+            return jsonify({"message": "Acceso no autorizado"}), 403
+
+        if request.method == 'GET':
+            lists = MailingList.query.all()
+            return jsonify([l.to_dict() for l in lists])
+
+        data = request.get_json()
+        new_list = MailingList(name=data['name'], description=data.get('description'))
+        db.session.add(new_list)
+        db.session.commit()
+        return jsonify(new_list.to_dict()), 201
+
+    @app.route('/api/mailing-lists/<int:list_id>/members', methods=['POST', 'DELETE'])
+    @jwt_required()
+    def handle_mailing_list_members(list_id):
+        claims = get_jwt()
+        if 'Admin' not in claims.get('roles', []):
+            return jsonify({"message": "Acceso no autorizado"}), 403
+
+        mailing_list = MailingList.query.get_or_404(list_id)
+        data = request.get_json()
+        user = User.query.get_or_404(data['user_id'])
+
+        if request.method == 'POST':
+            if user in mailing_list.members:
+                return jsonify({"message": "El usuario ya está en la lista."}), 409
+            mailing_list.members.append(user)
+            db.session.commit()
+            return jsonify({"message": "Usuario añadido a la lista."})
+
+        if request.method == 'DELETE':
+            if user not in mailing_list.members:
+                return jsonify({"message": "El usuario no está en la lista."}), 404
+            mailing_list.members.remove(user)
+            db.session.commit()
+            return jsonify({"message": "Usuario eliminado de la lista."})
+
+    # --- MARKETING API ROUTES ---
+
+    @app.route('/api/mailing-lists', methods=['GET', 'POST'])
+    @jwt_required()
+    def handle_mailing_lists():
+        claims = get_jwt()
+        if 'Admin' not in claims.get('roles', []):
+            return jsonify({"message": "Acceso no autorizado"}), 403
+
+        if request.method == 'GET':
+            lists = MailingList.query.all()
+            return jsonify([l.to_dict() for l in lists])
+
+        data = request.get_json()
+        new_list = MailingList(name=data['name'], description=data.get('description'))
+        db.session.add(new_list)
+        db.session.commit()
+        return jsonify(new_list.to_dict()), 201
+
+    @app.route('/api/mailing-lists/<int:list_id>/members', methods=['POST', 'DELETE'])
+    @jwt_required()
+    def handle_mailing_list_members(list_id):
+        claims = get_jwt()
+        if 'Admin' not in claims.get('roles', []):
+            return jsonify({"message": "Acceso no autorizado"}), 403
+
+        mailing_list = MailingList.query.get_or_404(list_id)
+        data = request.get_json()
+        user = User.query.get_or_404(data['user_id'])
+
+        if request.method == 'POST':
+            if user in mailing_list.members:
+                return jsonify({"message": "El usuario ya está en la lista."}), 409
+            mailing_list.members.append(user)
+            db.session.commit()
+            return jsonify({"message": "Usuario añadido a la lista."})
+
+        if request.method == 'DELETE':
+            if user not in mailing_list.members:
+                return jsonify({"message": "El usuario no está en la lista."}), 404
+            mailing_list.members.remove(user)
+            db.session.commit()
+            return jsonify({"message": "Usuario eliminado de la lista."})
+
+    @app.route('/api/campaigns', methods=['GET', 'POST'])
+    @jwt_required()
+    def handle_campaigns():
+        claims = get_jwt()
+        if 'Admin' not in claims.get('roles', []):
+            return jsonify({"message": "Acceso no autorizado"}), 403
+
+        if request.method == 'GET':
+            campaigns = Campaign.query.all()
+            return jsonify([c.to_dict() for c in campaigns])
+
+        data = request.get_json()
+        new_campaign = Campaign(
+            name=data['name'],
+            subject=data['subject'],
+            mailing_list_id=data['mailing_list_id'],
+            template_id=data['template_id']
+        )
+        db.session.add(new_campaign)
+        db.session.commit()
+        return jsonify(new_campaign.to_dict()), 201
+
+    @app.route('/api/campaigns/<int:campaign_id>/send', methods=['POST'])
+    @jwt_required()
+    def send_campaign(campaign_id):
+        claims = get_jwt()
+        if 'Admin' not in claims.get('roles', []):
+            return jsonify({"message": "Acceso no autorizado"}), 403
+
+        campaign = Campaign.query.get_or_404(campaign_id)
+        if campaign.status == 'Sent':
+            return jsonify({"message": "Esta campaña ya ha sido enviada."}), 400
+
+        members = campaign.mailing_list.members
+        for member in members:
+            # In a real app, you'd pass more context data if needed
+            notification_service.send_notification(member.id, campaign.template.slug, {})
+
+        campaign.status = 'Sent'
+        campaign.sent_at = datetime.utcnow()
+        db.session.commit()
+
+        return jsonify({"message": f"Campaña '{campaign.name}' enviada a {len(members)} miembros."})
+
+    # --- HELPDESK / TICKETING API ROUTES ---
+
+    @app.route('/api/tickets', methods=['GET', 'POST'])
+    @jwt_required()
+    def handle_tickets():
+        current_user = User.query.filter_by(email=get_jwt_identity()).first()
+        claims = get_jwt()
+        user_roles = claims.get('roles', [])
+
+        if request.method == 'POST':
+            data = request.get_json()
+            new_ticket = Ticket(
+                subject=data['subject'],
+                user_id=current_user.id,
+                priority=data.get('priority', 'Normal')
+            )
+            # The first comment is the ticket description
+            first_comment = TicketComment(
+                ticket=new_ticket,
+                user_id=current_user.id,
+                comment_text=data['description']
+            )
+            db.session.add(new_ticket)
+            db.session.add(first_comment)
+            db.session.commit()
+            return jsonify(new_ticket.to_dict()), 201
+
+        # GET request
+        if 'Admin' in user_roles or 'Soporte' in user_roles: # Assuming a 'Soporte' role
+            tickets = Ticket.query.order_by(Ticket.updated_at.desc()).all()
+        else: # Regular client
+            tickets = Ticket.query.filter_by(user_id=current_user.id).order_by(Ticket.updated_at.desc()).all()
+
+        return jsonify([t.to_dict() for t in tickets])
+
+    @app.route('/api/tickets/<int:ticket_id>', methods=['GET', 'PUT'])
+    @jwt_required()
+    def handle_ticket(ticket_id):
+        ticket = Ticket.query.get_or_404(ticket_id)
+        # Security checks...
+
+        if request.method == 'GET':
+            return jsonify(ticket.to_dict())
+
+        if request.method == 'PUT':
+            # Logic to update status, priority, assignment for support staff
+            pass
+
+    @app.route('/api/tickets/<int:ticket_id>/comments', methods=['GET', 'POST'])
+    @jwt_required()
+    def handle_ticket_comments(ticket_id):
+        ticket = Ticket.query.get_or_404(ticket_id)
+        # Security checks...
+
+        if request.method == 'POST':
+            data = request.get_json()
+            current_user = User.query.filter_by(email=get_jwt_identity()).first()
+            new_comment = TicketComment(
+                ticket_id=ticket.id,
+                user_id=current_user.id,
+                comment_text=data['comment_text']
+            )
+            ticket.updated_at = datetime.utcnow() # Touch the ticket to bump it up
+            db.session.add(new_comment)
+            db.session.commit()
+            return jsonify(new_comment.to_dict()), 201
+
+        # GET request
+        comments = ticket.comments.order_by(TicketComment.timestamp.asc()).all()
+        return jsonify([c.to_dict() for c in comments])
 
     # --- AUDIT LOG API ROUTE ---
     @app.route('/api/audit-logs', methods=['GET'])
