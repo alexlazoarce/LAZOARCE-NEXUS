@@ -1,4 +1,4 @@
-from .models import db, Flow, LoanApplication, Opportunity
+from models import db, Flow, LoanApplication, Opportunity
 from datetime import datetime
 
 def _execute_create_draft_application(data):

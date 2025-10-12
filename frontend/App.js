@@ -37,7 +37,18 @@ function App() {
         if (currentToken) {
             setToken(currentToken);
             fetchProfile(currentToken);
-            setView('dashboard');
+            // Check if super admin and set initial view
+            try {
+                const payload = JSON.parse(atob(currentToken.split('.')[1]));
+                if (payload.roles && payload.roles.includes('SuperAdmin')) {
+                    setView('superAdmin');
+                } else {
+                    setView('dashboard');
+                }
+            } catch (e) {
+                console.error("Error decoding token", e);
+                setView('dashboard');
+            }
         } else {
             setView('auth');
             setLoadingProfile(false);
@@ -108,9 +119,11 @@ function App() {
 
         const isAdmin = userRoles.includes('Admin');
         const isClient = userRoles.includes('Cliente');
+        const isSuperAdmin = userRoles.includes('SuperAdmin');
         const isInternalStaff = !isClient;
 
         switch (view) {
+            case 'superAdmin': return isSuperAdmin ? <SuperAdminDashboard token={token} /> : <p>Acceso no autorizado.</p>;
             case 'dashboard': return isAdmin ? <AdminDashboard token={token} onManagePayments={setManagingPaymentsForApp} /> : <MyApplications token={token} onViewContract={setViewingContractId} />;
             case 'products': return <LoanProducts token={token} />;
             case 'simulator': return <LoanSimulator token={token} />;
@@ -134,7 +147,17 @@ function App() {
         if (loadingProfile || !token || viewingContractId || viewingPaySlipsForLogId || managingPaymentsForApp) return null;
         const isAdmin = userRoles.includes('Admin');
         const isClient = userRoles.includes('Cliente');
-        const isInternalStaff = !isClient;
+        const isSuperAdmin = userRoles.includes('SuperAdmin');
+        const isInternalStaff = !isClient && !isSuperAdmin;
+
+        if (isSuperAdmin) {
+            return (
+                <nav>
+                    <button onClick={() => setView('superAdmin')}>Gestión de Inquilinos</button>
+                    <button onClick={handleLogout}>Cerrar Sesión</button>
+                </nav>
+            );
+        }
 
         return (
             <nav>

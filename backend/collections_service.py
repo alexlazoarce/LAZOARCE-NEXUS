@@ -1,6 +1,6 @@
 from datetime import date, datetime
-from .models import Payment, LoanApplication
-from .loan_calculator import calculate_loan_details
+from models import Payment, LoanApplication
+from loan_calculator import calculate_loan_details
 
 def get_loan_status(application_id):
     """
