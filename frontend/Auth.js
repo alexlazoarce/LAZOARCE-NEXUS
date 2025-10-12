@@ -9,7 +9,7 @@ const Auth = ({ onLogin }) => {
         setError('');
 
         // Special case for SuperAdmin login
-        const effectiveTenantName = email === 'support@lazoarce.com' ? 'LAZOARCE UBMS' : tenantName;
+        const effectiveTenantName = email === 'support@lazoarce.com' ? 'LAZOARCE NEXUS' : tenantName;
 
         if (!effectiveTenantName) {
             setError('Por favor, ingrese el nombre de la empresa.');

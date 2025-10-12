@@ -1,4 +1,4 @@
-from models import db, AuditLog, User
+from .models import db, AuditLog, User
 
 def log_action(action, user_id, details=""):
     """

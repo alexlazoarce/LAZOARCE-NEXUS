@@ -4,19 +4,19 @@ from flask_cors import CORS
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, JWTManager, get_jwt
 from functools import wraps
 
-from models import (
+from .models import (
     db, Tenant, Role, User, LoanProduct, LoanApplication, Account, JournalEntry, Transaction,
     Employee, Lead, CommunicationLog, Payment, NotificationTemplate, AuditLog,
     Opportunity, Project, Task
 )
-from loan_calculator import calculate_loan_details
-from pdf_generator import generate_contract_pdf
-import accounting_service
-import payroll_service
-import collections_service
-import notification_service
-import audit_service
-import event_service
+from .loan_calculator import calculate_loan_details
+from .pdf_generator import generate_contract_pdf
+from . import accounting_service
+from . import payroll_service
+from . import collections_service
+from . import notification_service
+from . import audit_service
+from . import event_service
 from datetime import datetime, date, timedelta
 
 def create_app():
@@ -55,7 +55,7 @@ def create_app():
 
         # El SuperAdmin pertenece a un inquilino especial, pero su login es único.
         if email == 'support@lazoarce.com':
-            tenant = Tenant.query.filter_by(company_name='LAZOARCE UBMS').first()
+            tenant = Tenant.query.filter_by(company_name='LAZOARCE NEXUS').first()
         else:
             tenant = Tenant.query.filter_by(company_name=tenant_name).first()
 
@@ -141,7 +141,7 @@ def create_app():
 
         if request.method == 'GET':
             # Exclude the master tenant from the list shown to SuperAdmin
-            tenants = Tenant.query.filter(Tenant.company_name != 'LAZOARCE UBMS').all()
+            tenants = Tenant.query.filter(Tenant.company_name != 'LAZOARCE NEXUS').all()
             return jsonify([t.to_dict() for t in tenants])
 
         if request.method == 'POST':
@@ -189,7 +189,7 @@ def setup_database(app):
     with app.app_context():
         db.create_all()
         if not Tenant.query.first():
-            default_tenant = Tenant(company_name='LAZOARCE UBMS')
+            default_tenant = Tenant(company_name='LAZOARCE NEXUS')
             db.session.add(default_tenant)
             db.session.commit()
 
@@ -209,8 +209,5 @@ def setup_database(app):
 
         # ... (seeding of other data like products, accounts, etc. would also need to be tenant-specific)
 
-if __name__ == '__main__':
-    app = create_app()
-    with app.app_context():
-        setup_database(app)
-    app.run(debug=True, port=5001)
+# The application is now run from the root `run.py` file.
+# This block is no longer needed.

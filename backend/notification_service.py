@@ -1,4 +1,4 @@
-from models import db, User, NotificationTemplate
+from .models import db, User, NotificationTemplate
 
 def send_notification(user_id, template_slug, data={}):
     """

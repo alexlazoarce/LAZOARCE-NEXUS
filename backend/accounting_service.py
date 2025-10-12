@@ -1,4 +1,4 @@
-from models import db, Account, JournalEntry, Transaction
+from .models import db, Account, JournalEntry, Transaction
 from decimal import Decimal, ROUND_HALF_UP
 
 def create_journal_entry(date, description, transactions_data):

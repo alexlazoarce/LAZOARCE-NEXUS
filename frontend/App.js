@@ -194,7 +194,7 @@ function App() {
 
     return (
         <div>
-            <h1>LAZOARCE UBMS | Universal Business Management System</h1>
+            <h1>LAZOARCE NEXUS | Business Management System Connection</h1>
             <NavigationView />
             <hr />
             <main>{renderView()}</main>
