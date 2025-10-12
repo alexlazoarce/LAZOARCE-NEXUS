@@ -1,495 +1,52 @@
 import os
-from flask import Flask, jsonify, request
-from flask_cors import CORS
-from flask_sqlalchemy import SQLAlchemy
-from flask_jwt_extended import create_access_token, JWTManager, jwt_required, get_jwt_identity
-from werkzeug.security import generate_password_hash, check_password_hash
+from flask import Flask
 from dotenv import load_dotenv
-from functools import wraps
-from datetime import datetime
 
-# Módulos locales
-from loan_calculator import generate_amortization_table
+from backend.extensions import db, jwt
+from backend.models import Role
+import backend.models # Para que SQLAlchemy descubra todos los modelos
 
-# Cargar variables de entorno
-load_dotenv()
+def create_app():
+    load_dotenv()
+    app = Flask(__name__)
 
-# Inicializar la aplicación de Flask
-app = Flask(__name__)
-CORS(app) # Habilitar CORS
+    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY')
+    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///lazoarce.db')
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY')
 
-# --- CONFIGURACIÓN ---
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'un-secreto-muy-seguro')
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///lazoarce.db'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'otro-secreto-muy-seguro')
+    db.init_app(app)
+    jwt.init_app(app)
 
-# --- INICIALIZACIÓN DE EXTENSIONES ---
-db = SQLAlchemy(app)
-jwt = JWTManager(app)
+    from backend.routes.auth import auth_bp
+    from backend.routes.loan_management import loan_management_bp
+    from backend.hr.routes import hr_bp
 
-# --- MODELOS DE BASE DE DATOS ---
-class Role(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(80), unique=True, nullable=False)
-    users = db.relationship('User', backref='role', lazy=True)
+    app.register_blueprint(auth_bp)
+    app.register_blueprint(loan_management_bp)
+    app.register_blueprint(hr_bp)
 
-    def __repr__(self):
-        return f'<Role {self.name}>'
+    @app.route('/')
+    def index():
+        return "Servidor del Sistema de Gestión Financiera en funcionamiento."
 
-class User(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    email = db.Column(db.String(120), unique=True, nullable=False)
-    password_hash = db.Column(db.String(256), nullable=False)
-    role_id = db.Column(db.Integer, db.ForeignKey('role.id'), nullable=False)
-    loan_applications = db.relationship('LoanApplication', backref='applicant', lazy=True)
+    return app
 
-    def set_password(self, password):
-        self.password_hash = generate_password_hash(password)
+from backend.scripts.initialize_accounts import initialize_chart_of_accounts
 
-    def check_password(self, password):
-        return check_password_hash(self.password_hash, password)
-
-    def __repr__(self):
-        return f'<User {self.email}>'
-
-class LoanProduct(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
-    loan_type = db.Column(db.String(50), nullable=False) # 'Personal', 'Grupal', etc.
-    min_amount = db.Column(db.Float, nullable=False)
-    max_amount = db.Column(db.Float, nullable=False)
-    default_interest_rate = db.Column(db.Float, nullable=False) # Tasa mensual
-    default_admin_commission = db.Column(db.Float, nullable=False)
-    is_active = db.Column(db.Boolean, default=True)
-    applications = db.relationship('LoanApplication', backref='product', lazy=True)
-
-    def __repr__(self):
-        return f'<LoanProduct {self.name}>'
-
-class LoanApplication(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    product_id = db.Column(db.Integer, db.ForeignKey('loan_product.id'), nullable=False)
-    requested_amount = db.Column(db.Float, nullable=False)
-    requested_term = db.Column(db.Integer, nullable=False) # En meses
-    status = db.Column(db.String(50), default='Solicitud', nullable=False) # Solicitud, Análisis, Aprobación, etc.
-    application_date = db.Column(db.DateTime, default=datetime.utcnow)
-
-    def __repr__(self):
-        return f'<LoanApplication ID: {self.id} - Status: {self.status}>'
-
-
-# --- MODELOS CONTABLES ---
-class ChartOfAccounts(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    account_code = db.Column(db.String(10), unique=True, nullable=False)
-    account_name = db.Column(db.String(200), nullable=False)
-    account_type = db.Column(db.String(50), nullable=False)
-    account_class = db.Column(db.String(100), nullable=False)
-    balance = db.Column(db.Float, default=0.0)
-    is_active = db.Column(db.Boolean, default=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-class AccountingEntry(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    entry_date = db.Column(db.Date, nullable=False)
-    description = db.Column(db.String(500), nullable=False)
-    reference = db.Column(db.String(100))
-    loan_application_id = db.Column(db.Integer, db.ForeignKey('loan_application.id'))
-    created_by = db.Column(db.Integer, db.ForeignKey('user.id'))
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-class EntryDetail(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    entry_id = db.Column(db.Integer, db.ForeignKey('accounting_entry.id'))
-    account_code = db.Column(db.String(10), nullable=False)
-    debit = db.Column(db.Float, default=0.0)
-    credit = db.Column(db.Float, default=0.0)
-    description = db.Column(db.String(300))
-
-
-# --- FUNCIONES DE LÓGICA CONTABLE ---
-def update_account_balance(account_code, amount, operation):
-    """Actualizar saldo de cuenta contable"""
-    account = ChartOfAccounts.query.filter_by(account_code=account_code).first()
-    if account:
-        if operation == "debit":
-            # Para cuentas de Activo y Gasto, un débito aumenta el saldo.
-            if account.account_type in ['Activo', 'Gasto']:
-                account.balance += amount
-            else: # Pasivo, Patrimonio, Ingreso
-                account.balance -= amount
-        elif operation == "credit":
-            # Para cuentas de Activo y Gasto, un crédito disminuye el saldo.
-            if account.account_type in ['Activo', 'Gasto']:
-                account.balance -= amount
-            else: # Pasivo, Patrimonio, Ingreso
-                account.balance += amount
-        db.session.add(account)
-
-def create_disbursement_entry(loan_application, user_id):
-    """Crear asiento contable automático al desembolsar préstamo."""
-    try:
-        client_name = "N/A"
-        if loan_application.applicant and loan_application.applicant.profile:
-            client_name = loan_application.applicant.profile.full_name
-
-        loan_amount = loan_application.requested_amount
-
-        print(f"=== CREANDO ASIENTO CONTABLE PARA SOLICITUD {loan_application.id} ===")
-
-        entry = AccountingEntry(
-            entry_date=datetime.utcnow().date(),
-            description=f"Desembolso de préstamo #{loan_application.id} - {client_name}",
-            reference=f"PREST-{loan_application.id}",
-            loan_application_id=loan_application.id,
-            created_by=user_id
-        )
-
-        db.session.add(entry)
-        db.session.flush()
-
-        # DÉBITO: Cartera de Préstamos (Activo)
-        db.session.add(EntryDetail(
-            entry_id=entry.id,
-            account_code="1-02-001",
-            debit=loan_amount,
-            credit=0.0,
-            description=f"Desembolso préstamo personal #{loan_application.id}"
-        ))
-
-        # CRÉDITO: Banco (Activo)
-        db.session.add(EntryDetail(
-            entry_id=entry.id,
-            account_code="1-01-003",
-            debit=0.0,
-            credit=loan_amount,
-            description=f"Desembolso desde cuenta bancaria - Préstamo #{loan_application.id}"
-        ))
-
-        update_account_balance("1-02-001", loan_amount, "debit")
-        update_account_balance("1-01-003", loan_amount, "credit")
-
-        print(f"✅ ASIENTO PREPARADO PARA COMMIT")
-        return entry
-
-    except Exception as e:
-        print(f"❌ ERROR creando asiento: {str(e)}")
-        raise e
-
-
-# --- DECORADORES DE AUTORIZACIÓN ---
-def role_required(required_role):
-    """
-    Decorador para restringir el acceso a rutas basado en el rol del usuario.
-    """
-    def decorator(fn):
-        @wraps(fn)
-        def wrapper(*args, **kwargs):
-            verify_jwt_in_request()
-            identity = get_jwt_identity()
-            user_role = identity.get('role')
-
-            if user_role != required_role:
-                return jsonify({"msg": "Acceso no autorizado para este rol"}), 403
-
-            return fn(*args, **kwargs)
-        return wrapper
-    return decorator
-
-
-# --- RUTAS DE LA API ---
-@app.route('/')
-def index():
-    """
-    Ruta de bienvenida para verificar que el servidor está en funcionamiento.
-    """
-    return jsonify({"message": "Servidor del Sistema de Gestión Financiera en funcionamiento."})
-
-@app.route('/api/register', methods=['POST'])
-def register():
-    """Endpoint para registrar un nuevo usuario."""
-    data = request.get_json()
-    email = data.get('email')
-    password = data.get('password')
-    role_name = data.get('role', 'Cliente') # Por defecto, el rol es 'Cliente'
-
-    if not email or not password:
-        return jsonify({"msg": "Email y contraseña son requeridos"}), 400
-
-    if User.query.filter_by(email=email).first():
-        return jsonify({"msg": "El email ya está registrado"}), 400
-
-    role = Role.query.filter_by(name=role_name).first()
-    if not role:
-        return jsonify({"msg": f"El rol '{role_name}' no es válido"}), 400
-
-    new_user = User(email=email, role_id=role.id)
-    new_user.set_password(password)
-    db.session.add(new_user)
-    db.session.commit()
-
-    return jsonify({"msg": "Usuario creado exitosamente"}), 201
-
-@app.route('/api/login', methods=['POST'])
-def login():
-    """Endpoint para iniciar sesión y obtener un token JWT."""
-    data = request.get_json()
-    email = data.get('email')
-    password = data.get('password')
-
-    if not email or not password:
-        return jsonify({"msg": "Email y contraseña son requeridos"}), 400
-
-    user = User.query.filter_by(email=email).first()
-
-    if user and user.check_password(password):
-        access_token = create_access_token(identity={'email': user.email, 'role': user.role.name})
-        return jsonify(access_token=access_token)
-
-    return jsonify({"msg": "Credenciales inválidas"}), 401
-
-@app.route('/api/admin/test')
-@jwt_required()
-@role_required('Administrador General')
-def admin_test_route():
-    """Ruta de prueba protegida para administradores."""
-    current_user = get_jwt_identity()
-    return jsonify(logged_in_as=current_user), 200
-
-
-# --- API PARA PRODUCTOS DE PRÉSTAMO (CRUD - Solo Admin) ---
-
-@app.route('/api/products', methods=['POST'])
-@jwt_required()
-@role_required('Administrador General')
-def create_loan_product():
-    """Crea un nuevo producto de préstamo."""
-    data = request.get_json()
-    try:
-        new_product = LoanProduct(
-            name=data['name'],
-            loan_type=data['loan_type'],
-            min_amount=float(data['min_amount']),
-            max_amount=float(data['max_amount']),
-            default_interest_rate=float(data['default_interest_rate']),
-            default_admin_commission=float(data['default_admin_commission'])
-        )
-        db.session.add(new_product)
-        db.session.commit()
-        return jsonify({"msg": "Producto de préstamo creado exitosamente", "product_id": new_product.id}), 201
-    except (KeyError, ValueError):
-        return jsonify({"msg": "Datos inválidos o incompletos."}), 400
-
-@app.route('/api/products', methods=['GET'])
-@jwt_required()
-def get_loan_products():
-    """Obtiene todos los productos de préstamo activos."""
-    products = LoanProduct.query.filter_by(is_active=True).all()
-    return jsonify([{
-        "id": p.id, "name": p.name, "loan_type": p.loan_type,
-        "min_amount": p.min_amount, "max_amount": p.max_amount,
-        "default_interest_rate": p.default_interest_rate,
-        "default_admin_commission": p.default_admin_commission
-    } for p in products])
-
-@app.route('/api/products/<int:product_id>', methods=['PUT'])
-@jwt_required()
-@role_required('Administrador General')
-def update_loan_product(product_id):
-    """Actualiza un producto de préstamo existente."""
-    product = LoanProduct.query.get_or_404(product_id)
-    data = request.get_json()
-    try:
-        product.name = data.get('name', product.name)
-        product.loan_type = data.get('loan_type', product.loan_type)
-        product.min_amount = float(data.get('min_amount', product.min_amount))
-        product.max_amount = float(data.get('max_amount', product.max_amount))
-        product.default_interest_rate = float(data.get('default_interest_rate', product.default_interest_rate))
-        product.default_admin_commission = float(data.get('default_admin_commission', product.default_admin_commission))
-        db.session.commit()
-        return jsonify({"msg": "Producto actualizado exitosamente."})
-    except ValueError:
-        return jsonify({"msg": "Datos inválidos."}), 400
-
-@app.route('/api/products/<int:product_id>', methods=['DELETE'])
-@jwt_required()
-@role_required('Administrador General')
-def deactivate_loan_product(product_id):
-    """Desactiva un producto de préstamo (soft delete)."""
-    product = LoanProduct.query.get_or_404(product_id)
-    product.is_active = False
-    db.session.commit()
-    return jsonify({"msg": "Producto desactivado exitosamente."})
-
-
-# --- API PARA SOLICITUDES DE PRÉSTAMO ---
-
-@app.route('/api/applications', methods=['POST'])
-@jwt_required()
-def submit_loan_application():
-    """Permite a un usuario logueado enviar una solicitud de préstamo."""
-    identity = get_jwt_identity()
-    user = User.query.filter_by(email=identity['email']).first()
-    if not user:
-        return jsonify({"msg": "Usuario no encontrado"}), 404
-
-    data = request.get_json()
-    try:
-        product_id = int(data['product_id'])
-        requested_amount = float(data['requested_amount'])
-        requested_term = int(data['requested_term'])
-
-        product = LoanProduct.query.get(product_id)
-        if not product or not product.is_active:
-            return jsonify({"msg": "Producto de préstamo no válido o inactivo."}), 400
-
-        if not (product.min_amount <= requested_amount <= product.max_amount):
-            return jsonify({"msg": f"El monto solicitado debe estar entre {product.min_amount} y {product.max_amount}."}), 400
-
-        new_application = LoanApplication(
-            user_id=user.id,
-            product_id=product_id,
-            requested_amount=requested_amount,
-            requested_term=requested_term,
-            status='Solicitud Recibida'
-        )
-        db.session.add(new_application)
-        db.session.commit()
-        return jsonify({"msg": "Solicitud de préstamo enviada exitosamente.", "application_id": new_application.id}), 201
-
-    except (KeyError, ValueError):
-        return jsonify({"msg": "Datos inválidos o incompletos."}), 400
-
-@app.route('/api/applications', methods=['GET'])
-@jwt_required()
-def get_loan_applications():
-    """
-    Obtiene las solicitudes de préstamo.
-    - Clientes ven solo sus solicitudes.
-    - Admins/Ejecutivos ven todas las solicitudes.
-    """
-    identity = get_jwt_identity()
-    user_role = identity['role']
-
-    if user_role in ['Administrador General', 'Ejecutivo de Crédito', 'Super Administrador']:
-        applications = LoanApplication.query.order_by(LoanApplication.application_date.desc()).all()
-    else:
-        user = User.query.filter_by(email=identity['email']).first()
-        applications = LoanApplication.query.filter_by(user_id=user.id).order_by(LoanApplication.application_date.desc()).all()
-
-    return jsonify([{
-        "id": app.id,
-        "applicant_email": app.applicant.email,
-        "product_name": app.product.name,
-        "requested_amount": app.requested_amount,
-        "requested_term": app.requested_term,
-        "status": app.status,
-        "application_date": app.application_date.isoformat()
-    } for app in applications])
-
-@app.route('/api/applications/<int:application_id>/status', methods=['PUT'])
-@jwt_required()
-@role_required('Administrador General')
-def update_application_status(application_id):
-    """
-    Actualiza el estado de una solicitud de préstamo.
-    Si el estado es 'Desembolsado', crea el asiento contable correspondiente.
-    """
-    data = request.get_json()
-    new_status = data.get('status')
-    if not new_status:
-        return jsonify({"msg": "El campo 'status' es requerido."}), 400
-
-    application = LoanApplication.query.get_or_404(application_id)
-    old_status = application.status
-
-    if new_status == "Desembolsado" and old_status == "Desembolsado":
-        return jsonify({"msg": "Esta solicitud ya ha sido desembolsada."}), 400
-
-    try:
-        application.status = new_status
-
-        # ✅ TRIGGER CONTABLE AUTOMÁTICO
-        if new_status == "Desembolsado":
-            print(f"🔔 ACTIVANDO TRIGGER CONTABLE: Solicitud {application_id} desembolsada")
-            identity = get_jwt_identity()
-            user = User.query.filter_by(email=identity['email']).first()
-            create_disbursement_entry(application, user.id)
-
-        db.session.commit()
-
-        return jsonify({
-            'message': f'Estado actualizado a {new_status}',
-            'loan_application_id': application_id,
-            'previous_status': old_status,
-            'new_status': new_status
-        })
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/loans/simulate', methods=['POST'])
-@jwt_required() # Proteger la ruta, solo usuarios logueados pueden simular
-def simulate_loan():
-    """Endpoint para simular un préstamo y obtener la tabla de amortización."""
-    data = request.get_json()
-
-    capital = data.get('capital_solicitado')
-    meses = data.get('meses')
-    tasa_interes = data.get('tasa_interes_mensual')
-
-    if not all([capital, meses, tasa_interes]):
-        return jsonify({"msg": "Los parámetros 'capital_solicitado', 'meses', y 'tasa_interes_mensual' son requeridos."}), 400
-
-    try:
-        capital = float(capital)
-        meses = int(meses)
-        tasa_interes = float(tasa_interes)
-        com_admin = float(data.get('comision_administracion', 0))
-        com_iniciales = float(data.get('comisiones_iniciales', 0))
-    except (ValueError, TypeError):
-        return jsonify({"msg": "Parámetros inválidos. Asegúrese de que los valores sean numéricos."}), 400
-
-    commission_method = data.get('commission_method', 'no_interest')
-
-    if commission_method not in ['no_interest', 'add_to_capital', 'subtract_from_capital']:
-        return jsonify({"msg": "El valor de 'commission_method' no es válido."}), 400
-
-    resultado = generate_amortization_table(
-        capital_solicitado=capital,
-        meses=meses,
-        tasa_interes_mensual=tasa_interes,
-        comision_administracion=com_admin,
-        comisiones_iniciales=com_iniciales,
-        commission_method=commission_method
-    )
-
-    if not resultado or not resultado.get("amortization_table"):
-        return jsonify({"msg": "No se pudo generar la tabla de amortización con los parámetros proporcionados."}), 500
-
-    return jsonify(resultado)
-
-
-# --- FUNCIONES AUXILIARES ---
-def initialize_database():
-    """Crea la base de datos y los roles iniciales si no existen."""
+def initialize_database(app):
     with app.app_context():
         db.create_all()
-        if Role.query.first() is None:
-            roles = [
-                'Super Administrador', 'Administrador General', 'Ejecutivo de Crédito',
-                'Cobrador', 'Contador', 'Cliente'
-            ]
+        if not Role.query.first():
+            roles = ['Super Administrador', 'Administrador General', 'Ejecutivo de Crédito', 'Cobrador', 'Contador', 'Cliente']
             for role_name in roles:
                 db.session.add(Role(name=role_name))
             db.session.commit()
             print("Base de datos y roles inicializados.")
 
+        initialize_chart_of_accounts()
+
 if __name__ == '__main__':
-    initialize_database()
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=True)
+    app = create_app()
+    initialize_database(app)
+    app.run(host='0.0.0.0', port=5000, debug=True)
