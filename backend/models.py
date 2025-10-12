@@ -10,7 +10,7 @@ class Tenant(db.Model):
     company_name = db.Column(db.String(120), unique=True, nullable=False)
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
-    roles = db.relationship('Role', backref='tenant_ref', lazy=True)
+    roles = db.relationship('Role', backref='tenant', lazy=True)
 
     def to_dict(self):
         return {'id': self.id, 'company_name': self.company_name, 'is_active': self.is_active}
@@ -21,7 +21,6 @@ class Role(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(80), nullable=False)
     tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
-    tenant = db.relationship('Tenant')
     users = db.relationship('User', backref='role', lazy=True)
     __table_args__ = (db.UniqueConstraint('name', 'tenant_id'),)
 
@@ -40,7 +39,6 @@ class User(db.Model):
     applications = db.relationship('LoanApplication', backref='applicant', lazy='dynamic')
     communication_logs = db.relationship('CommunicationLog', backref='user', lazy='dynamic')
     audit_logs = db.relationship('AuditLog', backref='user', lazy='dynamic')
-    # tickets = db.relationship('Ticket', backref='created_by_user', lazy='dynamic', foreign_keys='Ticket.user_id')
 
     def set_password(self, password): self.password_hash = generate_password_hash(password)
     def check_password(self, password): return check_password_hash(self.password_hash, password)
@@ -103,7 +101,6 @@ class Employee(db.Model):
     salary = db.Column(db.Float, nullable=False)
     hire_date = db.Column(db.Date, nullable=False)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
-    # assigned_tickets = db.relationship('Ticket', backref='assigned_employee', lazy='dynamic', foreign_keys='Ticket.assigned_to_id')
     tasks = db.relationship('Task', backref='assignee', lazy='dynamic')
 
 class Lead(db.Model):
