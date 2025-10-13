@@ -25,8 +25,8 @@ def create_app():
     CORS(app)
     app.config['SECRET_KEY'] = 'dev'
     app.config['JWT_SECRET_KEY'] = 'dev'
-    # Point to the provided PostgreSQL database with SSL required
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:Alex_200997a@db.efntaqjschznzrnzrnhh.supabase.co:5432/postgres?sslmode=require'
+    # Point to the provided PostgreSQL database with the corrected hostname
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:1sQl4WixNdQihHxd@db.efntaqjschznzrnzrnhh.supabase.co:5432/postgres?sslmode=require'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
     db.init_app(app)
