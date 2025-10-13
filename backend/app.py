@@ -25,9 +25,8 @@ def create_app():
     CORS(app)
     app.config['SECRET_KEY'] = 'dev'
     app.config['JWT_SECRET_KEY'] = 'dev'
-    # Point to a PostgreSQL database
-    # The connection details should ideally come from environment variables
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://user:password@localhost:5432/lazoarce_nexus_db'
+    # Point to the provided PostgreSQL database with SSL required
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:Alex_200997a@db.efntaqjschznzrnzrnhh.supabase.co:5432/postgres?sslmode=require'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
     db.init_app(app)
