@@ -25,8 +25,9 @@ def create_app():
     CORS(app)
     app.config['SECRET_KEY'] = 'dev'
     app.config['JWT_SECRET_KEY'] = 'dev'
-    instance_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance')
-    app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(instance_path, 'lazoarce.db')}"
+    # Point to a PostgreSQL database
+    # The connection details should ideally come from environment variables
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://user:password@localhost:5432/lazoarce_nexus_db'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
     db.init_app(app)
