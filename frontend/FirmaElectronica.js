@@ -11,16 +11,22 @@ const FirmaElectronica = ({ onFirmaChange }) => {
         onFirmaChange(dataURL);
     };
 
+    // Since the library is loaded via a script tag, it should be available as a global.
+    // We need to ensure this component renders after the script has loaded.
+    if (typeof ReactSignatureCanvas === 'undefined') {
+        return <p>Cargando componente de firma...</p>;
+    }
+
     return (
         <div>
             <h4>Firma Electrónica</h4>
             <div style={{ border: '1px solid #ccc', borderRadius: '5px' }}>
-                {React.createElement(window.ReactSignatureCanvas, {
-                    ref: sigCanvas,
-                    penColor: 'black',
-                    canvasProps: {width: 500, height: 200, className: 'sigCanvas'},
-                    onEnd: guardar
-                })}
+                <ReactSignatureCanvas
+                    ref={sigCanvas}
+                    penColor='black'
+                    canvasProps={{width: 500, height: 200, className: 'sigCanvas'}}
+                    onEnd={guardar}
+                />
             </div>
             <button onClick={limpiar} style={{marginTop: '10px'}}>Limpiar Firma</button>
         </div>
