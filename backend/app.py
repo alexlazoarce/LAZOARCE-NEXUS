@@ -26,20 +26,20 @@ from datetime import datetime, date, timedelta
     db.init_app(app)
     jwt = JWTManager(app)
 
-# --- AUTH & USER ROUTES ---
-@app.route('/api/auth/register', methods=['POST'])
-def register():
-    data = request.get_json()
-    if User.query.filter_by(email=data['email']).first(): return jsonify({"message": "El correo ya está registrado"}), 409
-    # Default to 'Cliente' role
-    client_role = Role.query.filter_by(name='Cliente').first()
-    if not client_role:
-            return jsonify({"message": "Rol de cliente no encontrado"}), 500
-    user = User(email=data['email'], role_id=client_role.id, full_name=data.get('username'))
-    user.set_password(data['password'])
-    db.session.add(user)
-    db.session.commit()
-    return jsonify({"message": "Usuario creado exitosamente"}), 201
+    # --- AUTH & USER ROUTES ---
+    @app.route('/api/auth/register', methods=['POST'])
+    def register():
+        data = request.get_json()
+        if User.query.filter_by(email=data['email']).first(): return jsonify({"message": "El correo ya está registrado"}), 409
+        # Default to 'Cliente' role
+        client_role = Role.query.filter_by(name='Cliente').first()
+        if not client_role:
+             return jsonify({"message": "Rol de cliente no encontrado"}), 500
+        user = User(email=data['email'], role_id=client_role.id, full_name=data.get('username'))
+        user.set_password(data['password'])
+        db.session.add(user)
+        db.session.commit()
+        return jsonify({"message": "Usuario creado exitosamente"}), 201
 
     @app.route('/api/auth/login', methods=['POST'])
     def login():

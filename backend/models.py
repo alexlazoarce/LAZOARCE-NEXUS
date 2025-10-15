@@ -476,3 +476,54 @@ class TicketComment(db.Model):
             'comment_text': self.comment_text,
             'timestamp': self.timestamp.isoformat()
         }
+
+# --- Conciliación Bancaria (CB) Models ---
+
+class BankStatement(db.Model):
+    """Represents an imported bank statement for a specific account and period."""
+    id = db.Column(db.Integer, primary_key=True)
+    account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=False)
+    account = db.relationship('Account', backref='statements')
+
+    start_date = db.Column(db.Date, nullable=False)
+    end_date = db.Column(db.Date, nullable=False)
+
+    initial_balance = db.Column(db.Float, nullable=False)
+    final_balance = db.Column(db.Float, nullable=False)
+
+    import_date = db.Column(db.DateTime, default=db.func.current_timestamp())
+
+    transactions = db.relationship('BankTransaction', backref='statement', lazy='dynamic', cascade="all, delete-orphan")
+
+class BankTransaction(db.Model):
+    """Represents a single transaction from an imported bank statement."""
+    id = db.Column(db.Integer, primary_key=True)
+    statement_id = db.Column(db.Integer, db.ForeignKey('bank_statement.id'), nullable=False)
+
+    transaction_date = db.Column(db.Date, nullable=False)
+    description = db.Column(db.String(255), nullable=False)
+    amount = db.Column(db.Float, nullable=False)
+    transaction_type = db.Column(db.String(50), nullable=False) # e.g., 'debit', 'credit', 'check'
+
+    # Reconciliation status
+    is_reconciled = db.Column(db.Boolean, default=False, nullable=False)
+    reconciliation_id = db.Column(db.Integer, db.ForeignKey('reconciliation.id'), nullable=True)
+
+    # Link to the internal transaction it was reconciled with
+    internal_transaction_id = db.Column(db.Integer, db.ForeignKey('transaction.id'), nullable=True)
+    internal_transaction = db.relationship('Transaction', backref='bank_transactions')
+
+class Reconciliation(db.Model):
+    """Represents a reconciliation process for a specific account and period."""
+    id = db.Column(db.Integer, primary_key=True)
+    account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=False)
+    account = db.relationship('Account', backref='reconciliations')
+
+    period_start_date = db.Column(db.Date, nullable=False)
+    period_end_date = db.Column(db.Date, nullable=False)
+
+    status = db.Column(db.String(50), default='in_progress', nullable=False) # 'in_progress', 'completed'
+
+    execution_date = db.Column(db.DateTime, default=db.func.current_timestamp())
+
+    bank_transactions = db.relationship('BankTransaction', backref='reconciliation', lazy='dynamic')
