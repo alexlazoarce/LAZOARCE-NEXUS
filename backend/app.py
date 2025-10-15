@@ -11,6 +11,7 @@ import payroll_service
 import collections_service
 import notification_service
 import audit_service
+import bi_service
 from datetime import datetime, date, timedelta
     """Application factory function."""
     app = Flask(__name__)
@@ -380,6 +381,22 @@ from datetime import datetime, date, timedelta
         response.headers.set('Content-Type', 'application/pdf')
         response.headers.set('Content-Disposition', 'attachment', filename=f'contrato_{app_id}.pdf')
         return response
+
+    # --- BUSINESS INTELLIGENCE (BI) API ROUTES ---
+
+    @app.route('/api/bi/loan-dashboard', methods=['GET'])
+    @jwt_required()
+    def get_loan_dashboard_data():
+        claims = get_jwt()
+        user_roles = claims.get('roles', [])
+        if 'Admin' not in user_roles:
+            return jsonify({"message": "Acceso no autorizado"}), 403
+
+        try:
+            kpis = bi_service.get_loan_portfolio_kpis()
+            return jsonify(kpis)
+        except Exception as e:
+            return jsonify({"message": f"Error al calcular los KPIs: {str(e)}"}), 500
 
     # --- ACCOUNTING API ROUTES ---
 
