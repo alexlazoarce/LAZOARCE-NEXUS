@@ -14,6 +14,7 @@ from . import collections_service
 from . import notification_service
 from . import audit_service
 from . import firma_service
+from . import et2_service
 from datetime import datetime, date, timedelta
 
 load_dotenv()
@@ -474,6 +475,74 @@ def create_app():
             "signature_request": sig_request.to_dict()
         })
 
+    # --- ET2 (Empresa de Trabajo Temporal) API ROUTES ---
+
+    @app.route('/api/et2/clients', methods=['GET', 'POST'])
+    @jwt_required()
+    def handle_et2_clients():
+        claims = get_jwt()
+        if 'Admin' not in claims.get('roles', []):
+            return jsonify({"message": "Acceso no autorizado"}), 403
+
+        if request.method == 'POST':
+            data = request.get_json()
+            try:
+                new_company = et2_service.create_client_company(data)
+                db.session.commit()
+                return jsonify(new_company.to_dict()), 201
+            except ValueError as e:
+                db.session.rollback()
+                return jsonify({"message": str(e)}), 400
+            except Exception as e:
+                db.session.rollback()
+                return jsonify({"message": f"Error inesperado: {str(e)}"}), 500
+
+        # GET request
+        companies = ClientCompany.query.order_by(ClientCompany.name).all()
+        return jsonify([c.to_dict() for c in companies])
+
+    @app.route('/api/et2/workers', methods=['POST'])
+    @jwt_required()
+    def handle_et2_workers():
+        claims = get_jwt()
+        if 'Admin' not in claims.get('roles', []):
+            return jsonify({"message": "Acceso no autorizado"}), 403
+
+        data = request.get_json()
+        try:
+            new_worker = et2_service.create_temporary_worker(data)
+            db.session.commit()
+            return jsonify(new_worker.to_dict()), 201
+        except ValueError as e:
+            db.session.rollback()
+            return jsonify({"message": str(e)}), 400
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({"message": f"Error inesperado: {str(e)}"}), 500
+
+    @app.route('/api/et2/assignments', methods=['GET', 'POST'])
+    @jwt_required()
+    def handle_et2_assignments():
+        claims = get_jwt()
+        if 'Admin' not in claims.get('roles', []):
+            return jsonify({"message": "Acceso no autorizado"}), 403
+
+        if request.method == 'POST':
+            data = request.get_json()
+            try:
+                new_assignment = et2_service.create_assignment(data)
+                db.session.commit()
+                return jsonify(new_assignment.to_dict()), 201
+            except ValueError as e:
+                db.session.rollback()
+                return jsonify({"message": str(e)}), 400
+            except Exception as e:
+                db.session.rollback()
+                return jsonify({"message": f"Error inesperado: {str(e)}"}), 500
+
+        # GET request
+        assignments = TemporaryAssignment.query.filter_by(is_active=True).all()
+        return jsonify([a.to_dict() for a in assignments])
 
     # --- ACCOUNTING API ROUTES ---
 
