@@ -476,3 +476,34 @@ class TicketComment(db.Model):
             'comment_text': self.comment_text,
             'timestamp': self.timestamp.isoformat()
         }
+
+# --- Firma Electrónica (FEV) Models ---
+
+class SignatureRequest(db.Model):
+    """Tracks the status of an electronic signature request."""
+    id = db.Column(db.Integer, primary_key=True)
+
+    # Link to the document being signed, e.g., a loan application contract
+    loan_application_id = db.Column(db.Integer, db.ForeignKey('loan_application.id'), nullable=False)
+    loan_application = db.relationship('LoanApplication', backref='signature_requests')
+
+    # ID from the external signature provider
+    provider_request_id = db.Column(db.String(255), unique=True, nullable=False)
+
+    # Status: 'pending', 'completed', 'failed', 'expired'
+    status = db.Column(db.String(50), nullable=False, default='pending')
+
+    signer_email = db.Column(db.String(120), nullable=False)
+
+    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+    updated_at = db.Column(db.DateTime, default=db.func.current_timestamp(), onupdate=db.func.current_timestamp())
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'loan_application_id': self.loan_application_id,
+            'status': self.status,
+            'signer_email': self.signer_email,
+            'provider_request_id': self.provider_request_id,
+            'created_at': self.created_at.isoformat(),
+        }

@@ -2,29 +2,35 @@ import os
 from flask import Flask, jsonify, request, make_response
 from flask_cors import CORS
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, JWTManager, get_jwt
+from dotenv import load_dotenv
+from flask_migrate import Migrate
 
-from models import db, Role, User, LoanProduct, LoanApplication, Account, Employee, PayrollLog, PaySlip, Lead, CommunicationLog, Payment, NotificationTemplate, AuditLog, Opportunity, MailingList, Campaign, Ticket, TicketComment
-from loan_calculator import calculate_loan_details
-from pdf_generator import generate_contract_pdf
-import accounting_service
-import payroll_service
-import collections_service
-import notification_service
-import audit_service
+from .models import db, Role, User, LoanProduct, LoanApplication, Account, Employee, PayrollLog, PaySlip, Lead, CommunicationLog, Payment, NotificationTemplate, AuditLog, Opportunity, MailingList, Campaign, Ticket, TicketComment, SignatureRequest
+from .loan_calculator import calculate_loan_details
+from .pdf_generator import generate_contract_pdf
+from . import accounting_service
+from . import payroll_service
+from . import collections_service
+from . import notification_service
+from . import audit_service
+from . import firma_service
 from datetime import datetime, date, timedelta
+
+load_dotenv()
+
+def create_app():
     """Application factory function."""
     app = Flask(__name__)
     CORS(app)
 
-    app.config['SECRET_KEY'] = 'dev'
-    app.config['JWT_SECRET_KEY'] = 'dev'
-    instance_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance')
-    os.makedirs(instance_path, exist_ok=True)
-    app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(instance_path, 'lazoarce.db')}"
+    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev')
+    app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'dev')
+    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
     db.init_app(app)
     jwt = JWTManager(app)
+    migrate = Migrate(app, db)
 
     # --- AUTH & USER ROUTES ---
     @app.route('/api/auth/register', methods=['POST'])
@@ -112,8 +118,35 @@ from datetime import datetime, date, timedelta
     @app.route('/api/products/<int:product_id>', methods=['GET', 'PUT', 'DELETE'])
     @jwt_required()
     def handle_product(product_id):
-        # ... (Implementation for PUT and DELETE for Admins)
-        return jsonify({"message": "Not implemented"}), 501
+        claims = get_jwt()
+        user_roles = claims.get('roles', [])
+        product = LoanProduct.query.get_or_404(product_id)
+
+        # GET request is public for authenticated users
+        if request.method == 'GET':
+            return jsonify(product.to_dict())
+
+        # Admin authorization required for PUT and DELETE
+        if 'Admin' not in user_roles:
+            return jsonify({"message": "Acceso no autorizado"}), 403
+
+        if request.method == 'PUT':
+            data = request.get_json()
+            product.name = data.get('name', product.name)
+            product.min_amount = data.get('min_amount', product.min_amount)
+            product.max_amount = data.get('max_amount', product.max_amount)
+            product.interest_rate = data.get('interest_rate', product.interest_rate)
+            product.commission_rate = data.get('commission_rate', product.commission_rate)
+            product.term_months = data.get('term_months', product.term_months)
+            product.is_active = data.get('is_active', product.is_active)
+            db.session.commit()
+            return jsonify(product.to_dict())
+
+        if request.method == 'DELETE':
+            # Soft delete
+            product.is_active = False
+            db.session.commit()
+            return jsonify({"message": f"Producto '{product.name}' desactivado exitosamente."})
 
 
     # --- PUBLIC SIMULATOR ---
@@ -380,6 +413,67 @@ from datetime import datetime, date, timedelta
         response.headers.set('Content-Type', 'application/pdf')
         response.headers.set('Content-Disposition', 'attachment', filename=f'contrato_{app_id}.pdf')
         return response
+
+    # --- E-SIGNATURE (FEV) API ROUTES ---
+
+    @app.route('/api/applications/<int:app_id>/request-signature', methods=['POST'])
+    @jwt_required()
+    def request_e_signature(app_id):
+        claims = get_jwt()
+        user_roles = claims.get('roles', [])
+        if 'Admin' not in user_roles:
+            return jsonify({"message": "Acceso no autorizado"}), 403
+
+        application = LoanApplication.query.get_or_404(app_id)
+        if application.status != 'Aprobada':
+            return jsonify({"message": "Solo se pueden firmar solicitudes de préstamo aprobadas."}), 400
+
+        signer_data = {
+            "name": application.applicant.full_name,
+            "email": application.applicant.email
+        }
+
+        # In a real app, document_id would be the ID of the generated contract PDF
+        signature_response = firma_service.request_signature(document_id=app_id, signer_data=signer_data)
+
+        # Save the request to our database
+        new_sig_request = SignatureRequest(
+            loan_application_id=application.id,
+            provider_request_id=signature_response['signature_request_id'],
+            signer_email=signer_data['email']
+        )
+        db.session.add(new_sig_request)
+        db.session.commit()
+
+        return jsonify({
+            "message": "Solicitud de firma enviada exitosamente.",
+            "signature_request": new_sig_request.to_dict()
+        }), 201
+
+    @app.route('/api/signatures/status/<provider_request_id>', methods=['GET'])
+    @jwt_required()
+    def get_signature_status_by_provider_id(provider_request_id):
+        # In a real app, this might be a webhook endpoint called by the provider
+        # For now, an admin can poll it.
+        claims = get_jwt()
+        user_roles = claims.get('roles', [])
+        if 'Admin' not in user_roles:
+            return jsonify({"message": "Acceso no autorizado"}), 403
+
+        sig_request = SignatureRequest.query.filter_by(provider_request_id=provider_request_id).first_or_404()
+
+        # Simulate checking the provider
+        status_response = firma_service.get_signature_status(provider_request_id)
+
+        # Update our database
+        sig_request.status = status_response['status']
+        db.session.commit()
+
+        return jsonify({
+            "message": "Estado de la firma actualizado.",
+            "signature_request": sig_request.to_dict()
+        })
+
 
     # --- ACCOUNTING API ROUTES ---
 
@@ -1082,49 +1176,6 @@ from datetime import datetime, date, timedelta
             db.session.commit()
             return jsonify({"message": "Usuario eliminado de la lista."})
 
-    # --- MARKETING API ROUTES ---
-
-    @app.route('/api/mailing-lists', methods=['GET', 'POST'])
-    @jwt_required()
-    def handle_mailing_lists():
-        claims = get_jwt()
-        if 'Admin' not in claims.get('roles', []):
-            return jsonify({"message": "Acceso no autorizado"}), 403
-
-        if request.method == 'GET':
-            lists = MailingList.query.all()
-            return jsonify([l.to_dict() for l in lists])
-
-        data = request.get_json()
-        new_list = MailingList(name=data['name'], description=data.get('description'))
-        db.session.add(new_list)
-        db.session.commit()
-        return jsonify(new_list.to_dict()), 201
-
-    @app.route('/api/mailing-lists/<int:list_id>/members', methods=['POST', 'DELETE'])
-    @jwt_required()
-    def handle_mailing_list_members(list_id):
-        claims = get_jwt()
-        if 'Admin' not in claims.get('roles', []):
-            return jsonify({"message": "Acceso no autorizado"}), 403
-
-        mailing_list = MailingList.query.get_or_404(list_id)
-        data = request.get_json()
-        user = User.query.get_or_404(data['user_id'])
-
-        if request.method == 'POST':
-            if user in mailing_list.members:
-                return jsonify({"message": "El usuario ya está en la lista."}), 409
-            mailing_list.members.append(user)
-            db.session.commit()
-            return jsonify({"message": "Usuario añadido a la lista."})
-
-        if request.method == 'DELETE':
-            if user not in mailing_list.members:
-                return jsonify({"message": "El usuario no está en la lista."}), 404
-            mailing_list.members.remove(user)
-            db.session.commit()
-            return jsonify({"message": "Usuario eliminado de la lista."})
 
     @app.route('/api/campaigns', methods=['GET', 'POST'])
     @jwt_required()
@@ -1295,81 +1346,6 @@ from datetime import datetime, date, timedelta
 
     return app
 
-def setup_database(app):
-    """Creates database tables and seeds initial data."""
-    with app.app_context():
-        db.create_all()
-        if not Role.query.first():
-            roles = [
-                Role(name='Admin'),
-                Role(name='Cliente'),
-                Role(name='Contador'),
-                Role(name='Ejecutivo de Crédito'),
-                Role(name='Cobrador')
-            ]
-            db.session.bulk_save_objects(roles)
-            db.session.commit()
-        if not User.query.filter_by(email='admin@lazoarce.com').first():
-            admin_role = Role.query.filter_by(name='Admin').first()
-            admin_user = User(email='admin@lazoarce.com', role_id=admin_role.id, full_name='Admin Lazo Arce')
-            admin_user.set_password('admin123')
-            db.session.add(admin_user)
-            db.session.commit()
-        if not LoanProduct.query.first():
-            # Add a default product for testing
-            default_product = LoanProduct(
-                name="Préstamo Personal Clásico",
-                min_amount=500.00,
-                max_amount=10000.00,
-                interest_rate=0.12, # 12% annual
-                commission_rate=0.01, # 1% monthly
-                term_months=36
-            )
-            db.session.add(default_product)
-            db.session.commit()
-
-        if not Account.query.first():
-            # Seed the chart of accounts
-            accounts = [
-                # Assets
-                Account(name='Caja', category='Asset', normal_balance='Debit'),
-                Account(name='Bancos', category='Asset', normal_balance='Debit'),
-                Account(name='Cuentas por Cobrar Clientes', category='Asset', normal_balance='Debit'),
-                Account(name='Intereses por Cobrar', category='Asset', normal_balance='Debit'),
-                # Liabilities
-                Account(name='Préstamos por Pagar', category='Liability', normal_balance='Credit'),
-                # Equity
-                Account(name='Capital Social', category='Equity', normal_balance='Credit'),
-                # Revenue
-                Account(name='Ingresos por Intereses', category='Revenue', normal_balance='Credit'),
-                Account(name='Ingresos por Comisiones', category='Revenue', normal_balance='Credit'),
-            ]
-            db.session.bulk_save_objects(accounts)
-            db.session.commit()
-
-        if not NotificationTemplate.query.first():
-            templates = [
-                NotificationTemplate(
-                    slug='loan-approved',
-                    subject='¡Tu préstamo ha sido aprobado!',
-                    body='Hola {customer_name},\n\nNos complace informarte que tu solicitud de préstamo por un monto de ${amount} ha sido aprobada. ¡Felicidades!\n\nSaludos,\nEl equipo de LAZOARCE UNIVERSAL'
-                ),
-                NotificationTemplate(
-                    slug='loan-rejected',
-                    subject='Actualización sobre tu solicitud de préstamo',
-                    body='Hola {customer_name},\n\nDespués de una cuidadosa revisión, lamentamos informarte que no podemos aprobar tu solicitud de préstamo en este momento.\n\nGracias por tu interés.\n\nSaludos,\nEl equipo de LAZOARCE UNIVERSAL'
-                ),
-                NotificationTemplate(
-                    slug='payment-reminder',
-                    subject='Recordatorio de Pago',
-                    body='Hola {customer_name},\n\nEste es un recordatorio amistoso de que tu próxima cuota de ${payment_amount} para tu préstamo vence el {due_date}.\n\nSaludos,\nEl equipo de LAZOARCE UNIVERSAL'
-                )
-            ]
-            db.session.bulk_save_objects(templates)
-            db.session.commit()
-
 if __name__ == '__main__':
     app = create_app()
-    with app.app_context():
-        setup_database(app)
     app.run(debug=True, port=5001)
