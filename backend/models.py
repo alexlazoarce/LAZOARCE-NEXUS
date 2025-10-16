@@ -149,15 +149,20 @@ class Transaction(db.Model):
 # --- HR / Payroll Models ---
 
 class Employee(db.Model):
-    """Represents an employee of the company."""
+    """Represents an employee of the company OR a temporary worker."""
     id = db.Column(db.Integer, primary_key=True)
     full_name = db.Column(db.String(120), nullable=False)
-    position = db.Column(db.String(100), nullable=False)
-    salary = db.Column(db.Float, nullable=False) # Monthly salary
-    hire_date = db.Column(db.Date, nullable=False)
+
+    # Type of employee: 'interno' or 'temporal'
+    employee_type = db.Column(db.String(20), nullable=False, default='interno')
+
+    # Internal employee fields (nullable to accommodate temporary workers)
+    position = db.Column(db.String(100), nullable=True)
+    salary = db.Column(db.Float, nullable=True)
+    hire_date = db.Column(db.Date, nullable=True)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
 
-    # Personal Information for payroll
+    # Personal Information (for both types)
     country_code = db.Column(db.String(2), nullable=False, default='SV') # ISO 3166-1 alpha-2
     dui = db.Column(db.String(20), nullable=True, unique=True)
     nit = db.Column(db.String(20), nullable=True, unique=True)
@@ -171,6 +176,7 @@ class Employee(db.Model):
         return {
             'id': self.id,
             'full_name': self.full_name,
+            'employee_type': self.employee_type,
             'position': self.position,
             'salary': self.salary,
             'hire_date': self.hire_date.isoformat() if self.hire_date else None,
@@ -179,6 +185,63 @@ class Employee(db.Model):
             'nit': self.nit,
             'isss_number': self.isss_number,
             'afp_number': self.afp_number,
+        }
+
+# --- ET2 (Empresa de Trabajo Temporal) Models ---
+
+class ClientCompany(db.Model):
+    """Represents a client company that hires temporary workers."""
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(150), unique=True, nullable=False)
+    contact_person = db.Column(db.String(120), nullable=True)
+    contact_email = db.Column(db.String(120), nullable=True)
+    phone_number = db.Column(db.String(20), nullable=True)
+    assignments = db.relationship('TemporaryAssignment', backref='client_company', lazy='dynamic')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'contact_person': self.contact_person,
+            'contact_email': self.contact_email,
+            'phone_number': self.phone_number,
+        }
+
+class TemporaryAssignment(db.Model):
+    """Links a temporary Employee to a ClientCompany for a specific role and period."""
+    id = db.Column(db.Integer, primary_key=True)
+
+    employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
+    employee = db.relationship('Employee', backref='assignments')
+
+    client_company_id = db.Column(db.Integer, db.ForeignKey('client_company.id'), nullable=False)
+
+    project_name = db.Column(db.String(150), nullable=True)
+    position_in_client = db.Column(db.String(100), nullable=False)
+
+    start_date = db.Column(db.Date, nullable=False)
+    end_date = db.Column(db.Date, nullable=True) # Can be null for open-ended assignments
+
+    # Salary/rate for this specific assignment
+    assignment_salary = db.Column(db.Float, nullable=False)
+
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+
+    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'employee_id': self.employee_id,
+            'employee_name': self.employee.full_name,
+            'client_company_id': self.client_company_id,
+            'client_company_name': self.client_company.name,
+            'project_name': self.project_name,
+            'position_in_client': self.position_in_client,
+            'start_date': self.start_date.isoformat(),
+            'end_date': self.end_date.isoformat() if self.end_date else None,
+            'assignment_salary': self.assignment_salary,
+            'is_active': self.is_active,
         }
 
 class PayrollLog(db.Model):
