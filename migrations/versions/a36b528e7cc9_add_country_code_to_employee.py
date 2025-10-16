@@ -1,8 +1,8 @@
 """Add country_code to Employee
 
-Revision ID: 65abfed8e268
+Revision ID: a36b528e7cc9
 Revises:
-Create Date: 2025-10-15 23:09:16.646998
+Create Date: 2025-10-16 02:47:21.411551
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '65abfed8e268'
+revision = 'a36b528e7cc9'
 down_revision = None
 branch_labels = None
 depends_on = None
