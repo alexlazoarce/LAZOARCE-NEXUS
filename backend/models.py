@@ -158,6 +158,7 @@ class Employee(db.Model):
     is_active = db.Column(db.Boolean, default=True, nullable=False)
 
     # Personal Information for payroll
+    country_code = db.Column(db.String(2), nullable=False, default='SV') # ISO 3166-1 alpha-2
     dui = db.Column(db.String(20), nullable=True, unique=True)
     nit = db.Column(db.String(20), nullable=True, unique=True)
     isss_number = db.Column(db.String(20), nullable=True, unique=True)
