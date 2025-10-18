@@ -2,8 +2,12 @@ import os
 from flask import Flask, jsonify, request, make_response
 from flask_cors import CORS
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, JWTManager, get_jwt
+from flask_migrate import Migrate
 
-from models import db, Role, User, LoanProduct, LoanApplication, Account, Employee, PayrollLog, PaySlip, Lead, CommunicationLog, Payment, NotificationTemplate, AuditLog, Opportunity, MailingList, Campaign, Ticket, TicketComment
+from models import db, Role, User, LoanProduct, LoanApplication, Account, Employee, PayrollLog, PaySlip, Lead, CommunicationLog, Payment, NotificationTemplate, AuditLog, Opportunity, MailingList, Campaign, Ticket, TicketComment, TaxType
+from routes.ett_routes import ett_bp
+from routes.accounting_routes import accounting_bp
+from routes.invoicing_routes import invoicing_bp
 from loan_calculator import calculate_loan_details
 from pdf_generator import generate_contract_pdf
 import accounting_service
@@ -12,6 +16,8 @@ import collections_service
 import notification_service
 import audit_service
 from datetime import datetime, date, timedelta
+
+def create_app():
     """Application factory function."""
     app = Flask(__name__)
     CORS(app)
@@ -24,7 +30,13 @@ from datetime import datetime, date, timedelta
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
     db.init_app(app)
+    migrate = Migrate(app, db)
     jwt = JWTManager(app)
+
+    # Register Blueprints
+    app.register_blueprint(ett_bp)
+    app.register_blueprint(accounting_bp)
+    app.register_blueprint(invoicing_bp)
 
     # --- AUTH & USER ROUTES ---
     @app.route('/api/auth/register', methods=['POST'])
@@ -382,149 +394,7 @@ from datetime import datetime, date, timedelta
         return response
 
     # --- ACCOUNTING API ROUTES ---
-
-    @app.route('/api/accounting/journal', methods=['GET'])
-    @jwt_required()
-    def get_journal_entries():
-        claims = get_jwt()
-        user_roles = claims.get('roles', [])
-        if 'Admin' not in user_roles and 'Contador' not in user_roles:
-            return jsonify({"message": "Acceso no autorizado"}), 403
-
-        entries = JournalEntry.query.order_by(JournalEntry.date.desc()).all()
-        return jsonify([entry.to_dict() for entry in entries])
-
-    @app.route('/api/accounting/general-ledger', methods=['GET'])
-    @jwt_required()
-    def get_general_ledger():
-        claims = get_jwt()
-        user_roles = claims.get('roles', [])
-        if 'Admin' not in user_roles and 'Contador' not in user_roles:
-            return jsonify({"message": "Acceso no autorizado"}), 403
-
-        accounts = Account.query.all()
-        ledger = []
-        for account in accounts:
-            balance = 0.0
-            for transaction in account.transactions:
-                if transaction.type == account.normal_balance:
-                    balance += transaction.amount
-                else:
-                    balance -= transaction.amount
-
-            ledger.append({
-                'account_id': account.id,
-                'account_name': account.name,
-                'account_category': account.category,
-                'balance': round(balance, 2)
-            })
-        return jsonify(ledger)
-
-    @app.route('/api/accounting/trial-balance', methods=['GET'])
-    @jwt_required()
-    def get_trial_balance():
-        claims = get_jwt()
-        user_roles = claims.get('roles', [])
-        if 'Admin' not in user_roles and 'Contador' not in user_roles:
-            return jsonify({"message": "Acceso no autorizado"}), 403
-
-        accounts = Account.query.all()
-        report = []
-        total_debits = 0.0
-        total_credits = 0.0
-
-        for account in accounts:
-            debits = sum(t.amount for t in account.transactions if t.type == 'Debit')
-            credits = sum(t.amount for t in account.transactions if t.type == 'Credit')
-
-            if debits > 0 or credits > 0:
-                report.append({
-                    'account_name': account.name,
-                    'debits': round(debits, 2),
-                    'credits': round(credits, 2)
-                })
-                total_debits += debits
-                total_credits += credits
-
-        return jsonify({
-            'report': report,
-            'total_debits': round(total_debits, 2),
-            'total_credits': round(total_credits, 2),
-            'is_balanced': round(total_debits, 2) == round(total_credits, 2)
-        })
-
-    @app.route('/api/accounting/balance-sheet', methods=['GET'])
-    @jwt_required()
-    def get_balance_sheet():
-        claims = get_jwt()
-        user_roles = claims.get('roles', [])
-        if 'Admin' not in user_roles and 'Contador' not in user_roles:
-            return jsonify({"message": "Acceso no autorizado"}), 403
-
-        report = {'assets': [], 'liabilities': [], 'equity': []}
-        totals = {'assets': 0.0, 'liabilities': 0.0, 'equity': 0.0}
-
-        accounts = Account.query.filter(Account.category.in_(['Asset', 'Liability', 'Equity'])).all()
-
-        for account in accounts:
-            balance = 0.0
-            for transaction in account.transactions:
-                if transaction.type == account.normal_balance:
-                    balance += transaction.amount
-                else:
-                    balance -= transaction.amount
-
-            category_key = account.category.lower()
-            report[category_key].append({'account_name': account.name, 'balance': round(balance, 2)})
-            totals[category_key] += balance
-
-        return jsonify({
-            'report': report,
-            'totals': {
-                'assets': round(totals['assets'], 2),
-                'liabilities': round(totals['liabilities'], 2),
-                'equity': round(totals['equity'], 2),
-                'liabilities_plus_equity': round(totals['liabilities'] + totals['equity'], 2)
-            },
-            'accounting_equation_balanced': round(totals['assets'], 2) == round(totals['liabilities'] + totals['equity'], 2)
-        })
-
-    @app.route('/api/accounting/income-statement', methods=['GET'])
-    @jwt_required()
-    def get_income_statement():
-        claims = get_jwt()
-        user_roles = claims.get('roles', [])
-        if 'Admin' not in user_roles and 'Contador' not in user_roles:
-            return jsonify({"message": "Acceso no autorizado"}), 403
-
-        report = {'revenues': [], 'expenses': []}
-        totals = {'revenues': 0.0, 'expenses': 0.0}
-
-        accounts = Account.query.filter(Account.category.in_(['Revenue', 'Expense'])).all()
-
-        for account in accounts:
-            balance = 0.0
-            # Simplified balance calculation for income statement accounts
-            for trx in account.transactions:
-                if trx.type == account.normal_balance:
-                    balance += trx.amount
-                else:
-                    balance -= trx.amount
-
-            category_key = account.category.lower() + 's' # revenues or expenses
-            report[category_key].append({'account_name': account.name, 'balance': round(balance, 2)})
-            totals[category_key] += balance
-
-        net_income = totals['revenues'] - totals['expenses']
-
-        return jsonify({
-            'report': report,
-            'totals': {
-                'revenues': round(totals['revenues'], 2),
-                'expenses': round(totals['expenses'], 2),
-            },
-            'net_income': round(net_income, 2)
-        })
+    # This section has been moved to backend/routes/accounting_routes.py
 
     # --- HR / Employee Management API ROUTES ---
 
@@ -814,22 +684,44 @@ from datetime import datetime, date, timedelta
             )
             db.session.add(new_payroll_log)
 
+            total_gross_salary = 0
+            total_isss = 0
+            total_afp = 0
+            total_renta = 0
+
             for emp in active_employees:
-                payslip_details = payroll_service.calculate_payslip_details(emp.salary)
+                # Assuming 'SV' for now, this can be dynamic based on employee.country_code
+                payslip_details = payroll_service.calculate_payslip_details(emp.salary, emp.country_code)
 
                 new_payslip = PaySlip(
                     employee_id=emp.id,
                     payroll_log=new_payroll_log,
                     gross_salary=payslip_details['gross_salary'],
-                    isss_deduction=payslip_details['isss_deduction'],
-                    afp_deduction=payslip_details['afp_deduction'],
-                    renta_deduction=payslip_details['renta_deduction'],
+                    isss_deduction=payslip_details.get('isss_deduction', 0),
+                    afp_deduction=payslip_details.get('afp_deduction', 0),
+                    renta_deduction=payslip_details.get('income_tax_deduction', 0),
                     net_salary=payslip_details['net_salary']
                 )
                 db.session.add(new_payslip)
                 total_paid += payslip_details['net_salary']
+                total_gross_salary += payslip_details['gross_salary']
+                total_isss += payslip_details.get('isss_deduction', 0)
+                total_afp += payslip_details.get('afp_deduction', 0)
+                total_renta += payslip_details.get('income_tax_deduction', 0)
 
             new_payroll_log.total_paid = total_paid
+
+            # --- Accounting Integration ---
+            total_deductions = total_isss + total_afp + total_renta
+            transactions = [
+                {'account_name': 'Sueldos y Salarios', 'type': 'Debit', 'amount': total_gross_salary},
+                {'account_name': 'Retenciones por Pagar', 'type': 'Credit', 'amount': total_deductions},
+                {'account_name': 'Sueldos por Pagar', 'type': 'Credit', 'amount': total_paid}
+            ]
+            description = f"Provisión de nómina para el período {start_date.strftime('%Y-%m-%d')} a {end_date.strftime('%Y-%m-%d')}"
+            journal_entry = accounting_service.create_journal_entry(datetime.utcnow(), description, transactions)
+            new_payroll_log.journal_entry = journal_entry
+
             db.session.commit()
 
             return jsonify({
@@ -1039,50 +931,6 @@ from datetime import datetime, date, timedelta
         return jsonify({"message": f"Se enviaron {sent_count} recordatorios de pago."})
 
     # --- MARKETING / MAILING LIST API ROUTES ---
-
-    @app.route('/api/mailing-lists', methods=['GET', 'POST'])
-    @jwt_required()
-    def handle_mailing_lists():
-        claims = get_jwt()
-        if 'Admin' not in claims.get('roles', []):
-            return jsonify({"message": "Acceso no autorizado"}), 403
-
-        if request.method == 'GET':
-            lists = MailingList.query.all()
-            return jsonify([l.to_dict() for l in lists])
-
-        data = request.get_json()
-        new_list = MailingList(name=data['name'], description=data.get('description'))
-        db.session.add(new_list)
-        db.session.commit()
-        return jsonify(new_list.to_dict()), 201
-
-    @app.route('/api/mailing-lists/<int:list_id>/members', methods=['POST', 'DELETE'])
-    @jwt_required()
-    def handle_mailing_list_members(list_id):
-        claims = get_jwt()
-        if 'Admin' not in claims.get('roles', []):
-            return jsonify({"message": "Acceso no autorizado"}), 403
-
-        mailing_list = MailingList.query.get_or_404(list_id)
-        data = request.get_json()
-        user = User.query.get_or_404(data['user_id'])
-
-        if request.method == 'POST':
-            if user in mailing_list.members:
-                return jsonify({"message": "El usuario ya está en la lista."}), 409
-            mailing_list.members.append(user)
-            db.session.commit()
-            return jsonify({"message": "Usuario añadido a la lista."})
-
-        if request.method == 'DELETE':
-            if user not in mailing_list.members:
-                return jsonify({"message": "El usuario no está en la lista."}), 404
-            mailing_list.members.remove(user)
-            db.session.commit()
-            return jsonify({"message": "Usuario eliminado de la lista."})
-
-    # --- MARKETING API ROUTES ---
 
     @app.route('/api/mailing-lists', methods=['GET', 'POST'])
     @jwt_required()
@@ -1343,8 +1191,25 @@ def setup_database(app):
                 # Revenue
                 Account(name='Ingresos por Intereses', category='Revenue', normal_balance='Credit'),
                 Account(name='Ingresos por Comisiones', category='Revenue', normal_balance='Credit'),
+                Account(name='Ingresos por Servicios', category='Revenue', normal_balance='Credit'),
+                # Expenses
+                Account(name='Sueldos y Salarios', category='Expense', normal_balance='Debit'),
+                # Liabilities (Payroll related)
+                Account(name='Retenciones por Pagar', category='Liability', normal_balance='Credit'),
+                Account(name='Sueldos por Pagar', category='Liability', normal_balance='Credit'),
             ]
             db.session.bulk_save_objects(accounts)
+            db.session.commit()
+
+        if not TaxType.query.first():
+            taxes = [
+                TaxType(name='IVA', rate=0.13, country_code='SV'),
+                TaxType(name='IVA', rate=0.12, country_code='GT'),
+                TaxType(name='ISV', rate=0.15, country_code='HN'),
+                TaxType(name='IVA', rate=0.16, country_code='MX'),
+                TaxType(name='IVA', rate=0.19, country_code='CO'),
+            ]
+            db.session.bulk_save_objects(taxes)
             db.session.commit()
 
         if not NotificationTemplate.query.first():
