@@ -600,3 +600,42 @@ class TaxType(db.Model):
             'rate': self.rate,
             'country_code': self.country_code
         }
+
+# --- Billing Models (LAN-BIL9) ---
+
+class SubscriptionPlan(db.Model):
+    """Defines a recurring billing plan."""
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), unique=True, nullable=False)
+    price = db.Column(db.Float, nullable=False)
+    billing_interval = db.Column(db.String(20), nullable=False, default='monthly') # e.g., 'monthly', 'annually'
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'price': self.price,
+            'billing_interval': self.billing_interval
+        }
+
+class Subscription(db.Model):
+    """Links a user to a subscription plan."""
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    user = db.relationship('User', backref='subscriptions')
+    plan_id = db.Column(db.Integer, db.ForeignKey('subscription_plan.id'), nullable=False)
+    plan = db.relationship('SubscriptionPlan')
+
+    status = db.Column(db.String(20), nullable=False, default='active') # 'active', 'cancelled', 'past_due'
+    start_date = db.Column(db.Date, nullable=False, default=db.func.current_date())
+    next_billing_date = db.Column(db.Date, nullable=False)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'plan_name': self.plan.name,
+            'status': self.status,
+            'start_date': self.start_date.isoformat(),
+            'next_billing_date': self.next_billing_date.isoformat()
+        }

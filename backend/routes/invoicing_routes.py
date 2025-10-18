@@ -4,7 +4,7 @@ Rutas de la API para el Módulo de Facturación (LAN-FE2).
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt
 from backend.services import invoicing_service
-from backend.services import accounting_service
+from backend import accounting_service
 from backend.models import Invoice
 
 invoicing_bp = Blueprint('invoicing_bp', __name__, url_prefix='/api/invoicing')

@@ -8,6 +8,7 @@ from models import db, Role, User, LoanProduct, LoanApplication, Account, Employ
 from routes.ett_routes import ett_bp
 from routes.accounting_routes import accounting_bp
 from routes.invoicing_routes import invoicing_bp
+from routes.billing_routes import billing_bp
 from loan_calculator import calculate_loan_details
 from pdf_generator import generate_contract_pdf
 import accounting_service
@@ -37,6 +38,7 @@ def create_app():
     app.register_blueprint(ett_bp)
     app.register_blueprint(accounting_bp)
     app.register_blueprint(invoicing_bp)
+    app.register_blueprint(billing_bp)
 
     # --- AUTH & USER ROUTES ---
     @app.route('/api/auth/register', methods=['POST'])
@@ -931,23 +933,6 @@ def create_app():
         return jsonify({"message": f"Se enviaron {sent_count} recordatorios de pago."})
 
     # --- MARKETING / MAILING LIST API ROUTES ---
-
-    @app.route('/api/mailing-lists', methods=['GET', 'POST'])
-    @jwt_required()
-    def handle_mailing_lists():
-        claims = get_jwt()
-        if 'Admin' not in claims.get('roles', []):
-            return jsonify({"message": "Acceso no autorizado"}), 403
-
-        if request.method == 'GET':
-            lists = MailingList.query.all()
-            return jsonify([l.to_dict() for l in lists])
-
-        data = request.get_json()
-        new_list = MailingList(name=data['name'], description=data.get('description'))
-        db.session.add(new_list)
-        db.session.commit()
-        return jsonify(new_list.to_dict()), 201
 
     @app.route('/api/mailing-lists/<int:list_id>/members', methods=['POST', 'DELETE'])
     @jwt_required()
