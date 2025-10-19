@@ -168,3 +168,28 @@ class Task(db.Model):
     title = db.Column(db.String(255), nullable=False)
     project_id = db.Column(db.Integer, db.ForeignKey('project.id'), nullable=False)
     assignee_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=True)
+
+# --- Bank Reconciliation Models (LAN-CB7) ---
+
+class BankAccountStatement(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=False) # The internal bank account
+    start_date = db.Column(db.Date, nullable=False)
+    end_date = db.Column(db.Date, nullable=False)
+    start_balance = db.Column(db.Float, nullable=False)
+    end_balance = db.Column(db.Float, nullable=False)
+    uploaded_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+    status = db.Column(db.String(50), default='Pending', nullable=False) # Pending, In Progress, Completed
+    transactions = db.relationship('BankTransaction', backref='statement', lazy='dynamic', cascade="all, delete-orphan")
+
+class BankTransaction(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    statement_id = db.Column(db.Integer, db.ForeignKey('bank_account_statement.id'), nullable=False)
+    transaction_date = db.Column(db.Date, nullable=False)
+    description = db.Column(db.String(255), nullable=False)
+    amount = db.Column(db.Float, nullable=False)
+    type = db.Column(db.String(50), nullable=False) # Debit or Credit
+    status = db.Column(db.String(50), default='Unreconciled', nullable=False) # Unreconciled, Reconciled, Mismatch
+    journal_entry_id = db.Column(db.Integer, db.ForeignKey('journal_entry.id'), nullable=True) # Link to the reconciled entry

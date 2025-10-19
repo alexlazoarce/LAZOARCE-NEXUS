@@ -4,12 +4,11 @@ from flask_cors import CORS
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, JWTManager, get_jwt
 from flask_migrate import Migrate
 from functools import wraps
+from dotenv import load_dotenv
 
-from .models import (
-    db, Tenant, Role, User, LoanProduct, LoanApplication, Account, JournalEntry, Transaction,
-    Employee, Lead, CommunicationLog, Payment, NotificationTemplate, AuditLog,
-    Opportunity, Project, Task
-)
+load_dotenv()
+
+from .models import db, Tenant, Role, User, LoanProduct, LoanApplication, Account, JournalEntry, Transaction, Employee, Lead, CommunicationLog, Payment, NotificationTemplate, AuditLog, Opportunity, Project, Task
 from .loan_calculator import calculate_loan_details
 from .pdf_generator import generate_contract_pdf
 from . import accounting_service
@@ -18,15 +17,16 @@ from . import collections_service
 from . import notification_service
 from . import audit_service
 from . import event_service
+from . import bank_reconciliation_service
 from datetime import datetime, date, timedelta
+import werkzeug
 
 def create_app():
     app = Flask(__name__)
     CORS(app)
-    app.config['SECRET_KEY'] = 'dev'
-    app.config['JWT_SECRET_KEY'] = 'dev'
-    # Point to the provided PostgreSQL database with the corrected hostname
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:1sQl4WixNdQihHxd@db.efntaqjschznzrnzrnhh.supabase.co:5432/postgres?sslmode=require'
+    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY')
+    app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY')
+    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
     db.init_app(app)
@@ -95,42 +95,54 @@ def create_app():
 
         return jsonify(portfolio_data)
 
-    # ... (all other routes would be here) ...
+    # --- Bank Reconciliation (LAN-CB7) ---
+    @app.route('/api/reconciliation/upload', methods=['POST'])
+    @tenant_required
+    def upload_bank_statement():
+        if 'statement' not in request.files:
+            return jsonify({"error": "No se encontró el archivo del extracto."}), 400
+
+        file = request.files['statement']
+        if file.filename == '':
+            return jsonify({"error": "No se seleccionó ningún archivo."}), 400
+
+        # Secure the filename and save it temporarily
+        filename = werkzeug.utils.secure_filename(file.filename)
+        temp_path = os.path.join('/tmp', filename)
+        file.save(temp_path)
+
+        # Extract metadata from form
+        account_id = request.form.get('account_id')
+        start_date = request.form.get('start_date')
+        end_date = request.form.get('end_date')
+        start_balance = request.form.get('start_balance')
+        end_balance = request.form.get('end_balance')
+
+        result, status_code = bank_reconciliation_service.process_bank_statement_csv(
+            file_path=temp_path,
+            tenant_id=g.tenant_id,
+            account_id=account_id,
+            start_date=start_date,
+            end_date=end_date,
+            start_balance=start_balance,
+            end_balance=end_balance
+        )
+
+        # Clean up the temporary file
+        os.remove(temp_path)
+
+        return jsonify(result), status_code
+
+    @app.route('/api/reconciliation/statement/<int:statement_id>', methods=['GET'])
+    @tenant_required
+    def get_reconciliation_status(statement_id):
+        statement = bank_reconciliation_service.get_statement_details(statement_id, g.tenant_id)
+        return jsonify(statement)
+
+    @app.route('/api/reconciliation/statement/<int:statement_id>/reconcile', methods=['POST'])
+    @tenant_required
+    def reconcile_bank_statement(statement_id):
+        result = bank_reconciliation_service.reconcile_statement(statement_id, g.tenant_id)
+        return jsonify(result)
 
     return app
-
-def setup_database(app):
-    """
-    This function is now only for seeding data if needed, AFTER a migration.
-    """
-    with app.app_context():
-        print("Seeding initial data if necessary...")
-        if Tenant.query.first() is None:
-            print("No default tenant found, creating one...")
-            default_tenant = Tenant(company_name='LAZOARCE NEXUS')
-            db.session.add(default_tenant)
-            db.session.commit()
-            print("Default tenant created.")
-
-            default_tenant = Tenant.query.first()
-
-            print("Creating default roles...")
-            roles = [Role(name=r, tenant_id=default_tenant.id) for r in ['SuperAdmin', 'Admin', 'Cliente']]
-            db.session.bulk_save_objects(roles)
-            db.session.commit()
-            print("Default roles created.")
-
-            print("Creating SuperAdmin user...")
-            super_admin_role = Role.query.filter_by(name='SuperAdmin', tenant_id=default_tenant.id).first()
-            super_admin_user = User(
-                email='support@lazoarce.com',
-                tenant_id=default_tenant.id,
-                role_id=super_admin_role.id,
-                full_name='LAZOARCE Support'
-            )
-            super_admin_user.set_password('superadmin123')
-            db.session.add(super_admin_user)
-            db.session.commit()
-            print("SuperAdmin user created.")
-        else:
-            print("Default tenant already exists. No seeding needed.")
