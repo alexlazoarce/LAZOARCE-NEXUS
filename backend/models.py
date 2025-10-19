@@ -306,3 +306,46 @@ class TenantSubscription(db.Model):
     tenant = db.relationship('Tenant')
     module = db.relationship('SystemModule')
     __table_args__ = (db.UniqueConstraint('tenant_id', 'module_id'),)
+
+# --- Gym Management Models (LAN-GYM1) ---
+
+class GymMembershipPlan(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    price = db.Column(db.Float, nullable=False)
+    duration_days = db.Column(db.Integer, nullable=False) # e.g., 30 for monthly, 90 for quarterly, 365 for annual
+    description = db.Column(db.Text, nullable=True)
+    members = db.relationship('GymMember', backref='membership_plan', lazy='dynamic')
+    __table_args__ = (db.UniqueConstraint('name', 'tenant_id'),)
+
+class GymMember(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    full_name = db.Column(db.String(200), nullable=False)
+    email = db.Column(db.String(120), nullable=True)
+    phone = db.Column(db.String(50), nullable=True)
+    join_date = db.Column(db.Date, nullable=False, default=db.func.current_date())
+    membership_plan_id = db.Column(db.Integer, db.ForeignKey('gym_membership_plan.id'), nullable=True)
+    membership_start_date = db.Column(db.Date, nullable=True)
+    membership_end_date = db.Column(db.Date, nullable=True)
+    status = db.Column(db.String(50), default='active', nullable=False) # active, inactive, frozen
+    attendance = db.relationship('ClassAttendance', backref='member', lazy='dynamic', cascade="all, delete-orphan")
+    __table_args__ = (db.UniqueConstraint('email', 'tenant_id'),)
+
+class GymClass(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    instructor = db.Column(db.String(100), nullable=True)
+    schedule = db.Column(db.String(255), nullable=True) # e.g., "Lunes, Miércoles 18:00 - 19:00"
+    capacity = db.Column(db.Integer, nullable=True)
+    attendees = db.relationship('ClassAttendance', backref='gym_class', lazy='dynamic', cascade="all, delete-orphan")
+    __table_args__ = (db.UniqueConstraint('name', 'schedule', 'tenant_id'),)
+
+class ClassAttendance(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    class_id = db.Column(db.Integer, db.ForeignKey('gym_class.id'), nullable=False)
+    member_id = db.Column(db.Integer, db.ForeignKey('gym_member.id'), nullable=False)
+    attendance_date = db.Column(db.DateTime, nullable=False, default=db.func.current_timestamp())

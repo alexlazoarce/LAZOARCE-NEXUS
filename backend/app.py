@@ -24,6 +24,7 @@ from . import attendance_service
 from . import recruitment_service
 from . import subscription_service
 from . import licensing_service
+from . import gym_service
 from datetime import datetime, date, timedelta
 import werkzeug
 
@@ -557,5 +558,60 @@ def create_app():
             return jsonify({"license_key": new_key})
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
+
+    # --- Gym Management (LAN-GYM1) ---
+
+    @app.route('/api/gym/plans', methods=['POST'])
+    @module_access_required('LAN-GYM1')
+    def create_plan_route():
+        plan = gym_service.create_membership_plan(g.tenant_id, request.get_json())
+        return jsonify({'message': 'Plan creado exitosamente', 'plan_id': plan.id}), 201
+
+    @app.route('/api/gym/plans', methods=['GET'])
+    @module_access_required('LAN-GYM1')
+    def get_plans_route():
+        plans = gym_service.get_membership_plans(g.tenant_id)
+        return jsonify([{'id': p.id, 'name': p.name, 'price': p.price, 'duration_days': p.duration_days} for p in plans])
+
+    @app.route('/api/gym/members', methods=['POST'])
+    @module_access_required('LAN-GYM1')
+    def register_member_route():
+        member = gym_service.register_member(g.tenant_id, request.get_json())
+        return jsonify({'message': 'Miembro registrado exitosamente', 'member_id': member.id}), 201
+
+    @app.route('/api/gym/members', methods=['GET'])
+    @module_access_required('LAN-GYM1')
+    def get_members_route():
+        members = gym_service.get_members(g.tenant_id)
+        return jsonify([{
+            'id': m.id, 'full_name': m.full_name, 'email': m.email,
+            'status': m.status, 'membership_end_date': m.membership_end_date.isoformat() if m.membership_end_date else None
+        } for m in members])
+
+    @app.route('/api/gym/members/<int:member_id>/assign-plan', methods=['POST'])
+    @module_access_required('LAN-GYM1')
+    def assign_plan_route(member_id):
+        data = request.get_json()
+        member = gym_service.assign_membership_to_member(g.tenant_id, member_id, data['plan_id'])
+        return jsonify({'message': f'Plan asignado a {member.full_name}'})
+
+    @app.route('/api/gym/classes', methods=['POST'])
+    @module_access_required('LAN-GYM1')
+    def create_class_route():
+        gym_class = gym_service.create_gym_class(g.tenant_id, request.get_json())
+        return jsonify({'message': 'Clase creada exitosamente', 'class_id': gym_class.id}), 201
+
+    @app.route('/api/gym/classes', methods=['GET'])
+    @module_access_required('LAN-GYM1')
+    def get_classes_route():
+        classes = gym_service.get_gym_classes(g.tenant_id)
+        return jsonify([{'id': c.id, 'name': c.name, 'instructor': c.instructor, 'schedule': c.schedule} for c in classes])
+
+    @app.route('/api/gym/classes/attendance', methods=['POST'])
+    @module_access_required('LAN-GYM1')
+    def record_attendance_route():
+        data = request.get_json()
+        attendance = gym_service.record_class_attendance(g.tenant_id, data['class_id'], data['member_id'])
+        return jsonify({'message': 'Asistencia registrada', 'attendance_id': attendance.id}), 201
 
     return app
