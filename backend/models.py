@@ -104,6 +104,7 @@ class Employee(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
     full_name = db.Column(db.String(120), nullable=False)
+    email = db.Column(db.String(120), nullable=True) # Can be nullable if not all employees are users
     position = db.Column(db.String(100), nullable=False)
     salary = db.Column(db.Float, nullable=False)
     hire_date = db.Column(db.Date, nullable=False)
@@ -200,3 +201,18 @@ class BankTransaction(db.Model):
     type = db.Column(db.String(50), nullable=False) # Debit or Credit
     status = db.Column(db.String(50), default='Unreconciled', nullable=False) # Unreconciled, Reconciled, Mismatch
     journal_entry_id = db.Column(db.Integer, db.ForeignKey('journal_entry.id'), nullable=True) # Link to the reconciled entry
+
+# --- Absence Management Models (LAN-V1A) ---
+
+class AbsenceRequest(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
+    employee = db.relationship('Employee')
+    absence_type = db.Column(db.String(50), nullable=False) # E.g., 'Vacaciones', 'Enfermedad', 'Personal'
+    start_date = db.Column(db.Date, nullable=False)
+    end_date = db.Column(db.Date, nullable=False)
+    status = db.Column(db.String(50), default='Pendiente', nullable=False) # Pendiente, Aprobada, Rechazada
+    approved_by_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True) # User who approved/rejected
+    approved_by = db.relationship('User')
+    comments = db.Column(db.Text, nullable=True)

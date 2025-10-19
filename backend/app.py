@@ -18,6 +18,7 @@ from . import notification_service
 from . import audit_service
 from . import event_service
 from . import bank_reconciliation_service
+from . import absence_service
 from datetime import datetime, date, timedelta
 import werkzeug
 
@@ -240,5 +241,70 @@ def create_app():
         else:
             db.session.rollback()
         return jsonify(result), status_code
+
+    # --- Absence Management (LAN-V1A) ---
+    @app.route('/api/absences/balance', methods=['GET'])
+    @tenant_required
+    def get_my_vacation_balance():
+        # Assuming the logged-in user is an employee
+        employee = Employee.query.filter_by(email=g.user.email, tenant_id=g.tenant_id).first()
+        if not employee:
+            return jsonify({"error": "No se encontró el perfil de empleado para este usuario."}), 404
+        balance = absence_service.get_vacation_balance(employee.id)
+        return jsonify({"vacation_balance": balance})
+
+    @app.route('/api/absences/requests', methods=['POST'])
+    @tenant_required
+    def create_absence_request_route():
+        employee = Employee.query.filter_by(email=g.user.email, tenant_id=g.tenant_id).first()
+        if not employee:
+            return jsonify({"error": "No se encontró el perfil de empleado para este usuario."}), 404
+
+        data = request.get_json()
+        try:
+            new_request = absence_service.create_absence_request(
+                employee_id=employee.id,
+                tenant_id=g.tenant_id,
+                absence_type=data['absence_type'],
+                start_date=date.fromisoformat(data['start_date']),
+                end_date=date.fromisoformat(data['end_date']),
+                comments=data.get('comments')
+            )
+            db.session.commit()
+            return jsonify({"message": "Solicitud de ausencia creada.", "request_id": new_request.id}), 201
+        except (ValueError, KeyError) as e:
+            db.session.rollback()
+            return jsonify({"error": str(e)}), 400
+
+    @app.route('/api/absences/requests', methods=['GET'])
+    @tenant_required
+    def get_my_absence_requests():
+        employee = Employee.query.filter_by(email=g.user.email, tenant_id=g.tenant_id).first()
+        if not employee:
+            return jsonify({"error": "No se encontró el perfil de empleado para este usuario."}), 404
+
+        requests = absence_service.get_absence_requests_for_employee(employee.id)
+        return jsonify([
+            {
+                "id": req.id,
+                "absence_type": req.absence_type,
+                "start_date": req.start_date.isoformat(),
+                "end_date": req.end_date.isoformat(),
+                "status": req.status,
+                "comments": req.comments
+            } for req in requests
+        ])
+
+    @app.route('/api/absences/requests/<int:request_id>/approve', methods=['POST'])
+    @tenant_required
+    def approve_absence_request_route(request_id):
+        # In a real app, you'd check if g.user has manager roles
+        try:
+            absence_service.approve_absence_request(request_id, g.user.id)
+            db.session.commit()
+            return jsonify({"message": "Solicitud aprobada."})
+        except ValueError as e:
+            db.session.rollback()
+            return jsonify({"error": str(e)}), 400
 
     return app
