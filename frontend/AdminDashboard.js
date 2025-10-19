@@ -7,7 +7,7 @@ const AdminDashboard = ({ token, onManagePayments }) => {
     const fetchApplications = async () => {
         try {
             setLoading(true);
-            const response = await fetch(`${API_BASE_URL}/api/applications`, {
+            const response = await fetch(`${API_BASE_URL}/api/loan_applications`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (!response.ok) throw new Error('Error al cargar solicitudes');
@@ -28,27 +28,49 @@ const AdminDashboard = ({ token, onManagePayments }) => {
         setDisbursementSources(prev => ({ ...prev, [appId]: source }));
     };
 
-    const handleStatusChange = async (appId, newStatus) => {
+    const handleApprove = async (appId) => {
+        // This function would call a new endpoint to approve the loan
+        // For now, we'll just update the status locally for simplicity
         try {
-            let body = { status: newStatus };
-            if (newStatus === 'Desembolsada') {
-                const source = disbursementSources[appId] || 'Bancos'; // Default to Bancos
-                body.disbursement_source = source;
-            }
+            const response = await fetch(`${API_BASE_URL}/api/loan_applications/${appId}/approve`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!response.ok) throw new Error('No se pudo aprobar la solicitud.');
+            fetchApplications();
+        } catch (err) {
+            alert(`Error: ${err.message}`);
+        }
+    };
 
-            const response = await fetch(`${API_BASE_URL}/api/applications/${appId}/status`, {
-                method: 'PUT',
+    const handleReject = async (appId) => {
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/loan_applications/${appId}/reject`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!response.ok) throw new Error('No se pudo rechazar la solicitud.');
+            fetchApplications();
+        } catch (err) {
+            alert(`Error: ${err.message}`);
+        }
+    };
+
+    const handleDisburse = async (appId) => {
+        try {
+            const source = disbursementSources[appId] || 'Bancos';
+            const response = await fetch(`${API_BASE_URL}/api/loan_applications/${appId}/disburse`, {
+                method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`,
                 },
-                body: JSON.stringify(body),
+                body: JSON.stringify({ disbursement_source: source }),
             });
             if (!response.ok) {
-                 const errData = await response.json();
-                 throw new Error(errData.message || 'No se pudo actualizar el estado.');
+                const errData = await response.json();
+                throw new Error(errData.error || 'No se pudo desembolsar el préstamo.');
             }
-            // Refresh the list after successful update
             fetchApplications();
         } catch (err) {
             alert(`Error: ${err.message}`);
@@ -85,11 +107,11 @@ const AdminDashboard = ({ token, onManagePayments }) => {
                             <td>
                                 {app.status === 'Pendiente' && (
                                     <>
-                                        <button onClick={() => handleStatusChange(app.id, 'Aprobada')}>Aprobar</button>
-                                        <button onClick={() => handleStatusChange(app.id, 'Rechazada')}>Rechazar</button>
+                                        <button onClick={() => handleApprove(app.id)}>Aprobar</button>
+                                        <button onClick={() => handleReject(app.id)}>Rechazar</button>
                                     </>
                                 )}
-                                 {app.status === 'Aprobada' && (
+                                {app.status === 'Aprobada' && (
                                     <>
                                         <select
                                             onChange={(e) => handleSourceChange(app.id, e.target.value)}
@@ -99,7 +121,7 @@ const AdminDashboard = ({ token, onManagePayments }) => {
                                             <option value="Bancos">Desde Bancos</option>
                                             <option value="Caja">Desde Caja</option>
                                         </select>
-                                        <button onClick={() => handleStatusChange(app.id, 'Desembolsada')}>
+                                        <button onClick={() => handleDisburse(app.id)}>
                                             Desembolsar
                                         </button>
                                     </>

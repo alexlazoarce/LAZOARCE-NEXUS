@@ -65,8 +65,15 @@ class LoanApplication(db.Model):
     amount_requested = db.Column(db.Float, nullable=False)
     term_months = db.Column(db.Integer, nullable=False)
     status = db.Column(db.String(20), nullable=False, default='Pendiente')
+    application_date = db.Column(db.DateTime, default=db.func.current_timestamp())
+    decision_date = db.Column(db.DateTime, nullable=True)
+    disbursement_date = db.Column(db.DateTime, nullable=True)
+    monthly_payment = db.Column(db.Float, nullable=True)
+    total_payment = db.Column(db.Float, nullable=True)
+    commission_calculation_method = db.Column(db.String(50), default='Al Inicio', nullable=False)
     signature_image = db.Column(db.Text, nullable=True)
     signed_at = db.Column(db.DateTime, nullable=True)
+    contract_id = db.Column(db.String(100), nullable=True) # To store a reference to the generated contract
     payments = db.relationship('Payment', backref='application', lazy='dynamic')
 
 class Account(db.Model):

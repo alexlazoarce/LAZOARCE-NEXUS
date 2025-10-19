@@ -45,3 +45,27 @@ def create_journal_entry(date, description, transactions_data):
 
     # The session commit will happen in the route after calling this service
     return new_entry
+
+def create_disbursement_journal_entry(application, disbursement_source_account_name):
+    """
+    Creates a specific journal entry for a loan disbursement.
+    """
+    description = f"Desembolso de préstamo ID {application.id} para {application.applicant.full_name}"
+
+    # The name of the loan portfolio account might be standardized or based on the product
+    loan_portfolio_account_name = "Préstamos por Cobrar"
+
+    transactions = [
+        {
+            "account_name": loan_portfolio_account_name,
+            "type": "Debit",
+            "amount": application.amount_requested
+        },
+        {
+            "account_name": disbursement_source_account_name,
+            "type": "Credit",
+            "amount": application.amount_requested
+        }
+    ]
+
+    return create_journal_entry(application.disbursement_date, description, transactions)

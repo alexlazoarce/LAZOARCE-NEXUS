@@ -1,45 +1,50 @@
-from .models import db, User, NotificationTemplate
+from datetime import date, timedelta
+from .models import LoanApplication, User
 
-def send_notification(user_id, template_slug, data={}):
+def send_payment_reminders():
     """
-    Renders and "sends" a notification to a user based on a template.
-    In this version, "sending" means printing to the console.
-
-    :param user_id: The ID of the user to notify.
-    :param template_slug: The slug of the NotificationTemplate to use.
-    :param data: A dictionary of context data to fill in the template.
+    Finds loans with upcoming payments and sends reminders.
+    For now, it just prints the reminder to the console.
     """
-    user = User.query.get(user_id)
-    template = NotificationTemplate.query.filter_by(slug=template_slug).first()
+    today = date.today()
+    reminder_date = today + timedelta(days=5) # Send reminder 5 days before due date
 
-    if not user:
-        print(f"ERROR de Notificación: Usuario con ID {user_id} no encontrado.")
-        return
-    if not template:
-        print(f"ERROR de Notificación: Plantilla con slug '{template_slug}' no encontrada.")
-        return
+    # This is a simplified query. A real implementation would need to parse the
+    # amortization table for each loan to find the next due date.
+    # For now, we'll simulate finding loans that need reminders.
 
-    # Prepare context data
-    context = {
-        'customer_name': user.full_name,
-        'customer_email': user.email,
-        **data # Merge external data
-    }
+    # Placeholder: In a real scenario, you'd query loans whose next payment is on reminder_date.
+    # applications_to_remind = LoanApplication.query.filter(...)
 
-    # Render subject and body
-    subject = template.subject
-    body = template.body
-    for key, value in context.items():
-        subject = subject.replace(f'{{{key}}}', str(value))
-        body = body.replace(f'{{{key}}}', str(value))
+    print(f"--- Running Payment Reminders for {today} ---")
 
-    # "Send" the notification
-    print("--- SIMULANDO ENVÍO DE NOTIFICACIÓN ---")
-    print(f"Tipo: {template.type}")
-    print(f"Para: {user.email}")
+    # Simulating finding a loan that needs a reminder
+    # In a real implementation, you would loop through `applications_to_remind`
+
+    # a_loan = LoanApplication.query.first() # Example loan
+    # if a_loan:
+    #     user = User.query.get(a_loan.user_id)
+    #     message = f"Hola {user.full_name},\n\n"
+    #     message += f"Este es un recordatorio de que tu próximo pago del préstamo ID {a_loan.id} por un monto de ${a_loan.monthly_payment:.2f} vence en 5 días.\n\n"
+    #     message += "Gracias,\nLAZOARCE NEXUS"
+
+    #     send_email(user.email, "Recordatorio de Pago", message)
+
+    print("No loans found for reminders today (simulation).")
+    print("--- Payment Reminders Finished ---")
+
+def send_email(to_address, subject, body):
+    """
+    Simulates sending an email. In a real implementation, this would connect
+    to an SMTP server or email service (like SendGrid, Mailgun, etc.).
+    """
+    print("======================================")
+    print(f"MAIL ENVIADO (SIMULACIÓN)")
+    print(f"Para: {to_address}")
     print(f"Asunto: {subject}")
-    print("--- Cuerpo ---")
+    print("--------------------------------------")
     print(body)
-    print("---------------------------------------")
+    print("======================================")
 
-    return True # Indicate success
+# To run this service, you would typically have a scheduler (like APScheduler or a cron job)
+# that calls send_payment_reminders() periodically (e.g., once a day).

@@ -8,7 +8,7 @@ const MyApplications = ({ token, onViewContract }) => {
         const fetchApplications = async () => {
             try {
                 setLoading(true);
-                const response = await fetch(`${API_BASE_URL}/api/applications`, {
+                const response = await fetch(`${API_BASE_URL}/api/loan_applications`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 if (!response.ok) {

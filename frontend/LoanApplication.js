@@ -59,7 +59,7 @@ const LoanApplication = ({ token, onNavigate }) => {
         }
 
         try {
-            const response = await fetch(`${API_BASE_URL}/api/applications`, {
+            const response = await fetch(`${API_BASE_URL}/api/loan_applications`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

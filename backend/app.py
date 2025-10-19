@@ -81,6 +81,78 @@ def create_app():
 
         return jsonify({"message": "Credenciales incorrectas para el inquilino especificado."}), 401
 
+    @app.route('/api/loan_applications', methods=['POST'])
+    @tenant_required
+    def create_loan_application():
+        data = request.get_json()
+        product = LoanProduct.query.filter_by(id=data['product_id'], tenant_id=g.tenant_id).first_or_404()
+
+        loan_details = calculate_loan_details(
+            principal=data['amount_requested'],
+            annual_interest_rate=product.interest_rate,
+            term_months=data['term_months'],
+            commission_rate=product.commission_rate,
+            commission_type='Al Inicio' # Assuming a default, this could be part of the product model
+        )
+
+        new_application = LoanApplication(
+            tenant_id=g.tenant_id,
+            user_id=g.user.id,
+            product_id=data['product_id'],
+            amount_requested=data['amount_requested'],
+            term_months=data['term_months'],
+            monthly_payment=loan_details['monthly_payment'],
+            total_payment=loan_details['total_payment'],
+            status='Pendiente'
+        )
+        db.session.add(new_application)
+        db.session.commit()
+        return jsonify({"message": "Solicitud de préstamo creada exitosamente.", "application_id": new_application.id}), 201
+
+    @app.route('/api/loan_applications/<int:app_id>/approve', methods=['POST'])
+    @tenant_required
+    def approve_loan(app_id):
+        application = LoanApplication.query.filter_by(id=app_id, tenant_id=g.tenant_id).first_or_404()
+        if application.status != 'Pendiente':
+            return jsonify({"error": "La solicitud no está en estado 'Pendiente'."}), 400
+        application.status = 'Aprobada'
+        application.decision_date = datetime.utcnow()
+        db.session.commit()
+        return jsonify({"message": "Solicitud aprobada."})
+
+    @app.route('/api/loan_applications/<int:app_id>/reject', methods=['POST'])
+    @tenant_required
+    def reject_loan(app_id):
+        application = LoanApplication.query.filter_by(id=app_id, tenant_id=g.tenant_id).first_or_404()
+        if application.status != 'Pendiente':
+            return jsonify({"error": "La solicitud no está en estado 'Pendiente'."}), 400
+        application.status = 'Rechazada'
+        application.decision_date = datetime.utcnow()
+        db.session.commit()
+        return jsonify({"message": "Solicitud rechazada."})
+
+    @app.route('/api/loan_applications/<int:app_id>/disburse', methods=['POST'])
+    @tenant_required
+    def disburse_loan(app_id):
+        application = LoanApplication.query.filter_by(id=app_id, tenant_id=g.tenant_id).first_or_404()
+
+        if application.status != 'Aprobada':
+            return jsonify({"error": "La solicitud no está en estado 'Aprobada'."}), 400
+
+        data = request.get_json()
+        disbursement_source = data.get('disbursement_source', 'Bancos') # Default to 'Bancos'
+
+        application.status = 'Desembolsada'
+        application.disbursement_date = datetime.utcnow()
+
+        try:
+            accounting_service.create_disbursement_journal_entry(application, disbursement_source)
+            db.session.commit()
+            return jsonify({"message": "Préstamo desembolsado y asiento contable creado."})
+        except ValueError as e:
+            db.session.rollback()
+            return jsonify({"error": str(e)}), 400
+
     @app.route('/api/portfolio/user_status', methods=['GET'])
     @tenant_required
     def get_user_portfolio_status():
