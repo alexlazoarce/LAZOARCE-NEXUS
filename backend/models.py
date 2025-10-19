@@ -391,3 +391,22 @@ class N8nWorkflow(db.Model):
     workflow_json = db.Column(db.JSON, nullable=False)
     is_active = db.Column(db.Boolean, default=True)
     __table_args__ = (db.UniqueConstraint('name', 'tenant_id'),)
+
+# --- Make.com Integration Models (LAN-MKE1) ---
+
+class MakeConnection(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    # As with n8n, this would be encrypted in a real implementation.
+    encrypted_credentials = db.Column(db.Text, nullable=False)
+    __table_args__ = (db.UniqueConstraint('name', 'tenant_id'),)
+
+class MakeScenario(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    # The 'blueprint' of the scenario in JSON format.
+    scenario_blueprint = db.Column(db.JSON, nullable=False)
+    is_active = db.Column(db.Boolean, default=True)
+    __table_args__ = (db.UniqueConstraint('name', 'tenant_id'),)

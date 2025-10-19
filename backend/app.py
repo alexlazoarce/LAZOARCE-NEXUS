@@ -27,6 +27,7 @@ from . import licensing_service
 from . import gym_service
 from . import barbershop_service
 from . import automation_service
+from . import make_integration_service
 from datetime import datetime, date, timedelta
 import werkzeug
 
@@ -681,5 +682,25 @@ def create_app():
             return jsonify({'message': 'Flujo de trabajo guardado', 'workflow_id': workflow.id}), 201
         except (KeyError, TypeError):
             return jsonify({'error': 'Faltan datos requeridos (name, trigger_event, workflow_json).'}), 400
+
+    # --- Make.com Integration (LAN-MKE1) ---
+
+    @app.route('/api/make/scenarios', methods=['GET'])
+    @module_access_required('LAN-MKE1')
+    def get_scenarios_route():
+        scenarios = make_integration_service.get_scenarios(g.tenant_id)
+        return jsonify([{'id': s.id, 'name': s.name, 'is_active': s.is_active} for s in scenarios])
+
+    @app.route('/api/make/scenarios', methods=['POST'])
+    @module_access_required('LAN-MKE1')
+    def save_scenario_route():
+        data = request.get_json()
+        try:
+            scenario = make_integration_service.save_scenario(
+                g.tenant_id, data['name'], data['scenario_blueprint']
+            )
+            return jsonify({'message': 'Escenario guardado', 'scenario_id': scenario.id}), 201
+        except (KeyError, TypeError):
+            return jsonify({'error': 'Faltan datos requeridos (name, scenario_blueprint).'}), 400
 
     return app
