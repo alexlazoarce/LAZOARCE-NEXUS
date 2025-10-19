@@ -10,6 +10,8 @@ class Tenant(db.Model):
     company_name = db.Column(db.String(120), unique=True, nullable=False)
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+    deployment_type = db.Column(db.String(50), default='cloud', nullable=False) # 'cloud' or 'on-premise'
+    license_key = db.Column(db.String(255), unique=True, nullable=True) # Null unless on-premise
     roles = db.relationship('Role', backref='tenant', lazy=True)
 
     def to_dict(self):

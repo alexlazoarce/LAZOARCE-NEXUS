@@ -23,6 +23,7 @@ from . import onboarding_service
 from . import attendance_service
 from . import recruitment_service
 from . import subscription_service
+from . import licensing_service
 from datetime import datetime, date, timedelta
 import werkzeug
 
@@ -506,6 +507,55 @@ def create_app():
             )
             return jsonify({"message": "Suscripción otorgada/actualizada exitosamente."}), 200
         except (ValueError, KeyError) as e:
+            return jsonify({"error": str(e)}), 400
+
+    # --- On-Premise Licensing (LAN-LIC1) ---
+
+    with app.app_context():
+        # This is a demonstration of how an on-premise instance would check its license on startup.
+        # In a real on-premise deployment, this key would be stored in a config file.
+        # We will simulate this by checking a dummy key or a key we generate for a test tenant.
+        # NOTE: This will run every time the app starts. For a real app, this logic would be
+        # more sophisticated, perhaps only running if deployment_type is 'on-premise'.
+        print("\n[STARTUP] Realizando simulación de chequeo de licencia on-premise...")
+
+        # To make this simulation work, we'd need to have a tenant with a license key.
+        # We'll just use a placeholder for now. The function handles invalid keys gracefully.
+        dummy_license_key = "LAN-LIC-DUMMY-KEY-FOR-STARTUP-SIMULATION"
+        licensing_service.simulate_on_premise_startup_check(dummy_license_key)
+
+
+    @app.route('/api/licensing/validate', methods=['POST'])
+    def validate_license_route():
+        data = request.get_json()
+        license_key = data.get('license_key')
+
+        if not license_key:
+            return jsonify({"is_valid": False, "error": "Falta la clave de licencia."}), 400
+
+        result = licensing_service.validate_license_key(license_key)
+
+        status_code = 200 if result['is_valid'] else 403 # Forbidden
+        return jsonify(result), status_code
+
+    @app.route('/api/licensing/tenant/<int:tenant_id>/generate', methods=['POST'])
+    @module_access_required('LAN-LIC1')
+    def generate_license_route(tenant_id):
+        if 'Super Administrador' not in g.user_roles:
+            return jsonify({"message": "Acceso denegado."}), 403
+
+        try:
+            # First, ensure the tenant is set to on-premise.
+            # This is a simplified approach. A real app might have a dedicated tenant update endpoint.
+            tenant = Tenant.query.get(tenant_id)
+            if not tenant:
+                return jsonify({"error": "Inquilino no encontrado."}), 404
+            tenant.deployment_type = 'on-premise'
+            db.session.commit()
+
+            new_key = licensing_service.generate_license_key_for_tenant(tenant_id)
+            return jsonify({"license_key": new_key})
+        except ValueError as e:
             return jsonify({"error": str(e)}), 400
 
     return app

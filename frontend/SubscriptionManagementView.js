@@ -7,6 +7,7 @@ function SubscriptionManagementView() {
     const [systemModules, setSystemModules] = React.useState([]);
     const [error, setError] = React.useState('');
     const [isLoading, setIsLoading] = React.useState(false);
+    const [licenseKey, setLicenseKey] = React.useState('');
 
     const API_URL = 'http://127.0.0.1:5001/api';
 
@@ -105,11 +106,38 @@ function SubscriptionManagementView() {
         });
     };
 
+    const handleGenerateLicense = () => {
+        if (!selectedTenant) return;
+
+        setIsLoading(true);
+        fetch(`${API_URL}/licensing/tenant/${selectedTenant.id}/generate`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${getAuthToken()}` }
+        })
+        .then(response => {
+            if (!response.ok) throw new Error('Error al generar la clave de licencia.');
+            return response.json();
+        })
+        .then(data => {
+            if (data.license_key) {
+                setLicenseKey(data.license_key);
+            } else {
+                setError(data.error || 'Ocurrió un error desconocido.');
+            }
+            setIsLoading(false);
+        })
+        .catch(err => {
+            setError(err.message);
+            setIsLoading(false);
+            console.error(err);
+        });
+    };
+
     // A function to revoke would be very similar, calling a different endpoint.
 
     return (
         <div style={{ fontFamily: 'Arial, sans-serif', padding: '20px', color: '#333' }}>
-            <h1 style={{ color: '#1a365d' }}>Gestión de Suscripciones (LAN-SUB1)</h1>
+            <h1 style={{ color: '#1a365d' }}>Gestión de Suscripciones y Licencias</h1>
             <p>Esta vista es solo para Super Administradores.</p>
             {error && <p style={{ color: 'red' }}>{error}</p>}
 
@@ -126,7 +154,27 @@ function SubscriptionManagementView() {
 
             {selectedTenant ? (
                 <div>
-                    <h2 style={{ color: '#1a365d' }}>Suscripciones para: {selectedTenant.name}</h2>
+                    <h2 style={{ color: '#1a365d' }}>Configuración para: {selectedTenant.name}</h2>
+
+                    <div style={{ border: '1px solid #ccc', padding: '15px', borderRadius: '5px', marginBottom: '20px' }}>
+                        <h3>Licenciamiento On-Premise (LAN-LIC1)</h3>
+                        {/* In a real app, this would be driven by the tenant's actual deployment_type */}
+                        <p>Tipo de Despliegue Actual: <strong>Cloud</strong> (La generación de la clave lo cambiará a On-Premise)</p>
+
+                        <button
+                            onClick={handleGenerateLicense}
+                            style={{ backgroundColor: '#1a365d', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '5px', cursor: 'pointer' }}>
+                            Generar Clave de Licencia
+                        </button>
+
+                        {licenseKey && (
+                            <div style={{ marginTop: '10px' }}>
+                                <p><strong>Clave de Licencia Generada:</strong></p>
+                                <input type="text" readOnly value={licenseKey} style={{ width: '100%', padding: '8px', backgroundColor: '#f2f2f2' }} />
+                            </div>
+                        )}
+                    </div>
+
                     {isLoading ? <p>Cargando...</p> : (
                         <div style={{ display: 'flex', gap: '40px' }}>
                             <div>
