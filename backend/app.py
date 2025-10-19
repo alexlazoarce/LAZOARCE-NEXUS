@@ -21,6 +21,7 @@ from . import bank_reconciliation_service
 from . import absence_service
 from . import onboarding_service
 from . import attendance_service
+from . import recruitment_service
 from datetime import datetime, date, timedelta
 import werkzeug
 
@@ -385,5 +386,81 @@ def create_app():
                 "event_type": rec.event_type
             } for rec in history
         ])
+
+    # --- Recruitment (LAN-REC7) ---
+    @app.route('/api/recruitment/vacancies', methods=['POST'])
+    @tenant_required
+    def create_vacancy_route():
+        # Role check for HR/Admin would be appropriate here
+        data = request.get_json()
+        data['created_by_id'] = g.user.id # Set the creator from the logged-in user
+        try:
+            vacancy = recruitment_service.create_job_vacancy(data)
+            db.session.commit()
+            return jsonify({
+                "message": "Vacante creada exitosamente.",
+                "vacancy_id": vacancy.id
+            }), 201
+        except (ValueError, KeyError) as e:
+            db.session.rollback()
+            return jsonify({"error": str(e)}), 400
+
+    @app.route('/api/recruitment/vacancies', methods=['GET'])
+    @tenant_required
+    def get_all_vacancies_route():
+        vacancies = recruitment_service.get_all_vacancies()
+        return jsonify([
+            {
+                "id": v.id,
+                "title": v.title,
+                "description": v.description,
+                "status": v.status,
+                "created_by": v.created_by.full_name
+            } for v in vacancies
+        ])
+
+    @app.route('/api/recruitment/vacancies/<int:vacancy_id>/apply', methods=['POST'])
+    def apply_for_vacancy_route(vacancy_id):
+        # This endpoint is public-facing, so no @tenant_required
+        # The tenant context must be derived from the vacancy itself.
+        data = request.get_json()
+        try:
+            # We pass the vacancy_id to the service to handle tenant scoping internally if needed
+            application = recruitment_service.create_candidate_and_apply(vacancy_id, data)
+            db.session.commit()
+            return jsonify({
+                "message": "Aplicación enviada exitosamente.",
+                "application_id": application.id
+            }), 201
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({"error": str(e)}), 400
+
+    @app.route('/api/recruitment/vacancies/<int:vacancy_id>/applications', methods=['GET'])
+    @tenant_required
+    def get_applications_for_vacancy_route(vacancy_id):
+        applications = recruitment_service.get_applications_for_vacancy(vacancy_id)
+        return jsonify([
+            {
+                "id": app.id,
+                "candidate_name": app.candidate.full_name,
+                "candidate_email": app.candidate.email,
+                "application_date": app.application_date.isoformat(),
+                "status": app.status
+            } for app in applications
+        ])
+
+    @app.route('/api/recruitment/applications/<int:application_id>/status', methods=['PUT'])
+    @tenant_required
+    def update_application_status_route(application_id):
+        # Role check for HR/Admin recommended
+        data = request.get_json()
+        try:
+            application = recruitment_service.update_application_status(application_id, data['status'])
+            db.session.commit()
+            return jsonify({"message": f"Estado de la aplicación actualizado a {application.status}."})
+        except (ValueError, KeyError) as e:
+            db.session.rollback()
+            return jsonify({"error": str(e)}), 400
 
     return app

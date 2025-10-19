@@ -254,3 +254,33 @@ class EmployeeOnboarding(db.Model):
     template = db.relationship('OnboardingTemplate')
     status = db.Column(db.String(50), default='Pendiente', nullable=False) # Pendiente, En Progreso, Completado
     completed_steps = db.Column(db.JSON, default=[]) # List of completed step IDs
+
+# --- Recruitment Models (LAN-REC7) ---
+
+class JobVacancy(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    title = db.Column(db.String(200), nullable=False)
+    description = db.Column(db.Text, nullable=False)
+    status = db.Column(db.String(50), default='Abierta', nullable=False) # Abierta, Cerrada
+    created_by_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    created_by = db.relationship('User')
+    applications = db.relationship('Application', backref='job_vacancy', lazy='dynamic')
+
+class Candidate(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    full_name = db.Column(db.String(200), nullable=False)
+    email = db.Column(db.String(120), nullable=False)
+    phone = db.Column(db.String(50), nullable=True)
+    resume_url = db.Column(db.String(255), nullable=True)
+    applications = db.relationship('Application', backref='candidate', lazy='dynamic')
+    __table_args__ = (db.UniqueConstraint('email', 'tenant_id'),)
+
+class Application(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    candidate_id = db.Column(db.Integer, db.ForeignKey('candidate.id'), nullable=False)
+    job_vacancy_id = db.Column(db.Integer, db.ForeignKey('job_vacancy.id'), nullable=False)
+    application_date = db.Column(db.DateTime, default=db.func.current_timestamp())
+    status = db.Column(db.String(50), default='Nuevo', nullable=False) # Nuevo, Revisión, Entrevista, Oferta, Contratado, Rechazado
