@@ -372,3 +372,22 @@ class Appointment(db.Model):
     status = db.Column(db.String(50), default='scheduled', nullable=False) # scheduled, completed, cancelled, no-show
     booking_fee = db.Column(db.Float, default=0.0)
     fee_paid = db.Column(db.Boolean, default=False)
+
+# --- Automation Models (LAN-AGT5 & LAN-N8N1) ---
+
+class N8nCredential(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    # Encrypted value for the credential. The encryption key should be managed securely.
+    encrypted_value = db.Column(db.Text, nullable=False)
+    __table_args__ = (db.UniqueConstraint('name', 'tenant_id'),)
+
+class N8nWorkflow(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    trigger_event = db.Column(db.String(100), nullable=False, index=True) # e.g., 'whatsapp_message_received'
+    workflow_json = db.Column(db.JSON, nullable=False)
+    is_active = db.Column(db.Boolean, default=True)
+    __table_args__ = (db.UniqueConstraint('name', 'tenant_id'),)

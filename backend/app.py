@@ -26,6 +26,7 @@ from . import subscription_service
 from . import licensing_service
 from . import gym_service
 from . import barbershop_service
+from . import automation_service
 from datetime import datetime, date, timedelta
 import werkzeug
 
@@ -653,5 +654,32 @@ def create_app():
             } for a in appointments])
         except ValueError:
             return jsonify({'error': 'Formato de fecha inválido. Usar YYYY-MM-DD.'}), 400
+
+    # --- Automation (LAN-AGT5 & LAN-N8N1) ---
+
+    @app.route('/api/automations/webhook/<string:event_type>', methods=['POST'])
+    def automation_webhook_route(event_type):
+        # This is a public endpoint. Tenant identification happens inside the service.
+        payload = request.get_json()
+        result = automation_service.trigger_workflow(event_type, payload)
+        return jsonify(result)
+
+    @app.route('/api/automations/workflows', methods=['GET'])
+    @module_access_required('LAN-N8N1')
+    def get_workflows_route():
+        workflows = automation_service.get_workflows(g.tenant_id)
+        return jsonify([{'id': w.id, 'name': w.name, 'trigger_event': w.trigger_event, 'is_active': w.is_active} for w in workflows])
+
+    @app.route('/api/automations/workflows', methods=['POST'])
+    @module_access_required('LAN-N8N1')
+    def save_workflow_route():
+        data = request.get_json()
+        try:
+            workflow = automation_service.save_workflow(
+                g.tenant_id, data['name'], data['trigger_event'], data['workflow_json']
+            )
+            return jsonify({'message': 'Flujo de trabajo guardado', 'workflow_id': workflow.id}), 201
+        except (KeyError, TypeError):
+            return jsonify({'error': 'Faltan datos requeridos (name, trigger_event, workflow_json).'}), 400
 
     return app
