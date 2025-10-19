@@ -217,4 +217,28 @@ def create_app():
         result = bank_reconciliation_service.reconcile_statement(statement_id, g.tenant_id)
         return jsonify(result)
 
+    # --- Financial Reports (LAN-BKS1) ---
+    @app.route('/api/reports/balance-sheet', methods=['GET'])
+    @tenant_required
+    def get_balance_sheet_report():
+        report_data = accounting_service.get_balance_sheet(g.tenant_id)
+        return jsonify(report_data)
+
+    @app.route('/api/reports/income-statement', methods=['GET'])
+    @tenant_required
+    def get_income_statement_report():
+        report_data = accounting_service.get_income_statement(g.tenant_id)
+        return jsonify(report_data)
+
+    # --- Payroll (LAN-NR4) ---
+    @app.route('/api/payroll/process', methods=['POST'])
+    @tenant_required
+    def process_payroll():
+        result, status_code = payroll_service.process_payroll_for_tenant(g.tenant_id)
+        if status_code == 201:
+            db.session.commit()
+        else:
+            db.session.rollback()
+        return jsonify(result), status_code
+
     return app

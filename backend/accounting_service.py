@@ -69,3 +69,100 @@ def create_disbursement_journal_entry(application, disbursement_source_account_n
     ]
 
     return create_journal_entry(application.disbursement_date, description, transactions)
+
+def create_payroll_journal_entry(run_date, total_gross_salary, total_isss, total_afp, total_renta, total_net_salary):
+    """
+    Creates a consolidated journal entry for a payroll run.
+    """
+    description = f"Asiento de nómina para el período que termina en {run_date.strftime('%Y-%m-%d')}"
+
+    transactions = [
+        # Debit the salary expense
+        {
+            "account_name": "Gastos de Salarios",
+            "type": "Debit",
+            "amount": total_gross_salary
+        },
+        # Credit the corresponding liability and cash accounts
+        {
+            "account_name": "Retenciones ISSS por Pagar",
+            "type": "Credit",
+            "amount": total_isss
+        },
+        {
+            "account_name": "Retenciones AFP por Pagar",
+            "type": "Credit",
+            "amount": total_afp
+        },
+        {
+            "account_name": "Retenciones de Renta por Pagar",
+            "type": "Credit",
+            "amount": total_renta
+        },
+        {
+            "account_name": "Bancos", # Assuming payroll is paid from the bank
+            "type": "Credit",
+            "amount": total_net_salary
+        }
+    ]
+
+    return create_journal_entry(run_date, description, transactions)
+
+def get_account_balance(account_id, tenant_id):
+    """Calculates the balance of a single account."""
+    account = Account.query.filter_by(id=account_id, tenant_id=tenant_id).first()
+    if not account:
+        return Decimal('0.00')
+
+    total_debits = db.session.query(db.func.sum(Transaction.amount)).filter(
+        Transaction.account_id == account_id,
+        Transaction.type == 'Debit'
+    ).scalar() or Decimal('0.00')
+
+    total_credits = db.session.query(db.func.sum(Transaction.amount)).filter(
+        Transaction.account_id == account_id,
+        Transaction.type == 'Credit'
+    ).scalar() or Decimal('0.00')
+
+    total_debits = Decimal(str(total_debits))
+    total_credits = Decimal(str(total_credits))
+
+    if account.normal_balance == 'Debit':
+        return total_debits - total_credits
+    else: # normal_balance == 'Credit'
+        return total_credits - total_debits
+
+def get_balance_sheet(tenant_id):
+    """Generates the data for a Balance Sheet report."""
+    assets = Account.query.filter_by(tenant_id=tenant_id, category='Activo').all()
+    liabilities = Account.query.filter_by(tenant_id=tenant_id, category='Pasivo').all()
+    equity = Account.query.filter_by(tenant_id=tenant_id, category='Patrimonio').all()
+
+    report = {
+        'assets': [{'name': acc.name, 'balance': float(get_account_balance(acc.id, tenant_id))} for acc in assets],
+        'liabilities': [{'name': acc.name, 'balance': float(get_account_balance(acc.id, tenant_id))} for acc in liabilities],
+        'equity': [{'name': acc.name, 'balance': float(get_account_balance(acc.id, tenant_id))} for acc in equity]
+    }
+
+    report['total_assets'] = sum(a['balance'] for a in report['assets'])
+    report['total_liabilities'] = sum(l['balance'] for l in report['liabilities'])
+    report['total_equity'] = sum(e['balance'] for e in report['equity'])
+    report['total_liabilities_and_equity'] = report['total_liabilities'] + report['total_equity']
+
+    return report
+
+def get_income_statement(tenant_id):
+    """Generates the data for an Income Statement report."""
+    income = Account.query.filter_by(tenant_id=tenant_id, category='Ingresos').all()
+    expenses = Account.query.filter_by(tenant_id=tenant_id, category='Gastos').all()
+
+    report = {
+        'income': [{'name': acc.name, 'balance': float(get_account_balance(acc.id, tenant_id))} for acc in income],
+        'expenses': [{'name': acc.name, 'balance': float(get_account_balance(acc.id, tenant_id))} for acc in expenses]
+    }
+
+    report['total_income'] = sum(i['balance'] for i in report['income'])
+    report['total_expenses'] = sum(e['balance'] for e in report['expenses'])
+    report['net_income'] = report['total_income'] - report['total_expenses']
+
+    return report
