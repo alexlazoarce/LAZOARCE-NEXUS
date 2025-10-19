@@ -20,6 +20,7 @@ from . import event_service
 from . import bank_reconciliation_service
 from . import absence_service
 from . import onboarding_service
+from . import attendance_service
 from datetime import datetime, date, timedelta
 import werkzeug
 
@@ -347,5 +348,42 @@ def create_app():
         except (ValueError, KeyError) as e:
             db.session.rollback()
             return jsonify({"error": str(e)}), 400
+
+    # --- Attendance (LAN-AT5) ---
+    @app.route('/api/attendance/my-qr-token', methods=['GET'])
+    @tenant_required
+    def get_my_qr_token():
+        employee = Employee.query.filter_by(email=g.user.email, tenant_id=g.tenant_id).first()
+        if not employee:
+            return jsonify({"error": "No se encontró el perfil de empleado para este usuario."}), 404
+        token = attendance_service.generate_qr_code_token_for_employee(employee.id)
+        return jsonify({"qr_code_token": token})
+
+    @app.route('/api/attendance/record', methods=['POST'])
+    def record_attendance_route():
+        data = request.get_json()
+        try:
+            record = attendance_service.record_attendance(data['qr_code_token'], data['event_type'])
+            db.session.commit()
+            return jsonify({"message": f"Asistencia registrada: {record.event_type} a las {record.timestamp}"}), 201
+        except (ValueError, KeyError) as e:
+            db.session.rollback()
+            return jsonify({"error": str(e)}), 400
+
+    @app.route('/api/attendance/my-history', methods=['GET'])
+    @tenant_required
+    def get_my_attendance_history():
+        employee = Employee.query.filter_by(email=g.user.email, tenant_id=g.tenant_id).first()
+        if not employee:
+            return jsonify({"error": "No se encontró el perfil de empleado para este usuario."}), 404
+
+        history = attendance_service.get_attendance_history(employee.id)
+        return jsonify([
+            {
+                "id": rec.id,
+                "timestamp": rec.timestamp.isoformat(),
+                "event_type": rec.event_type
+            } for rec in history
+        ])
 
     return app

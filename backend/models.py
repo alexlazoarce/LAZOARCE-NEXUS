@@ -109,7 +109,18 @@ class Employee(db.Model):
     salary = db.Column(db.Float, nullable=False)
     hire_date = db.Column(db.Date, nullable=False)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
+    qr_code_token = db.Column(db.String(255), nullable=True, unique=True)
     tasks = db.relationship('Task', backref='assignee', lazy='dynamic')
+
+# --- Attendance Models (LAN-AT5) ---
+
+class AttendanceRecord(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
+    employee = db.relationship('Employee')
+    timestamp = db.Column(db.DateTime, nullable=False, default=db.func.current_timestamp())
+    event_type = db.Column(db.String(50), nullable=False) # 'Entrada' or 'Salida'
 
 class Lead(db.Model):
     id = db.Column(db.Integer, primary_key=True)
