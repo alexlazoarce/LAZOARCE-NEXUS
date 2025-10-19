@@ -81,6 +81,20 @@ def create_app():
 
         return jsonify({"message": "Credenciales incorrectas para el inquilino especificado."}), 401
 
+    @app.route('/api/portfolio/user_status', methods=['GET'])
+    @tenant_required
+    def get_user_portfolio_status():
+        # g.user is populated by the tenant_required decorator
+        user_id = g.user.id
+
+        # Call the new service function to get the portfolio status
+        portfolio_data = collections_service.get_portfolio_status(user_id)
+
+        if "error" in portfolio_data:
+            return jsonify(portfolio_data), 404
+
+        return jsonify(portfolio_data)
+
     # ... (all other routes would be here) ...
 
     return app

@@ -1,6 +1,46 @@
 from datetime import date, datetime
-from .models import Payment, LoanApplication
+from .models import Payment, LoanApplication, User
 from .loan_calculator import calculate_loan_details
+
+def get_portfolio_status(user_id):
+    """
+    Calculates the portfolio status for a specific user, aggregating key metrics.
+    """
+    user = User.query.get(user_id)
+    if not user:
+        # This should ideally not happen if called from a @jwt_required route
+        return {"error": "User not found"}, 404
+
+    # It's more efficient to query applications related to the user directly
+    # Assuming 'user_id' in LoanApplication links to the credit executive
+    applications = LoanApplication.query.filter_by(user_id=user.id, status='Desembolsada').all()
+
+    portfolio_details = []
+    total_ventas = 0.0
+    total_recuperado = 0.0
+
+    for app in applications:
+        # We can reuse the existing get_loan_status for detailed calculations
+        status_details = get_loan_status(app.id)
+        if "message" not in status_details:
+            portfolio_details.append(status_details)
+            # 'Ventas' is the total amount of loans disbursed
+            total_ventas += app.amount_requested
+            # 'Recuperado' is the total amount paid back across all loans
+            total_recuperado += status_details['total_paid']
+
+    summary = {
+        "total_ventas": round(total_ventas, 2),
+        "total_recuperado": round(total_recuperado, 2),
+        "total_outstanding": round(total_ventas - total_recuperado, 2),
+        "active_loans": len(portfolio_details)
+    }
+
+    return {
+        "portfolio": portfolio_details,
+        "summary": summary
+    }
+
 
 def get_loan_status(application_id):
     """
