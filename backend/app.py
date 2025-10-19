@@ -22,6 +22,7 @@ from . import absence_service
 from . import onboarding_service
 from . import attendance_service
 from . import recruitment_service
+from . import subscription_service
 from datetime import datetime, date, timedelta
 import werkzeug
 
@@ -48,6 +49,21 @@ def create_app():
             g.user_roles = [role.name for role in g.user.roles]
             return fn(*args, **kwargs)
         return wrapper
+
+    def module_access_required(module_code):
+        def decorator(fn):
+            @wraps(fn)
+            @tenant_required # Ensures we have g.tenant_id and g.user
+            def wrapper(*args, **kwargs):
+                # Super Admins have access to everything
+                if 'Super Administrador' in g.user_roles:
+                    return fn(*args, **kwargs)
+
+                if not subscription_service.has_active_subscription(g.tenant_id, module_code):
+                    return jsonify({"message": f"Acceso denegado. Se requiere una suscripción activa para el módulo {module_code}."}), 403
+                return fn(*args, **kwargs)
+            return wrapper
+        return decorator
 
     @app.route('/api/auth/login', methods=['POST'])
     def login():
@@ -86,7 +102,7 @@ def create_app():
         return jsonify({"message": "Credenciales incorrectas para el inquilino especificado."}), 401
 
     @app.route('/api/loan_applications', methods=['POST'])
-    @tenant_required
+    @module_access_required('LAN-GP1')
     def create_loan_application():
         data = request.get_json()
         product = LoanProduct.query.filter_by(id=data['product_id'], tenant_id=g.tenant_id).first_or_404()
@@ -461,6 +477,35 @@ def create_app():
             return jsonify({"message": f"Estado de la aplicación actualizado a {application.status}."})
         except (ValueError, KeyError) as e:
             db.session.rollback()
+            return jsonify({"error": str(e)}), 400
+
+    # --- Subscription Management (LAN-SUB1) ---
+
+    @app.route('/api/subscriptions/tenant/<int:tenant_id>', methods=['GET'])
+    @module_access_required('LAN-SUB1') # Only Super Admins can really get here
+    def get_tenant_subscriptions_route(tenant_id):
+        if 'Super Administrador' not in g.user_roles:
+            return jsonify({"message": "Acceso denegado."}), 403
+
+        subscriptions = subscription_service.get_tenant_subscriptions(tenant_id)
+        return jsonify(subscriptions)
+
+    @app.route('/api/subscriptions/grant', methods=['POST'])
+    @module_access_required('LAN-SUB1')
+    def grant_subscription_route():
+        if 'Super Administrador' not in g.user_roles:
+            return jsonify({"message": "Acceso denegado."}), 403
+
+        data = request.get_json()
+        try:
+            end_date = datetime.fromisoformat(data['end_date']) if data.get('end_date') else None
+            subscription_service.grant_subscription(
+                tenant_id=data['tenant_id'],
+                module_code=data['module_code'],
+                end_date=end_date
+            )
+            return jsonify({"message": "Suscripción otorgada/actualizada exitosamente."}), 200
+        except (ValueError, KeyError) as e:
             return jsonify({"error": str(e)}), 400
 
     return app

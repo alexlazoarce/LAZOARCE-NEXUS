@@ -284,3 +284,23 @@ class Application(db.Model):
     job_vacancy_id = db.Column(db.Integer, db.ForeignKey('job_vacancy.id'), nullable=False)
     application_date = db.Column(db.DateTime, default=db.func.current_timestamp())
     status = db.Column(db.String(50), default='Nuevo', nullable=False) # Nuevo, Revisión, Entrevista, Oferta, Contratado, Rechazado
+
+# --- Subscription Management Models (LAN-SUB1) ---
+
+class SystemModule(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    module_code = db.Column(db.String(20), unique=True, nullable=False) # e.g., 'LAN-GP1', 'LAN-REC7'
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+
+class TenantSubscription(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    module_id = db.Column(db.Integer, db.ForeignKey('system_module.id'), nullable=False)
+    start_date = db.Column(db.DateTime, default=db.func.current_timestamp())
+    end_date = db.Column(db.DateTime, nullable=True) # Null for perpetual or manually managed subscriptions
+    status = db.Column(db.String(50), default='active', nullable=False) # active, expired, cancelled
+
+    tenant = db.relationship('Tenant')
+    module = db.relationship('SystemModule')
+    __table_args__ = (db.UniqueConstraint('tenant_id', 'module_id'),)
