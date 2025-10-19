@@ -349,3 +349,26 @@ class ClassAttendance(db.Model):
     class_id = db.Column(db.Integer, db.ForeignKey('gym_class.id'), nullable=False)
     member_id = db.Column(db.Integer, db.ForeignKey('gym_member.id'), nullable=False)
     attendance_date = db.Column(db.DateTime, nullable=False, default=db.func.current_timestamp())
+
+# --- Barbershop Management Models (LAN-BAR1) ---
+
+class Stylist(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    specialty = db.Column(db.String(100), nullable=True)
+    is_active = db.Column(db.Boolean, default=True)
+    appointments = db.relationship('Appointment', backref='stylist', lazy='dynamic')
+    __table_args__ = (db.UniqueConstraint('name', 'tenant_id'),)
+
+class Appointment(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    stylist_id = db.Column(db.Integer, db.ForeignKey('stylist.id'), nullable=False)
+    client_name = db.Column(db.String(200), nullable=False)
+    client_phone = db.Column(db.String(50), nullable=False)
+    client_email = db.Column(db.String(120), nullable=True)
+    appointment_time = db.Column(db.DateTime, nullable=False)
+    status = db.Column(db.String(50), default='scheduled', nullable=False) # scheduled, completed, cancelled, no-show
+    booking_fee = db.Column(db.Float, default=0.0)
+    fee_paid = db.Column(db.Boolean, default=False)

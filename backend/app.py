@@ -25,6 +25,7 @@ from . import recruitment_service
 from . import subscription_service
 from . import licensing_service
 from . import gym_service
+from . import barbershop_service
 from datetime import datetime, date, timedelta
 import werkzeug
 
@@ -613,5 +614,44 @@ def create_app():
         data = request.get_json()
         attendance = gym_service.record_class_attendance(g.tenant_id, data['class_id'], data['member_id'])
         return jsonify({'message': 'Asistencia registrada', 'attendance_id': attendance.id}), 201
+
+    # --- Barbershop Management (LAN-BAR1) ---
+
+    @app.route('/api/barbershop/stylists', methods=['POST'])
+    @module_access_required('LAN-BAR1')
+    def add_stylist_route():
+        stylist = barbershop_service.add_stylist(g.tenant_id, request.get_json())
+        return jsonify({'message': 'Estilista añadido exitosamente', 'stylist_id': stylist.id}), 201
+
+    @app.route('/api/barbershop/stylists', methods=['GET'])
+    @module_access_required('LAN-BAR1')
+    def get_stylists_route():
+        stylists = barbershop_service.get_stylists(g.tenant_id)
+        return jsonify([{'id': s.id, 'name': s.name, 'specialty': s.specialty} for s in stylists])
+
+    @app.route('/api/barbershop/appointments', methods=['POST'])
+    @module_access_required('LAN-BAR1')
+    def book_appointment_route():
+        try:
+            appointment = barbershop_service.book_appointment(g.tenant_id, request.get_json())
+            return jsonify({'message': 'Cita agendada exitosamente', 'appointment_id': appointment.id}), 201
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+
+    @app.route('/api/barbershop/appointments/<string:day>', methods=['GET'])
+    @module_access_required('LAN-BAR1')
+    def get_appointments_route(day):
+        try:
+            request_date = date.fromisoformat(day)
+            appointments = barbershop_service.get_appointments_for_day(g.tenant_id, request_date)
+            return jsonify([{
+                'id': a.id,
+                'stylist': a.stylist.name,
+                'client': a.client_name,
+                'time': a.appointment_time.isoformat(),
+                'status': a.status
+            } for a in appointments])
+        except ValueError:
+            return jsonify({'error': 'Formato de fecha inválido. Usar YYYY-MM-DD.'}), 400
 
     return app
