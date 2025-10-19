@@ -19,6 +19,7 @@ from . import audit_service
 from . import event_service
 from . import bank_reconciliation_service
 from . import absence_service
+from . import onboarding_service
 from datetime import datetime, date, timedelta
 import werkzeug
 
@@ -304,6 +305,46 @@ def create_app():
             db.session.commit()
             return jsonify({"message": "Solicitud aprobada."})
         except ValueError as e:
+            db.session.rollback()
+            return jsonify({"error": str(e)}), 400
+
+    # --- Onboarding (LAN-OBD2) ---
+    @app.route('/api/onboarding/assign', methods=['POST'])
+    @tenant_required
+    def assign_onboarding_template():
+        # HR/Admin role check would go here
+        data = request.get_json()
+        try:
+            onboarding_service.assign_onboarding_template_to_employee(data['employee_id'], data['template_id'])
+            db.session.commit()
+            return jsonify({"message": "Plantilla de onboarding asignada correctamente."}), 201
+        except (ValueError, KeyError) as e:
+            db.session.rollback()
+            return jsonify({"error": str(e)}), 400
+
+    @app.route('/api/onboarding/my-status', methods=['GET'])
+    @tenant_required
+    def get_my_onboarding_status():
+        employee = Employee.query.filter_by(email=g.user.email, tenant_id=g.tenant_id).first()
+        if not employee:
+            return jsonify({"error": "No se encontró el perfil de empleado para este usuario."}), 404
+
+        status = onboarding_service.get_employee_onboarding_status(employee.id)
+        return jsonify(status)
+
+    @app.route('/api/onboarding/complete-step', methods=['POST'])
+    @tenant_required
+    def complete_onboarding_step_route():
+        employee = Employee.query.filter_by(email=g.user.email, tenant_id=g.tenant_id).first()
+        if not employee:
+            return jsonify({"error": "No se encontró el perfil de empleado para este usuario."}), 404
+
+        data = request.get_json()
+        try:
+            onboarding_service.complete_onboarding_step(employee.id, data['step_id'])
+            db.session.commit()
+            return jsonify({"message": "Paso de onboarding completado."})
+        except (ValueError, KeyError) as e:
             db.session.rollback()
             return jsonify({"error": str(e)}), 400
 

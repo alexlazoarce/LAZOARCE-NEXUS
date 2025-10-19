@@ -216,3 +216,30 @@ class AbsenceRequest(db.Model):
     approved_by_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True) # User who approved/rejected
     approved_by = db.relationship('User')
     comments = db.Column(db.Text, nullable=True)
+
+# --- Onboarding Models (LAN-OBD2) ---
+
+class OnboardingTemplate(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    steps = db.relationship('OnboardingStep', backref='template', lazy='dynamic', cascade="all, delete-orphan")
+
+class OnboardingStep(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    template_id = db.Column(db.Integer, db.ForeignKey('onboarding_template.id'), nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    order = db.Column(db.Integer, nullable=False)
+    step_type = db.Column(db.String(50), nullable=False) # E.g., 'Documento', 'Formulario', 'Firma'
+    resource_link = db.Column(db.String(255), nullable=True) # Link to a form or document template
+
+class EmployeeOnboarding(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
+    employee = db.relationship('Employee')
+    template_id = db.Column(db.Integer, db.ForeignKey('onboarding_template.id'), nullable=False)
+    template = db.relationship('OnboardingTemplate')
+    status = db.Column(db.String(50), default='Pendiente', nullable=False) # Pendiente, En Progreso, Completado
+    completed_steps = db.Column(db.JSON, default=[]) # List of completed step IDs
