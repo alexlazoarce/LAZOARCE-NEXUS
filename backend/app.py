@@ -4,6 +4,9 @@ from flask_cors import CORS
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, JWTManager, get_jwt
 from flask_migrate import Migrate
 from functools import wraps
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from .models import (
     db, Tenant, Role, User, LoanProduct, LoanApplication, Account, JournalEntry, Transaction,
@@ -19,6 +22,7 @@ from . import notification_service
 from . import audit_service
 from . import event_service
 from datetime import datetime, date, timedelta
+from datetime import datetime
 
 def create_app():
     app = Flask(__name__)
@@ -26,7 +30,7 @@ def create_app():
     app.config['SECRET_KEY'] = 'dev'
     app.config['JWT_SECRET_KEY'] = 'dev'
     # Point to the provided PostgreSQL database with the corrected hostname
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:1sQl4WixNdQihHxd@db.efntaqjschznzrnzrnhh.supabase.co:5432/postgres?sslmode=require'
+    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///local.db')
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
     db.init_app(app)
@@ -82,6 +86,43 @@ def create_app():
         return jsonify({"message": "Credenciales incorrectas para el inquilino especificado."}), 401
 
     # ... (all other routes would be here) ...
+    @app.route('/api/loan_applications', methods=['GET'])
+    @tenant_required
+    def get_loan_applications():
+        query = db.session.query(
+            LoanApplication,
+            User.full_name.label('applicant_name'),
+            LoanProduct.name.label('product_name')
+        ).join(User, User.id == LoanApplication.user_id)\
+         .join(LoanProduct, LoanProduct.id == LoanApplication.product_id)\
+         .filter(LoanApplication.tenant_id == g.tenant_id)
+
+        # Filtering logic
+        status = request.args.get('status')
+        start_date_str = request.args.get('start_date')
+        end_date_str = request.args.get('end_date')
+
+        if status:
+            query = query.filter(LoanApplication.status == status)
+        if start_date_str:
+            start_date = datetime.fromisoformat(start_date_str)
+            query = query.filter(LoanApplication.application_date >= start_date)
+        if end_date_str:
+            end_date = datetime.fromisoformat(end_date_str)
+            query = query.filter(LoanApplication.application_date <= end_date)
+
+        applications = query.all()
+
+        results = [{
+            'id': app.LoanApplication.id,
+            'applicant_name': app.applicant_name,
+            'product_name': app.product_name,
+            'amount_requested': app.LoanApplication.amount_requested,
+            'status': app.LoanApplication.status,
+            'application_date': app.LoanApplication.application_date.isoformat()
+        } for app in applications]
+
+        return jsonify(results)
 
     return app
 

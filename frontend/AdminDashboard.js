@@ -3,11 +3,19 @@ const AdminDashboard = ({ token, onManagePayments }) => {
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState('');
     const [disbursementSources, setDisbursementSources] = React.useState({}); // { appId: 'Bancos' | 'Caja' }
+    const [filterStatus, setFilterStatus] = React.useState('');
+    const [filterStartDate, setFilterStartDate] = React.useState('');
+    const [filterEndDate, setFilterEndDate] = React.useState('');
 
     const fetchApplications = async () => {
         try {
             setLoading(true);
-            const response = await fetch(`${API_BASE_URL}/api/loan_applications`, {
+            const params = new URLSearchParams();
+            if (filterStatus) params.append('status', filterStatus);
+            if (filterStartDate) params.append('start_date', filterStartDate);
+            if (filterEndDate) params.append('end_date', filterEndDate);
+
+            const response = await fetch(`${API_BASE_URL}/api/loan_applications?${params.toString()}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (!response.ok) throw new Error('Error al cargar solicitudes');
@@ -83,6 +91,24 @@ const AdminDashboard = ({ token, onManagePayments }) => {
     return (
         <div>
             <h3>Panel de Administración - Todas las Solicitudes</h3>
+            <div style={{ margin: '10px 0', padding: '10px', border: '1px solid #ccc' }}>
+                <h4>Filtrar Solicitudes</h4>
+                <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+                    <option value="">Todos los Estados</option>
+                    <option value="Pendiente">Pendiente</option>
+                    <option value="Aprobada">Aprobada</option>
+                    <option value="Rechazada">Rechazada</option>
+                    <option value="Desembolsada">Desembolsada</option>
+                </select>
+                <input type="date" value={filterStartDate} onChange={e => setFilterStartDate(e.target.value)} />
+                <input type="date" value={filterEndDate} onChange={e => setFilterEndDate(e.target.value)} />
+                <button onClick={fetchApplications}>Filtrar</button>
+                <button onClick={() => {
+                    setFilterStatus('');
+                    setFilterStartDate('');
+                    setFilterEndDate('');
+                }}>Limpiar</button>
+            </div>
             <table>
                 <thead>
                     <tr>
