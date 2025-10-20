@@ -14,9 +14,13 @@ from flask_jwt_extended import (
 
 from flask_migrate import Migrate
 
+from flask_sqlalchemy import SQLAlchemy
+
 from functools import wraps
 
 from datetime import datetime, date, timedelta
+
+from werkzeug.security import generate_password_hash, check_password_hash
 
 # Inicializar extensiones globales
 
@@ -26,9 +30,23 @@ jwt = None
 
 migrate = None
 
+# Importar modelos (importados aquí para evitar circular imports)
+
+from .models import (
+
+    User, Role, ClientProfile, LoanProduct, Account, 
+
+    NotificationTemplate, Tenant, LoanApplication, Payment,
+
+    AuditLog, Employee, CommunicationLog
+
+)
+
 def create_app(testing=False, testing_config=None):
 
-    """Application factory function."""
+    """Application factory function - patrón moderno Flask."""
+
+    
 
     app = Flask(__name__)
 
@@ -48,7 +66,7 @@ def create_app(testing=False, testing_config=None):
 
     
 
-    # Variables de entorno críticas
+    # Variables de entorno críticas (con fallback)
 
     app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', app.config['SECRET_KEY'])
 
@@ -56,9 +74,15 @@ def create_app(testing=False, testing_config=None):
 
     app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', app.config['SQLALCHEMY_DATABASE_URI'])
 
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
     
 
+    # JWT configuración
+
     app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=8)
+
+    app.config['JWT_REFRESH_TOKEN_EXPIRES'] = timedelta(days=30)
 
     
 
@@ -88,29 +112,49 @@ def create_app(testing=False, testing_config=None):
 
         auth_bp, loan_management_bp, hr_bp, ett_bp, 
 
-        accounting_bp, invoicing_bp, billing_bp
+        accounting_bp, invoicing_bp, billing_bp, crm_bp,
+
+        helpdesk_bp, marketing_bp
 
     )
 
     
 
-    app.register_blueprint(auth_bp, url_prefix='/api')
+    # Registrar blueprints con prefijo /api
 
-    app.register_blueprint(loan_management_bp, url_prefix='/api')
+    blueprints = [
 
-    app.register_blueprint(hr_bp, url_prefix='/api')
+        (auth_bp, ''),
 
-    app.register_blueprint(ett_bp, url_prefix='/api')
+        (loan_management_bp, '/loans'),
 
-    app.register_blueprint(accounting_bp, url_prefix='/api')
+        (hr_bp, '/hr'),
 
-    app.register_blueprint(invoicing_bp, url_prefix='/api')
+        (ett_bp, '/ett'),
 
-    app.register_blueprint(billing_bp, url_prefix='/api')
+        (accounting_bp, '/accounting'),
+
+        (invoicing_bp, '/invoicing'),
+
+        (crm_bp, '/crm'),
+
+        (helpdesk_bp, '/helpdesk'),
+
+        (marketing_bp, '/marketing')
+
+    ]
+
+    
+
+    for blueprint, prefix in blueprints:
+
+        app.register_blueprint(blueprint, url_prefix=f'/api{prefix}')
 
     
 
     # === DECORADORES DE SEGURIDAD ===
+
+    
 
     def require_roles(*required_roles):
 
@@ -128,9 +172,23 @@ def create_app(testing=False, testing_config=None):
 
                 user_roles = claims.get('roles', [])
 
+                
+
                 if not any(role in user_roles for role in required_roles):
 
-                    return jsonify({"message": "Acceso no autorizado"}), 403
+                    return jsonify({
+
+                        "message": "Acceso no autorizado",
+
+                        "required_roles": required_roles
+
+                    }), 403
+
+                
+
+                # Agregar usuario actual al contexto
+
+                g.current_user = User.query.get(get_jwt_identity())
 
                 return fn(*args, **kwargs)
 
@@ -140,19 +198,83 @@ def create_app(testing=False, testing_config=None):
 
     
 
+    def role_required(*roles):
+
+        """Alias para require_roles."""
+
+        return require_roles(*roles)
+
+    
+
+    # Registrar en Jinja y app context
+
     app.jinja_env.globals['require_roles'] = require_roles
 
-    
-
-    # === RUTAS PRINCIPALES (Fallbacks) ===
+    app.jinja_env.globals['role_required'] = role_required
 
     
 
-    # Health check
+    # === MIDDLEWARE DE AUDITORÍA ===
+
+    
+
+    @app.before_request
+
+    def audit_request():
+
+        """Registra requests importantes para auditoría."""
+
+        if request.path.startswith('/api/') and request.method in ['POST', 'PUT', 'DELETE']:
+
+            g.audit_action = f"{request.method} {request.path}"
+
+    
+
+    @app.after_request
+
+    def audit_response(response):
+
+        """Log de auditoría automático."""
+
+        if hasattr(g, 'audit_action') and hasattr(g, 'current_user'):
+
+            try:
+
+                audit_log = AuditLog(
+
+                    user_id=g.current_user.id,
+
+                    action=g.audit_action,
+
+                    details=f"Status: {response.status_code}",
+
+                    ip_address=request.remote_addr
+
+                )
+
+                db.session.add(audit_log)
+
+                db.session.commit()
+
+            except:
+
+                db.session.rollback()
+
+        
+
+        return response
+
+    
+
+    # === RUTAS PRINCIPALES ===
+
+    
 
     @app.route('/api/health')
 
     def health_check():
+
+        """Health check endpoint."""
 
         return jsonify({
 
@@ -162,17 +284,61 @@ def create_app(testing=False, testing_config=None):
 
             "version": "2.0",
 
-            "environment": app.config.get('ENVIRONMENT', 'development')
+            "environment": app.config.get('ENVIRONMENT', 'development'),
+
+            "database": db.engine.has_table("user")
 
         })
 
     
 
-    # Root endpoint
+    @app.route('/api/metrics')
+
+    @jwt_required()
+
+    def metrics():
+
+        """Métricas básicas del sistema."""
+
+        from sqlalchemy import func
+
+        
+
+        stats = {
+
+            "users_total": db.session.query(func.count(User.id)).scalar(),
+
+            "applications_pending": db.session.query(func.count(LoanApplication.id)).filter(
+
+                LoanApplication.status == 'Pendiente'
+
+            ).scalar(),
+
+            "payments_today": db.session.query(func.count(Payment.id)).filter(
+
+                Payment.payment_date == date.today()
+
+            ).scalar(),
+
+            "active_employees": db.session.query(func.count(Employee.id)).filter(
+
+                Employee.is_active == True
+
+            ).scalar()
+
+        }
+
+        
+
+        return jsonify(stats)
+
+    
 
     @app.route('/')
 
     def index():
+
+        """Landing page con documentación."""
 
         return jsonify({
 
@@ -188,77 +354,33 @@ def create_app(testing=False, testing_config=None):
 
                 "/api/auth/login", 
 
-                "/api/applications",
+                "/api/loans/applications",
 
-                "/api/products"
+                "/api/loans/products",
+
+                "/api/hr/employees",
+
+                "/api/accounting/accounts"
 
             ],
 
-            "docs": "/api/docs"  # Swagger docs
+            "docs": "/api/docs/swagger",  # Future Swagger
+
+            "blueprints": [bp.name for bp in app.blueprints.values()]
 
         })
 
     
 
-    # Error handlers
-
-    @app.errorhandler(404)
-
-    def not_found(error):
-
-        return jsonify({"message": "Endpoint no encontrado"}), 404
+    # === RUTAS LEGACY (Compatibilidad) ===
 
     
-
-    @app.errorhandler(500)
-
-    def internal_error(error):
-
-        db.session.rollback()
-
-        return jsonify({"message": "Error interno del servidor"}), 500
-
-    
-
-    @app.errorhandler(400)
-
-    def bad_request(error):
-
-        return jsonify({"message": "Solicitud inválida"}), 400
-
-    
-
-    @app.errorhandler(401)
-
-    def unauthorized(error):
-
-        return jsonify({"message": "No autorizado"}), 401
-
-    
-
-    @app.errorhandler(403)
-
-    def forbidden(error):
-
-        return jsonify({"message": "Acceso prohibido"}), 403
-
-    
-
-    # === RUTAS LEGACY (para compatibilidad) ===
-
-    
-
-    # AUTH - Register (simplificado)
 
     @app.route('/api/auth/register', methods=['POST'])
 
-    def register():
+    def legacy_register():
 
-        """Registro básico de cliente (legacy)"""
-
-        from .models import User, Role, ClientProfile
-
-        
+        """Registro legacy para compatibilidad."""
 
         data = request.get_json()
 
@@ -270,7 +392,9 @@ def create_app(testing=False, testing_config=None):
 
         # Verificar si ya existe
 
-        if User.query.filter_by(email=data['email']).first():
+        existing_user = User.query.filter_by(email=data['email']).first()
+
+        if existing_user:
 
             return jsonify({"message": "El correo ya está registrado"}), 409
 
@@ -278,7 +402,7 @@ def create_app(testing=False, testing_config=None):
 
         try:
 
-            # Obtener rol de cliente
+            # Obtener rol de cliente por defecto
 
             client_role = Role.query.filter_by(name='Cliente').first()
 
@@ -294,9 +418,9 @@ def create_app(testing=False, testing_config=None):
 
                 email=data['email'],
 
-                role_id=client_role.id,
+                full_name=data.get('full_name', data['email']),
 
-                full_name=data.get('full_name', data['email'])
+                role_id=client_role.id
 
             )
 
@@ -324,17 +448,19 @@ def create_app(testing=False, testing_config=None):
 
             # Log de auditoría
 
-            from .services import audit_service
-
-            audit_service.log_action(
-
-                action='USER_REGISTER',
+            audit_log = AuditLog(
 
                 user_id=user.id,
+
+                action='USER_REGISTER',
 
                 details=f"Nuevo cliente registrado: {user.email}"
 
             )
+
+            db.session.add(audit_log)
+
+            db.session.commit()
 
             
 
@@ -354,279 +480,175 @@ def create_app(testing=False, testing_config=None):
 
             db.session.rollback()
 
-            return jsonify({"message": f"Error al crear usuario: {str(e)}"}), 500
+            app.logger.error(f"Error en registro: {str(e)}")
+
+            return jsonify({"message": f"Error al crear usuario"}), 500
 
     
 
-    # AUTH - Login (multi-tenant compatible)
+    @app.route('/api/loans/calculate', methods=['POST'])
 
-    @app.route('/api/auth/login', methods=['POST'])
+    @jwt_required()
 
-    def login():
+    @role_required('Cliente', 'Ejecutivo de Crédito', 'Administrador General')
 
-        """Login con soporte multi-tenant"""
+    def calculate_loan():
 
-        from .models import User, Tenant
+        """Cálculo de préstamos mejorado."""
 
-        
-
-        data = request.get_json()
-
-        if not data or not data.get('email') or not data.get('password'):
-
-            return jsonify({"message": "Email y contraseña requeridos"}), 400
-
-        
-
-        email = data['email']
-
-        password = data['password']
-
-        tenant_name = data.get('tenant_name')
+        from .services.loan_service import LoanCalculator
 
         
 
         try:
 
-            # Determinar tenant
-
-            if email == 'support@lazoarce.com' or not tenant_name:
-
-                # Super admin o tenant por defecto
-
-                tenant = Tenant.query.filter_by(company_name='LAZOARCE NEXUS').first()
-
-            else:
-
-                tenant = Tenant.query.filter_by(company_name=tenant_name).first()
+            data = request.get_json()
 
             
 
-            if not tenant:
+            # Validación de entrada
 
-                return jsonify({"message": "Inquilino no encontrado"}), 404
+            required_fields = ['monto', 'producto_id', 'plazo_meses']
 
-            
+            for field in required_fields:
 
-            # Buscar usuario en el tenant
+                if not data.get(field):
 
-            user = User.query.filter_by(
-
-                email=email, 
-
-                tenant_id=tenant.id
-
-            ).first()
+                    return jsonify({"error": f"El campo {field} es requerido"}), 400
 
             
 
-            if not user or not user.check_password(password):
+            monto = float(data['monto'])
 
-                return jsonify({"message": "Credenciales incorrectas"}), 401
+            producto_id = int(data['producto_id'])
 
-            
-
-            # Generar token JWT
-
-            roles = [role.name for role in user.roles]
-
-            additional_claims = {
-
-                'roles': roles,
-
-                'tenant_id': tenant.id,
-
-                'tenant_name': tenant.company_name
-
-            }
+            plazo = int(data['plazo_meses'])
 
             
 
-            access_token = create_access_token(
+            if monto <= 0 or plazo <= 0:
 
-                identity=user.id,  # Usar ID como identidad principal
-
-                additional_claims=additional_claims
-
-            )
+                return jsonify({"error": "Monto y plazo deben ser mayores a 0"}), 400
 
             
 
-            # Log de auditoría
+            # Obtener producto
 
-            from .services import audit_service
+            product = LoanProduct.query.get_or_404(producto_id)
 
-            try:
+            
 
-                audit_service.log_action(
+            # Calcular préstamo
 
-                    action='USER_LOGIN',
+            calculator = LoanCalculator(product)
 
-                    user_id=user.id,
+            result = calculator.calculate(monto, plazo, data.get('opciones', {}))
 
-                    tenant_id=tenant.id,
+            
 
-                    details=f"Login exitoso: {user.email} en tenant {tenant.company_name}"
+            if 'error' in result:
 
-                )
-
-            except:
-
-                pass  # No fallar login por error de auditoría
+                return jsonify(result), 400
 
             
 
             return jsonify({
 
-                "access_token": access_token,
+                "success": True,
 
-                "user": {
-
-                    "id": user.id,
-
-                    "email": user.email,
-
-                    "full_name": user.full_name,
-
-                    "roles": roles,
-
-                    "tenant": {
-
-                        "id": tenant.id,
-
-                        "name": tenant.company_name
-
-                    }
-
-                }
+                "calculation": result
 
             })
 
             
 
+        except ValueError as e:
+
+            return jsonify({"error": "Datos inválidos en la solicitud"}), 400
+
         except Exception as e:
 
-            return jsonify({"message": "Error en autenticación"}), 500
+            app.logger.error(f"Error en cálculo de préstamo: {str(e)}")
+
+            return jsonify({"error": "Error interno en el cálculo"}), 500
 
     
 
-    # Profile (mejorado)
+    # === ERROR HANDLERS ===
 
-    @app.route('/api/profile', methods=['GET', 'PUT'])
+    
 
-    @jwt_required()
+    @app.errorhandler(404)
 
-    def user_profile():
+    def not_found(error):
 
-        """Gestión de perfil de usuario"""
+        return jsonify({"message": "Endpoint no encontrado"}), 404
 
-        from .models import User, ClientProfile
+    
 
-        
+    @app.errorhandler(500)
 
-        current_user_id = get_jwt_identity()
+    def internal_error(error):
 
-        user = User.query.get_or_404(current_user_id)
+        db.session.rollback()
 
-        
+        app.logger.error(f"Error 500: {str(error)}")
 
-        if request.method == 'GET':
+        return jsonify({"message": "Error interno del servidor"}), 500
 
-            profile_data = {
+    
 
-                "id": user.id,
+    @app.errorhandler(400)
 
-                "email": user.email,
+    def bad_request(error):
 
-                "full_name": user.full_name,
+        return jsonify({"message": "Solicitud inválida"}), 400
 
-                "roles": [r.name for r in user.roles],
+    
 
-                "tenant_id": user.tenant_id if hasattr(user, 'tenant_id') else None
+    @app.errorhandler(401)
 
-            }
+    def unauthorized(error):
 
-            
+        return jsonify({"message": "No autorizado - Token inválido"}), 401
 
-            # Incluir perfil si existe
+    
 
-            if hasattr(user, 'profile') and user.profile:
+    @app.errorhandler(403)
 
-                profile_data.update({
+    def forbidden(error):
 
-                    "profile": user.profile.to_dict()
+        return jsonify({"message": "Acceso prohibido - Permisos insuficientes"}), 403
 
-                })
+    
 
-            
+    @app.errorhandler(409)
 
-            return jsonify(profile_data)
+    def conflict(error):
 
-        
+        return jsonify({"message": "Conflicto - Recurso ya existe"}), 409
 
-        # PUT - Actualizar perfil
+    
 
-        data = request.get_json()
+    # === CONTEXT PROCESSOR ===
 
-        if not data:
+    
 
-            return jsonify({"message": "Datos requeridos"}), 400
+    @app.context_processor
 
-        
+    def inject_config():
 
-        try:
+        """Inyecta configuración segura en templates."""
 
-            # Actualizar perfil
+        return dict(
 
-            profile = getattr(user, 'profile', None)
+            ENVIRONMENT=app.config.get('ENVIRONMENT', 'development'),
 
-            if profile:
+            DEBUG=app.config.get('DEBUG', False),
 
-                profile.full_name = data.get('full_name', profile.full_name)
+            VERSION='2.0'
 
-                profile.phone_number = data.get('phone_number', profile.phone_number)
-
-                profile.address = data.get('address', profile.address)
-
-                profile.dui = data.get('dui', profile.dui)
-
-                profile.nit = data.get('nit', profile.nit)
-
-            else:
-
-                profile = ClientProfile(
-
-                    user_id=user.id,
-
-                    full_name=data.get('full_name', user.full_name or ''),
-
-                    phone_number=data.get('phone_number'),
-
-                    address=data.get('address'),
-
-                    dui=data.get('dui'),
-
-                    nit=data.get('nit')
-
-                )
-
-                db.session.add(profile)
-
-                setattr(user, 'profile', profile)
-
-            
-
-            db.session.commit()
-
-            return jsonify({"message": "Perfil actualizado exitosamente"})
-
-            
-
-        except Exception as e:
-
-            db.session.rollback()
-
-            return jsonify({"message": f"Error actualizando perfil: {str(e)}"}), 500
+        )
 
     
 
@@ -634,31 +656,23 @@ def create_app(testing=False, testing_config=None):
 
 def setup_database(app):
 
-    """Inicializa base de datos con datos base."""
-
-    from .models import (
-
-        Tenant, Role, User, ClientProfile, LoanProduct, Account, 
-
-        NotificationTemplate
-
-    )
+    """Inicializa base de datos con datos base esenciales."""
 
     
 
     with app.app_context():
 
-        # Crear tablas
+        # Crear tablas si no existen
 
         db.create_all()
 
         
 
-        # === TENANTS ===
+        # === TENANT POR DEFECTO ===
 
         if not Tenant.query.first():
 
-            default_tenant = Tenant(company_name='LAZOARCE NEXUS')
+            default_tenant = Tenant(company_name='LAZOARCE NEXUS', is_active=True)
 
             db.session.add(default_tenant)
 
@@ -672,37 +686,45 @@ def setup_database(app):
 
         # === ROLES ===
 
-        if not Role.query.first():
+        required_roles = [
 
-            roles_data = [
+            'Super Administrador', 'Administrador General', 
 
-                ('Super Administrador', default_tenant.id),
+            'Ejecutivo de Crédito', 'Cobrador', 'Contador', 'Cliente'
 
-                ('Administrador General', default_tenant.id),
-
-                ('Ejecutivo de Crédito', default_tenant.id),
-
-                ('Cobrador', default_tenant.id),
-
-                ('Contador', default_tenant.id),
-
-                ('Cliente', default_tenant.id)
-
-            ]
-
-            
-
-            roles = [Role(name=name, tenant_id=tenant_id) for name, tenant_id in roles_data]
-
-            db.session.bulk_save_objects(roles)
-
-            db.session.commit()
+        ]
 
         
 
-        # === USUARIO ADMIN ===
+        existing_roles = {role.name for role in Role.query.all()}
 
-        if not User.query.filter_by(email='admin@lazoarce.com').first():
+        missing_roles = [role for role in required_roles if role not in existing_roles]
+
+        
+
+        if missing_roles:
+
+            roles_to_create = [
+
+                Role(name=role_name, tenant_id=default_tenant.id) 
+
+                for role_name in missing_roles
+
+            ]
+
+            db.session.bulk_save_objects(roles_to_create)
+
+            db.session.commit()
+
+            print(f"✅ Creados {len(missing_roles)} roles: {missing_roles}")
+
+        
+
+        # === USUARIO SUPERADMIN ===
+
+        admin_email = 'admin@lazoarce.com'
+
+        if not User.query.filter_by(email=admin_email).first():
 
             superadmin_role = Role.query.filter_by(name='Super Administrador').first()
 
@@ -710,17 +732,15 @@ def setup_database(app):
 
                 admin = User(
 
-                    email='admin@lazoarce.com',
+                    email=admin_email,
 
-                    tenant_id=default_tenant.id,
+                    full_name='Super Administrador LAZO ARCE',
 
-                    role_id=superadmin_role.id,
-
-                    full_name='Super Administrador'
+                    role_id=superadmin_role.id
 
                 )
 
-                admin.set_password('admin123')
+                admin.set_password('admin123')  # CAMBIAR EN PRODUCCIÓN
 
                 
 
@@ -728,7 +748,7 @@ def setup_database(app):
 
                     user_id=admin.id,
 
-                    full_name='Super Administrador'
+                    full_name='Super Administrador LAZO ARCE'
 
                 )
 
@@ -738,11 +758,21 @@ def setup_database(app):
 
                 db.session.commit()
 
+                
+
+                print("🔐 Usuario admin creado:")
+
+                print(f"   Email: {admin_email}")
+
+                print(f"   Password: admin123")
+
+                print("⚠️   ¡CAMBIAR CONTRASEÑA EN PRODUCCIÓN INMEDIATAMENTE!")
+
         
 
         # === PRODUCTO POR DEFECTO ===
 
-        if not LoanProduct.query.first():
+        if not LoanProduct.query.filter_by(name='Préstamo Personal Clásico').first():
 
             default_product = LoanProduct(
 
@@ -752,7 +782,7 @@ def setup_database(app):
 
                 max_amount=50000.0,
 
-                interest_rate=12.0,  # 12% anual
+                interest_rate=12.0,
 
                 commission_rate=2.0,
 
@@ -774,47 +804,63 @@ def setup_database(app):
 
             db.session.commit()
 
+            print("✅ Producto de préstamo por defecto creado")
+
         
 
-        # === CUENTAS CONTABLES ===
+        # === CUENTAS CONTABLES BÁSICAS ===
 
         if not Account.query.first():
 
-            accounts = [
+            basic_accounts = [
 
                 # Activos
 
-                Account(name='Caja', category='Asset', normal_balance='Debit'),
+                {'name': 'Caja', 'category': 'Asset', 'normal_balance': 'Debit', 'account_code': '1101'},
 
-                Account(name='Bancos', category='Asset', normal_balance='Debit'),
+                {'name': 'Bancos', 'category': 'Asset', 'normal_balance': 'Debit', 'account_code': '1102'},
 
-                Account(name='Cuentas por Cobrar Clientes', category='Asset', normal_balance='Debit'),
+                {'name': 'Cuentas por Cobrar Clientes', 'category': 'Asset', 'normal_balance': 'Debit', 'account_code': '1201'},
+
+                
 
                 # Pasivos
 
-                Account(name='Retenciones por Pagar', category='Liability', normal_balance='Credit'),
+                {'name': 'Retenciones por Pagar', 'category': 'Liability', 'normal_balance': 'Credit', 'account_code': '2101'},
 
-                Account(name='Sueldos por Pagar', category='Liability', normal_balance='Credit'),
+                {'name': 'Sueldos por Pagar', 'category': 'Liability', 'normal_balance': 'Credit', 'account_code': '2102'},
+
+                
 
                 # Patrimonio
 
-                Account(name='Capital Social', category='Equity', normal_balance='Credit'),
+                {'name': 'Capital Social', 'category': 'Equity', 'normal_balance': 'Credit', 'account_code': '3101'},
+
+                
 
                 # Ingresos
 
-                Account(name='Ingresos por Intereses', category='Revenue', normal_balance='Credit'),
+                {'name': 'Ingresos por Intereses', 'category': 'Revenue', 'normal_balance': 'Credit', 'account_code': '4101'},
 
-                Account(name='Ingresos por Comisiones', category='Revenue', normal_balance='Credit'),
+                {'name': 'Ingresos por Comisiones', 'category': 'Revenue', 'normal_balance': 'Credit', 'account_code': '4102'},
+
+                
 
                 # Gastos
 
-                Account(name='Sueldos y Salarios', category='Expense', normal_balance='Debit')
+                {'name': 'Sueldos y Salarios', 'category': 'Expense', 'normal_balance': 'Debit', 'account_code': '5101'},
 
             ]
+
+            
+
+            accounts = [Account(**data) for data in basic_accounts]
 
             db.session.bulk_save_objects(accounts)
 
             db.session.commit()
+
+            print(f"✅ {len(accounts)} cuentas contables básicas creadas")
 
         
 
@@ -828,9 +874,11 @@ def setup_database(app):
 
                     slug='loan-application-received',
 
-                    subject='Recibimos tu solicitud de préstamo',
+                    subject='✅ Recibimos tu solicitud de préstamo',
 
-                    body='Hola {customer_name},\n\nHemos recibido tu solicitud por ${amount}. Te contactaremos pronto.'
+                    body='Hola {customer_name},\n\nHemos recibido tu solicitud por ${amount}. Te contactaremos pronto.',
+
+                    type='Email'
 
                 ),
 
@@ -838,19 +886,23 @@ def setup_database(app):
 
                     slug='loan-approved',
 
-                    subject='¡Tu préstamo fue APROBADO! 🎉',
+                    subject='🎉 ¡Tu préstamo fue APROBADO!',
 
-                    body='¡Felicidades {customer_name}! Tu préstamo por ${amount} ha sido aprobado.'
+                    body='¡Felicidades {customer_name}! Tu préstamo por ${amount} ha sido aprobado.\n\nPróximos pasos:',
+
+                    type='Email'
 
                 ),
 
                 NotificationTemplate(
 
-                    slug='loan-rejected',
+                    slug='payment-reminder',
 
-                    subject='Actualización de tu solicitud',
+                    subject='⏰ Recordatorio de pago',
 
-                    body='Hola {customer_name},\n\nLamentamos informarte que tu solicitud no pudo ser aprobada.'
+                    body='Hola {customer_name},\n\nTe recordamos que vence tu cuota de ${amount} el {due_date}.',
+
+                    type='SMS'
 
                 )
 
@@ -860,13 +912,51 @@ def setup_database(app):
 
             db.session.commit()
 
+            print("✅ Plantillas de notificación creadas")
+
         
 
-        print("✅ Base de datos inicializada correctamente")
+        # === EMPLEADO DE PRUEBA ===
+
+        if not Employee.query.first():
+
+            test_employee = Employee(
+
+                full_name='Ana García López',
+
+                position='Ejecutivo de Crédito',
+
+                salary=1200.00,
+
+                hire_date=date(2024, 1, 15),
+
+                dui='12345678-9',
+
+                nit='1234-567890-123-4',
+
+                is_active=True
+
+            )
+
+            db.session.add(test_employee)
+
+            db.session.commit()
+
+            print("✅ Empleado de prueba creado")
+
+        
+
+        print("✅ 🎉 Base de datos inicializada correctamente")
+
+        print(f"📊 Total usuarios: {User.query.count()}")
+
+        print(f"💰 Productos activos: {LoanProduct.query.filter_by(is_active=True).count()}")
+
+        print(f"🏦 Cuentas contables: {Account.query.count()}")
 
 def initialize_database(app):
 
-    """Alias para compatibilidad."""
+    """Alias para compatibilidad con código legacy."""
 
     setup_database(app)
 
@@ -876,9 +966,9 @@ if __name__ == '__main__':
 
     
 
-    # Inicializar base de datos (solo en desarrollo)
+    # Inicializar base de datos (solo desarrollo/testing)
 
-    if os.environ.get('FLASK_ENV', 'development') != 'production':
+    if os.environ.get('FLASK_ENV', 'development') in ['development', 'testing']:
 
         setup_database(app)
 
