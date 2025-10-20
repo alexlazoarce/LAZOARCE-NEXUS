@@ -5,6 +5,7 @@ from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identi
 from flask_migrate import Migrate
 from functools import wraps
 from dotenv import load_dotenv
+from datetime import datetime, date, timedelta
 
 load_dotenv()
 
@@ -21,15 +22,13 @@ from . import collections_service
 from . import notification_service
 from . import audit_service
 from . import event_service
-from datetime import datetime, date, timedelta
-from datetime import datetime
+
 
 def create_app():
     app = Flask(__name__)
     CORS(app)
     app.config['SECRET_KEY'] = 'dev'
     app.config['JWT_SECRET_KEY'] = 'dev'
-    # Point to the provided PostgreSQL database with the corrected hostname
     app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///local.db')
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -85,7 +84,6 @@ def create_app():
 
         return jsonify({"message": "Credenciales incorrectas para el inquilino especificado."}), 401
 
-    # ... (all other routes would be here) ...
     @app.route('/api/loan_applications', methods=['GET'])
     @tenant_required
     def get_loan_applications():
@@ -108,8 +106,8 @@ def create_app():
             start_date = datetime.fromisoformat(start_date_str)
             query = query.filter(LoanApplication.application_date >= start_date)
         if end_date_str:
-            end_date = datetime.fromisoformat(end_date_str)
-            query = query.filter(LoanApplication.application_date <= end_date)
+            end_date = datetime.fromisoformat(end_date_str) + timedelta(days=1)
+            query = query.filter(LoanApplication.application_date < end_date)
 
         applications = query.all()
 
