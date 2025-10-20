@@ -532,44 +532,25 @@ class TenantSubscription(db.Model):
             'is_active': self.is_active
         }
 
-# --- LAN-ET2 (Empresa de Trabajo Temporal) Models ---
+# --- LAN-FEV8 (Firma Electrónica Avanzada) Models ---
 
-class ClientCompany(db.Model):
-    """Represents a client company that hires temporary workers."""
+class SignatureRequest(db.Model):
+    """Stores a user's electronically captured signature."""
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(150), unique=True, nullable=False)
-    contact_person = db.Column(db.String(120), nullable=True)
-    contact_email = db.Column(db.String(120), nullable=False)
-    assignments = db.relationship('TemporaryAssignment', backref='client_company', lazy='dynamic')
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+
+    # Store signature as a Base64 encoded PNG image
+    signature_data = db.Column(db.Text, nullable=False)
+
+    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+
+    user = db.relationship('User', backref='signatures')
 
     def to_dict(self):
         return {
             'id': self.id,
-            'name': self.name,
-            'contact_person': self.contact_person,
-            'contact_email': self.contact_email
-        }
-
-class TemporaryAssignment(db.Model):
-    """Represents the assignment of an employee to a client company."""
-    id = db.Column(db.Integer, primary_key=True)
-    employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
-    client_company_id = db.Column(db.Integer, db.ForeignKey('client_company.id'), nullable=False)
-
-    start_date = db.Column(db.Date, nullable=False)
-    end_date = db.Column(db.Date, nullable=False)
-    hourly_rate = db.Column(db.Float, nullable=False)
-
-    employee = db.relationship('Employee', backref='temporary_assignments')
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'employee_id': self.employee_id,
-            'employee_name': self.employee.full_name,
-            'client_company_id': self.client_company_id,
-            'client_company_name': self.client_company.name,
-            'start_date': self.start_date.isoformat(),
-            'end_date': self.end_date.isoformat(),
-            'hourly_rate': self.hourly_rate
+            'user_id': self.user_id,
+            'user_name': self.user.full_name,
+            'created_at': self.created_at.isoformat()
+            # Do not return signature_data by default for brevity
         }

@@ -1,10 +1,9 @@
 import os
 from flask import Flask, jsonify, request, make_response
 from flask_cors import CORS
-from functools import wraps
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, JWTManager, get_jwt
 
-from models import db, Role, User, LoanProduct, LoanApplication, Account, Employee, PayrollLog, PaySlip, Lead, CommunicationLog, Payment, NotificationTemplate, AuditLog, Opportunity, MailingList, Campaign, Ticket, TicketComment, Tenant, SystemModule, TenantSubscription, ClientCompany, TemporaryAssignment
+from models import db, Role, User, LoanProduct, LoanApplication, Account, Employee, PayrollLog, PaySlip, Lead, CommunicationLog, Payment, NotificationTemplate, AuditLog, Opportunity, MailingList, Campaign, Ticket, TicketComment, Tenant, SystemModule, TenantSubscription, SignatureRequest
 from loan_calculator import calculate_loan_details
 from pdf_generator import generate_contract_pdf
 import accounting_service
@@ -12,8 +11,7 @@ import payroll_service
 import collections_service
 import notification_service
 import audit_service
-import subscription_service
-import ett_service
+import firma_service
 from datetime import datetime, date, timedelta
     """Application factory function."""
     app = Flask(__name__)
@@ -1407,36 +1405,35 @@ def setup_database(app):
             db.session.bulk_save_objects(templates)
             db.session.commit()
 
+        if not SystemModule.query.first():
+            modules = [
+                SystemModule(module_code='LAN-SUB1', name='Gestión de Suscripciones', description='Administra los tenants y sus suscripciones a los módulos.'),
+                SystemModule(module_code='LAN-FEV8', name='Firma Electrónica Avanzada', description='Permite la captura y almacenamiento de firmas electrónicas.')
+            ]
+            db.session.bulk_save_objects(modules)
+            db.session.commit()
+
     # --- LAN-SUB1 (Subscription Management) API ROUTES ---
 
     @app.route('/api/subscriptions/tenants', methods=['GET', 'POST'])
-    @module_access_required('LAN-SUB1') # Protected by the decorator
+    @module_access_required('LAN-SUB1')
     def handle_tenants():
         if request.method == 'POST':
             data = request.get_json()
-            try:
-                tenant = subscription_service.create_tenant(data['name'])
-                return jsonify(tenant.to_dict()), 201
-            except ValueError as e:
-                return jsonify({"message": str(e)}), 409
+            if Tenant.query.filter_by(name=data['name']).first():
+                return jsonify({"message": "Tenant with that name already exists."}), 409
+            new_tenant = Tenant(name=data['name'])
+            db.session.add(new_tenant)
+            db.session.commit()
+            return jsonify(new_tenant.to_dict()), 201
 
-        tenants = subscription_service.get_all_tenants()
+        tenants = Tenant.query.all()
         return jsonify([t.to_dict() for t in tenants])
 
-    @app.route('/api/subscriptions/modules', methods=['GET', 'POST'])
+    @app.route('/api/subscriptions/modules', methods=['GET'])
     @module_access_required('LAN-SUB1')
     def handle_system_modules():
-        if request.method == 'POST':
-            data = request.get_json()
-            try:
-                module = subscription_service.create_system_module(
-                    data['module_code'], data['name'], data.get('description', '')
-                )
-                return jsonify(module.to_dict()), 201
-            except ValueError as e:
-                return jsonify({"message": str(e)}), 409
-
-        modules = subscription_service.get_all_system_modules()
+        modules = SystemModule.query.all()
         return jsonify([m.to_dict() for m in modules])
 
     @app.route('/api/subscriptions', methods=['POST'])
@@ -1444,69 +1441,63 @@ def setup_database(app):
     def handle_create_subscription():
         data = request.get_json()
         try:
-            subscription = subscription_service.create_subscription(
-                data['tenant_id'], data['module_id'], data['start_date'], data.get('end_date')
+            start_date = date.fromisoformat(data['start_date'])
+            end_date = date.fromisoformat(data['end_date']) if data.get('end_date') else None
+
+            new_subscription = TenantSubscription(
+                tenant_id=data['tenant_id'],
+                module_id=data['module_id'],
+                start_date=start_date,
+                end_date=end_date,
+                is_active=True
             )
-            return jsonify(subscription.to_dict()), 201
-        except ValueError as e:
-            return jsonify({"message": str(e)}), 400
+            db.session.add(new_subscription)
+            db.session.commit()
+            return jsonify(new_subscription.to_dict()), 201
+        except (ValueError, KeyError) as e:
+            return jsonify({"message": f"Invalid data provided: {e}"}), 400
 
     @app.route('/api/subscriptions/tenants/<int:tenant_id>', methods=['GET'])
     @module_access_required('LAN-SUB1')
     def get_tenant_subscriptions(tenant_id):
-        subscriptions = subscription_service.get_subscriptions_for_tenant(tenant_id)
+        subscriptions = TenantSubscription.query.filter_by(tenant_id=tenant_id).all()
         return jsonify([s.to_dict() for s in subscriptions])
 
-    # --- LAN-ET2 (ETT Management) API ROUTES ---
+    # --- LAN-FEV8 (Electronic Signature) API ROUTES ---
 
-    @app.route('/api/ett/companies', methods=['POST'])
-    @module_access_required('LAN-ET2')
-    def create_client_company():
+    @app.route('/api/signatures', methods=['POST'])
+    @module_access_required('LAN-FEV8')
+    def submit_signature():
         data = request.get_json()
+        current_user_email = get_jwt_identity()
+        user = User.query.filter_by(email=current_user_email).first()
+
+        if not user:
+            return jsonify({"message": "User not found"}), 404
+
         try:
-            new_company = ett_service.add_client_company(
-                name=data.get('name'),
-                contact_person=data.get('contact_person'),
-                contact_email=data.get('contact_email')
+            signature = firma_service.save_signature(
+                user_id=user.id,
+                signature_data=data.get('signature_data')
             )
-            return jsonify(new_company.to_dict()), 201
+            return jsonify(signature.to_dict()), 201
         except ValueError as e:
             return jsonify({'message': str(e)}), 400
 
-    @app.route('/api/ett/companies', methods=['GET'])
-    @module_access_required('LAN-ET2')
-    def list_client_companies():
-        companies = ett_service.get_all_client_companies()
-        return jsonify([company.to_dict() for company in companies]), 200
+    @app.route('/api/signatures/user/<int:user_id>', methods=['GET'])
+    @module_access_required('LAN-FEV8')
+    def get_user_signatures(user_id):
+        current_user_email = get_jwt_identity()
+        requesting_user = User.query.filter_by(email=current_user_email).first()
+        claims = get_jwt()
+        user_roles = claims.get('roles', [])
 
-    @app.route('/api/ett/assignments', methods=['POST'])
-    @module_access_required('LAN-ET2')
-    def create_temporary_assignment():
-        data = request.get_json()
-        try:
-            new_assignment = ett_service.add_temporary_assignment(
-                employee_id=data.get('employee_id'),
-                client_company_id=data.get('client_company_id'),
-                start_date_str=data.get('start_date'),
-                end_date_str=data.get('end_date'),
-                hourly_rate=data.get('hourly_rate')
-            )
-            return jsonify(new_assignment.to_dict()), 201
-        except ValueError as e:
-            return jsonify({'message': str(e)}), 400
+        # Security check: Allow access only if the user is requesting their own signatures or is an Admin.
+        if 'Admin' not in user_roles and requesting_user.id != user_id:
+            return jsonify({"message": "Acceso no autorizado"}), 403
 
-    @app.route('/api/ett/assignments/employee/<int:employee_id>', methods=['GET'])
-    @module_access_required('LAN-ET2')
-    def list_assignments_by_employee(employee_id):
-        assignments = ett_service.get_assignments_for_employee(employee_id)
-        return jsonify([assignment.to_dict() for assignment in assignments]), 200
-
-    @app.route('/api/ett/assignments/active', methods=['GET'])
-    @module_access_required('LAN-ET2')
-    def list_active_assignments():
-        assignments = ett_service.get_active_assignments()
-        return jsonify([assignment.to_dict() for assignment in assignments]), 200
-
+        signatures = firma_service.get_signatures_for_user(user_id)
+        return jsonify([s.to_dict() for s in signatures]), 200
 
 if __name__ == '__main__':
     app = create_app()
