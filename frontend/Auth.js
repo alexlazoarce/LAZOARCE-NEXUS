@@ -1,23 +1,18 @@
 const Auth = ({ onLogin }) => {
+    const [isLogin, setIsLogin] = React.useState(true);
     const [email, setEmail] = React.useState('');
     const [password, setPassword] = React.useState('');
-    const [tenantName, setTenantName] = React.useState('');
+    const [username, setUsername] = React.useState('');
     const [error, setError] = React.useState('');
+    const [message, setMessage] = React.useState('');
 
-    const handleLogin = async (e) => {
+    const handleAuth = async (e) => {
         e.preventDefault();
         setError('');
+        setMessage('');
 
-        // Special case for SuperAdmin login
-        const effectiveTenantName = email === 'support@lazoarce.com' ? 'LAZOARCE NEXUS' : tenantName;
-
-        if (!effectiveTenantName) {
-            setError('Por favor, ingrese el nombre de la empresa.');
-            return;
-        }
-
-        const url = `${API_BASE_URL}/api/auth/login`;
-        const payload = { email, password, tenant_name: effectiveTenantName };
+        const url = isLogin ? `${API_BASE_URL}/api/auth/login` : `${API_BASE_URL}/api/auth/register`;
+        const payload = isLogin ? { email, password } : { username, email, password };
 
         try {
             const response = await fetch(url, {
@@ -34,10 +29,15 @@ const Auth = ({ onLogin }) => {
                 throw new Error(data.message || 'Error en la autenticación');
             }
 
-            if (data.access_token) {
-                onLogin(data.access_token);
+            if (isLogin) {
+                if (data.access_token) {
+                    onLogin(data.access_token);
+                } else {
+                    throw new Error('No se recibió el token de acceso');
+                }
             } else {
-                throw new Error('No se recibió el token de acceso');
+                setMessage('Registro exitoso. Ahora puedes iniciar sesión.');
+                setIsLogin(true);
             }
         } catch (err) {
             setError(err.message);
@@ -46,49 +46,29 @@ const Auth = ({ onLogin }) => {
 
     return (
         <div className="auth-container">
-            <h2>Iniciar Sesión</h2>
-            <form onSubmit={handleLogin}>
-                {email !== 'support@lazoarce.com' && (
-                     <div>
-                        <label htmlFor="tenantName">Nombre de la Empresa (Inquilino):</label>
-                        <input
-                            id="tenantName"
-                            type="text"
-                            value={tenantName}
-                            onChange={(e) => setTenantName(e.target.value)}
-                            required
-                            placeholder="Ej: Mi Empresa"
-                            data-testid="tenant-name-input"
-                        />
+            <h2>{isLogin ? 'Iniciar Sesión' : 'Registro'}</h2>
+            <form onSubmit={handleAuth}>
+                {!isLogin && (
+                    <div>
+                        <label>Nombre de usuario:</label>
+                        <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} required />
                     </div>
                 )}
                 <div>
-                    <label htmlFor="email">Email:</label>
-                    <input
-                        id="email"
-                        type="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        required
-                        placeholder="usuario@ejemplo.com"
-                    />
+                    <label>Email:</label>
+                    <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
                 </div>
                 <div>
-                    <label htmlFor="password">Contraseña:</label>
-                    <input
-                        id="password"
-                        type="password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        required
-                    />
+                    <label>Contraseña:</label>
+                    <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
                 </div>
-                {error && <p className="error" style={{color: 'red'}}>{error}</p>}
-                <button type="submit">Iniciar Sesión</button>
+                {error && <p className="error">{error}</p>}
+                {message && <p className="message">{message}</p>}
+                <button type="submit">{isLogin ? 'Iniciar Sesión' : 'Registrarse'}</button>
             </form>
-            <p style={{marginTop: '20px', fontSize: '0.8em', color: 'grey'}}>
-                El registro de nuevos usuarios es gestionado por el administrador de su empresa.
-            </p>
+            <button onClick={() => setIsLogin(!isLogin)}>
+                {isLogin ? '¿No tienes cuenta? Regístrate' : '¿Ya tienes cuenta? Inicia sesión'}
+            </button>
         </div>
     );
 };

@@ -1,5 +1,3 @@
-import base64
-import io
 from fpdf import FPDF
 
 class PDF(FPDF):
@@ -77,38 +75,9 @@ def generate_contract_pdf(contract_data):
     pdf.add_amortization_table(contract_data['amortization_table'])
 
     pdf.chapter_title('Firmas')
-    pdf.ln(10)
-
-    # Signature areas
-    pdf.set_x(20)
-    pdf.cell(80, 10, '_________________________', 0, 0, 'C')
-    pdf.set_x(110)
-    pdf.cell(80, 10, '_________________________', 0, 1, 'C')
-
-    pdf.set_x(20)
-    pdf.cell(80, 10, company['name'], 0, 0, 'C')
-    pdf.set_x(110)
-    pdf.cell(80, 10, client['full_name'], 0, 1, 'C')
-
-    # Embed signature if available
-    if contract_data.get('signature'):
-        try:
-            # Decode the base64 image
-            img_data = base64.b64decode(contract_data['signature']['image_b64'].split(',')[1])
-            img = io.BytesIO(img_data)
-
-            # Position and draw the image
-            pdf.image(img, x=120, y=pdf.get_y() - 28, w=60)
-
-            # Add validation text
-            pdf.set_font('Arial', 'I', 8)
-            pdf.set_y(pdf.get_y() + 5)
-            pdf.set_x(110)
-            pdf.multi_cell(80, 4, f"Firmado digitalmente el {contract_data['signature']['signed_at']}\n"
-                                  f"por {client['email']}", 0, 'C')
-
-        except Exception as e:
-            print(f"Error al incrustar la firma en el PDF: {e}")
-
+    pdf.ln(20)
+    pdf.cell(0, 10, '_________________________         _________________________')
+    pdf.ln(5)
+    pdf.cell(0, 10, f"{company['name']}                  {client['full_name']}")
 
     return pdf.output(dest='S').encode('latin-1')

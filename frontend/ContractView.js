@@ -31,44 +31,35 @@ const ContractView = ({ token, applicationId, onBack }) => {
     if (!contractData) return null;
 
     const { application, client, company, amortization_table } = contractData;
-    const sigCanvas = React.useRef({});
 
     const handleDownloadPdf = async () => {
-        // ... (existing PDF download logic)
-    };
-
-    const clearSignature = () => {
-        sigCanvas.current.clear();
-    };
-
-    const saveSignature = async () => {
-        if (sigCanvas.current.isEmpty()) {
-            alert("Por favor, provea una firma.");
-            return;
-        }
-        const signatureImage = sigCanvas.current.getTrimmedCanvas().toDataURL('image/png');
-
         try {
-            const response = await fetch(`${API_BASE_URL}/api/applications/${applicationId}/sign`, {
-                method: 'POST',
+            const response = await fetch(`${API_BASE_URL}/api/applications/${applicationId}/contract.pdf`, {
+                method: 'GET',
                 headers: {
-                    'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({ signature_image: signatureImage })
+                }
             });
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.message);
-            alert(data.message);
-            // In a real app, you might want to refresh the contract data here to show the signature
-            onBack(); // Go back to the previous view after signing
+
+            if (!response.ok) {
+                throw new Error('Error al generar el PDF.');
+            }
+
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = `contrato_lazo_arce_${applicationId}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+
         } catch (err) {
-            setError(`Error al guardar la firma: ${err.message}`);
+            setError(err.message);
         }
     };
-
-    // Check if the application has already been signed
-    const isSigned = application.signature_image && application.signed_at;
 
     return (
         <div className="contract-container">
@@ -120,36 +111,17 @@ const ContractView = ({ token, applicationId, onBack }) => {
                 </tbody>
             </table>
 
-            <div className="signatures" style={{marginTop: '40px'}}>
-                <div style={{display: 'flex', justifyContent: 'space-around'}}>
-                    <div>
-                        <p>_________________________</p>
-                        <p>{company.name}</p>
-                        <p>El Prestamista</p>
-                    </div>
-                    <div>
-                        {isSigned ? (
-                            <div>
-                                <img src={application.signature_image} alt="Firma del cliente" style={{border: '1px solid black', width: 300, height: 150}}/>
-                                <p>Firmado digitalmente el {new Date(application.signed_at).toLocaleString()}</p>
-                            </div>
-                        ) : (
-                            <div>
-                                <div style={{border: '1px solid black', width: 300, height: 150}}>
-                                    <SignatureCanvas ref={sigCanvas} canvasProps={{width: 300, height: 150, className: 'sigCanvas'}} />
-                                </div>
-                                <p>{client.full_name}</p>
-                                <p>El Prestatario (Firma Digital)</p>
-                            </div>
-                        )}
-                    </div>
+            <div className="signatures" style={{marginTop: '50px', display: 'flex', justifyContent: 'space-around'}}>
+                <div>
+                    <p>_________________________</p>
+                    <p>{company.name}</p>
+                    <p>El Prestamista</p>
                 </div>
-                {!isSigned && (
-                    <div style={{textAlign: 'center', marginTop: '10px'}}>
-                        <button onClick={clearSignature}>Limpiar Firma</button>
-                        <button onClick={saveSignature} style={{marginLeft: '10px'}}>Guardar y Aceptar Contrato</button>
-                    </div>
-                )}
+                <div>
+                    <p>_________________________</p>
+                    <p>{client.full_name}</p>
+                    <p>El Prestatario</p>
+                </div>
             </div>
         </div>
     );

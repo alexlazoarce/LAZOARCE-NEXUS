@@ -1,121 +1,383 @@
 import os
-from flask import Flask, jsonify, request, make_response, g
-from flask_cors import CORS
-from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, JWTManager, get_jwt
-from flask_migrate import Migrate
-from functools import wraps
 
-from .models import (
-    db, Tenant, Role, User, LoanProduct, LoanApplication, Account, JournalEntry, Transaction,
-    Employee, Lead, CommunicationLog, Payment, NotificationTemplate, AuditLog,
-    Opportunity, Project, Task
+from flask import Flask, jsonify, request, make_response
+
+from flask_cors import CORS
+
+from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity, get_jwt
+
+from flask_migrate import Migrate
+
+from dotenv import load_dotenv
+
+# Importar extensiones y modelos
+
+from backend.extensions import db, jwt
+
+from backend.models import (
+
+    Role, User, ClientProfile, LoanProduct, LoanApplication, Account, Employee,
+
+    PayrollLog, PaySlip, Lead, CommunicationLog, Payment,
+
+    NotificationTemplate, AuditLog, Ticket, TicketComment, TaxType,
+
+    ClientCompany, TemporaryAssignment, Invoice, InvoiceItem,
+
+    SubscriptionPlan, Subscription, JournalEntry, Transaction
+
 )
-from .loan_calculator import calculate_loan_details
-from .pdf_generator import generate_contract_pdf
-from . import accounting_service
-from . import payroll_service
-from . import collections_service
-from . import notification_service
-from . import audit_service
-from . import event_service
+
+import backend.models  # Para que SQLAlchemy descubra todos los modelos
+
+# Importar blueprints y servicios
+
+from backend.routes.auth import auth_bp
+
+from backend.routes.loan_management import loan_management_bp
+
+from backend.hr.routes import hr_bp
+
+from backend.routes.ett_routes import ett_bp
+
+from backend.routes.accounting_routes import accounting_bp
+
+from backend.routes.invoicing_routes import invoicing_bp
+
+from backend.routes.billing_routes import billing_bp
+
+# Servicios
+
+import backend.services.accounting_service as accounting_service
+
+import backend.services.payroll_service as payroll_service
+
+import backend.services.collections_service as collections_service
+
+import backend.services.notification_service as notification_service
+
+import backend.services.audit_service as audit_service
+
+# Calculadoras y generadores
+
+from backend.loan_calculator import calcular_prestamo_completo as calculate_loan_details
+
+from backend.pdf_generator import generate_contract_pdf
+
 from datetime import datetime, date, timedelta
 
+from dateutil.relativedelta import relativedelta
+
 def create_app():
+
+    """Application factory function - UNIFICADA Y MEJORADA."""
+
+    load_dotenv()
+
     app = Flask(__name__)
-    CORS(app)
-    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev')
-    app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'dev')
-    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///app.db')
+
+    CORS(app, resources={r"/api/*": {"origins": "*"}})
+
+    # Configuración de Flask
+
+    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-super-segura')
+
+    app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'dev-jwt-super-segura')
+
+
+
+    # Configuración de base de datos
+
+    if os.environ.get('DATABASE_URL'):
+
+        app.config['SQLALCHEMY_DATABASE_URI'] = os.environ['DATABASE_URL'].replace('postgres://', 'postgresql://')
+
+    else:
+
+        # SQLite local para desarrollo
+
+        instance_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance')
+
+        os.makedirs(instance_path, exist_ok=True)
+
+        db_path = os.path.join(instance_path, 'lazoarce.db')
+
+        app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{db_path}"
+
+
+
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+    app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=8)
+
+    # Inicializar extensiones
+
     db.init_app(app)
-    jwt = JWTManager(app)
-    migrate = Migrate(app, db)
 
-    def tenant_required(fn):
-        @wraps(fn)
-        @jwt_required()
-        def wrapper(*args, **kwargs):
-            claims = get_jwt()
-            g.tenant_id = claims.get('tenant_id')
-            if not g.tenant_id: return jsonify({"message": "Token JWT no contiene tenant_id"}), 400
-            g.user = User.query.filter_by(email=get_jwt_identity(), tenant_id=g.tenant_id).first_or_404()
-            g.user_roles = [role.name for role in g.user.roles]
-            return fn(*args, **kwargs)
-        return wrapper
+    Migrate(app, db)
 
-    @app.route('/api/auth/login', methods=['POST'])
-    def login():
-        data = request.get_json()
-        tenant_name = data.get('tenant_name')
-        email = data.get('email')
-        password = data.get('password')
+    JWTManager(app)
 
-        if not tenant_name or not email or not password:
-            return jsonify({"message": "Faltan el nombre del inquilino, el email o la contraseña."}), 400
+    # Registrar Blueprints
 
-        if email == 'support@lazoarce.com':
-            tenant = Tenant.query.filter_by(company_name='LAZOARCE NEXUS').first()
-        else:
-            tenant = Tenant.query.filter_by(company_name=tenant_name).first()
+    app.register_blueprint(auth_bp, url_prefix='/api')
 
-        if not tenant:
-            return jsonify({"message": "Inquilino no encontrado."}), 404
+    app.register_blueprint(loan_management_bp, url_prefix='/api')
 
-        user = User.query.filter_by(email=email, tenant_id=tenant.id).first()
+    app.register_blueprint(hr_bp, url_prefix='/api')
 
-        if user and user.check_password(password):
-            roles = [role.name for role in user.roles]
-            additional_claims = {'roles': roles, 'tenant_id': user.tenant_id}
-            access_token = create_access_token(identity=user.email, additional_claims=additional_claims)
+    app.register_blueprint(ett_bp, url_prefix='/api')
 
-            try:
-                audit_user_id = user.id
-                audit_tenant_id = user.tenant_id
-                audit_service.log_action('USER_LOGIN', user_id=audit_user_id, tenant_id=audit_tenant_id, details=f"User {email} logged in to tenant {tenant.company_name}.")
-            except Exception as e:
-                print(f"Error during audit logging: {e}")
+    app.register_blueprint(accounting_bp, url_prefix='/api')
 
-            return jsonify(access_token=access_token)
+    app.register_blueprint(invoicing_bp, url_prefix='/api')
 
-        return jsonify({"message": "Credenciales incorrectas para el inquilino especificado."}), 401
+    app.register_blueprint(billing_bp, url_prefix='/api')
 
-    # ... (all other routes would be here) ...
+
+
+    # HEALTH CHECK
+
+    @app.route('/api/health')
+
+    def health_check():
+
+        return jsonify({"status": "healthy", "timestamp": datetime.utcnow().isoformat()})
+
+    # ROOT
+
+    @app.route('/')
+
+    def index():
+
+        return jsonify({
+
+            "message": "Sistema de Gestión Financiera LAZO ARCE",
+
+            "version": "2.0",
+
+            "endpoints": "/api/health, /api/auth/*, /api/applications/*, etc.",
+
+            "docs": "/api/docs"  # Swagger docs si se implementa
+
+        })
+
+    # Error handlers
+
+    @app.errorhandler(404)
+
+    def not_found(error):
+
+        return jsonify({"message": "Endpoint no encontrado"}), 404
+
+    @app.errorhandler(500)
+
+    def internal_error(error):
+
+        db.session.rollback()
+
+        return jsonify({"message": "Error interno del servidor"}), 500
 
     return app
 
 def setup_database(app):
-    """
-    This function is now only for seeding data if needed, AFTER a migration.
-    """
+
+    """Inicializa base de datos con datos base."""
+
     with app.app_context():
-        print("Seeding initial data if necessary...")
-        if Tenant.query.first() is None:
-            print("No default tenant found, creating one...")
-            default_tenant = Tenant(company_name='LAZOARCE NEXUS')
-            db.session.add(default_tenant)
+
+        db.create_all()
+
+
+
+        # Roles
+
+        if not Role.query.first():
+
+            roles = [
+
+                'Super Administrador', 'Administrador General', 'Ejecutivo de Crédito',
+
+                'Cobrador', 'Contador', 'Cliente'
+
+            ]
+
+            for role_name in roles:
+
+                db.session.add(Role(name=role_name))
+
             db.session.commit()
-            print("Default tenant created.")
 
-            default_tenant = Tenant.query.first()
 
-            print("Creating default roles...")
-            roles = [Role(name=r, tenant_id=default_tenant.id) for r in ['SuperAdmin', 'Admin', 'Cliente']]
-            db.session.bulk_save_objects(roles)
+
+        # Admin por defecto
+
+        if not User.query.filter_by(email='admin@lazoarce.com').first():
+
+            admin_role = Role.query.filter_by(name='Super Administrador').first()
+
+            admin = User(email='admin@lazoarce.com', role_id=admin_role.id)
+
+            admin.set_password('admin123')
+
+            profile = ClientProfile(user_id=admin.id, full_name='Super Administrador')
+
+            db.session.add_all([admin, profile])
+
             db.session.commit()
-            print("Default roles created.")
 
-            print("Creating SuperAdmin user...")
-            super_admin_role = Role.query.filter_by(name='SuperAdmin', tenant_id=default_tenant.id).first()
-            super_admin_user = User(
-                email='support@lazoarce.com',
-                tenant_id=default_tenant.id,
-                role_id=super_admin_role.id,
-                full_name='LAZOARCE Support'
+
+
+        # Producto por defecto
+
+        if not LoanProduct.query.first():
+
+            product = LoanProduct(
+
+                name="Préstamo Personal Clásico",
+
+                min_amount=1000.0,
+
+                max_amount=50000.0,
+
+                interest_rate=12.0,  # 12% anual
+
+                commission_rate=2.0,  # 2% apertura
+
+                term_months=12,
+
+                comision_apertura=0.02,  # 2%
+
+                comision_administracion=10.0,  # $10 mensual
+
+                seguro=5.0,  # $5 mensual
+
+                comisiones_se_descuentan_capital=True
+
             )
-            super_admin_user.set_password('superadmin123')
-            db.session.add(super_admin_user)
+
+            db.session.add(product)
+
             db.session.commit()
-            print("SuperAdmin user created.")
-        else:
-            print("Default tenant already exists. No seeding needed.")
+
+
+
+        # Cuentas contables básicas
+
+        if not Account.query.first():
+
+            accounts = [
+
+                # Activos
+
+                Account(name='Caja', category='Asset', normal_balance='Debit'),
+
+                Account(name='Bancos', category='Asset', normal_balance='Debit'),
+
+                Account(name='Cuentas por Cobrar Clientes', category='Asset', normal_balance='Debit'),
+
+                # Pasivos
+
+                Account(name='Retenciones por Pagar', category='Liability', normal_balance='Credit'),
+
+                Account(name='Sueldos por Pagar', category='Liability', normal_balance='Credit'),
+
+                # Patrimonio
+
+                Account(name='Capital Social', category='Equity', normal_balance='Credit'),
+
+                # Ingresos
+
+                Account(name='Ingresos por Intereses', category='Revenue', normal_balance='Credit'),
+
+                Account(name='Ingresos por Comisiones', category='Revenue', normal_balance='Credit'),
+
+                # Gastos
+
+                Account(name='Sueldos y Salarios', category='Expense', normal_balance='Debit')
+
+            ]
+
+            db.session.bulk_save_objects(accounts)
+
+            db.session.commit()
+
+
+
+        # Plantillas de notificación
+
+        if not NotificationTemplate.query.first():
+
+            templates = [
+
+                NotificationTemplate(
+
+                    slug='loan-application-received',
+
+                    subject='Recibimos tu solicitud de préstamo',
+
+                    body='Hola {customer_name},\n\nHemos recibido tu solicitud por ${amount}. Te contactaremos pronto.\n\nSaludos,\nLAZO ARCE'
+
+                ),
+
+                NotificationTemplate(
+
+                    slug='loan-approved',
+
+                    subject='¡Tu préstamo fue APROBADO! 🎉',
+
+                    body='¡Felicidades {customer_name}! Tu préstamo por ${amount} ha sido aprobado.\n\nDescarga tu contrato en el portal.\n\n¡Gracias por confiar en nosotros!'
+
+                ),
+
+                NotificationTemplate(
+
+                    slug='loan-rejected',
+
+                    subject='Actualización de tu solicitud',
+
+                    body='Hola {customer_name},\n\nLamentamos informarte que tu solicitud no pudo ser aprobada en esta ocasión.\n\nTe invitamos a mejorar tu perfil y volver a solicitar.\n\nSaludos,\nLAZO ARCE'
+
+                )
+
+            ]
+
+            db.session.bulk_save_objects(templates)
+
+            db.session.commit()
+
+
+
+        print("✅ Base de datos inicializada correctamente")
+
+def initialize_database(app):
+
+    """Alias para compatibilidad con código anterior."""
+
+    setup_database(app)
+
+if __name__ == '__main__':
+
+    app = create_app()
+
+
+
+    # Inicializar base de datos
+
+    if os.environ.get('FLASK_ENV') != 'production':
+
+        setup_database(app)
+
+
+
+    # Configuración de puerto
+
+    port = int(os.environ.get('PORT', 5000))
+
+    host = os.environ.get('HOST', '0.0.0.0') if os.environ.get('FLASK_ENV') == 'production' else '127.0.0.1'
+
+
+
+    debug = os.environ.get('FLASK_ENV') == 'development'
+
+    app.run(host=host, port=port, debug=debug)
