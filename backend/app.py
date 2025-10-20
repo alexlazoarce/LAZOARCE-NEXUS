@@ -3,7 +3,7 @@ from flask import Flask, jsonify, request, make_response
 from flask_cors import CORS
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, JWTManager, get_jwt
 
-from models import db, Role, User, LoanProduct, LoanApplication, Account, Employee, PayrollLog, PaySlip, Lead, CommunicationLog, Payment, NotificationTemplate, AuditLog, Opportunity, MailingList, Campaign, Ticket, TicketComment, Tenant, SystemModule, TenantSubscription, SignatureRequest
+from models import db, Role, User, LoanProduct, LoanApplication, Account, Employee, PayrollLog, PaySlip, Lead, CommunicationLog, Payment, NotificationTemplate, AuditLog, Opportunity, MailingList, Campaign, Ticket, TicketComment
 from loan_calculator import calculate_loan_details
 from pdf_generator import generate_contract_pdf
 import accounting_service
@@ -11,7 +11,6 @@ import payroll_service
 import collections_service
 import notification_service
 import audit_service
-import firma_service
 from datetime import datetime, date, timedelta
     """Application factory function."""
     app = Flask(__name__)
@@ -26,42 +25,6 @@ from datetime import datetime, date, timedelta
 
     db.init_app(app)
     jwt = JWTManager(app)
-
-    # --- Custom Decorators ---
-    def module_access_required(module_code):
-        def decorator(fn):
-            @wraps(fn)
-            @jwt_required()
-            def wrapper(*args, **kwargs):
-                current_user_email = get_jwt_identity()
-                user = User.query.filter_by(email=current_user_email).first()
-
-                if not user:
-                    return jsonify({"message": "Usuario no encontrado."}), 404
-
-                # System-wide admins have access to everything
-                if user.role.name == 'Admin' and user.tenant_id is None:
-                    return fn(*args, **kwargs)
-
-                if not user.tenant:
-                    return jsonify({"message": "Acceso no autorizado. El usuario no pertenece a un tenant."}), 403
-
-                # Check for an active subscription
-                today = date.today()
-                subscription = TenantSubscription.query.join(SystemModule).filter(
-                    TenantSubscription.tenant_id == user.tenant_id,
-                    SystemModule.module_code == module_code,
-                    TenantSubscription.is_active == True,
-                    TenantSubscription.start_date <= today,
-                    (TenantSubscription.end_date == None) | (TenantSubscription.end_date >= today)
-                ).first()
-
-                if not subscription:
-                    return jsonify({"message": f"Acceso no autorizado. Se requiere una suscripción activa para el módulo '{module_code}'."}), 403
-
-                return fn(*args, **kwargs)
-            return wrapper
-        return decorator
 
     # --- AUTH & USER ROUTES ---
     @app.route('/api/auth/register', methods=['POST'])
@@ -1404,100 +1367,6 @@ def setup_database(app):
             ]
             db.session.bulk_save_objects(templates)
             db.session.commit()
-
-        if not SystemModule.query.first():
-            modules = [
-                SystemModule(module_code='LAN-SUB1', name='Gestión de Suscripciones', description='Administra los tenants y sus suscripciones a los módulos.'),
-                SystemModule(module_code='LAN-FEV8', name='Firma Electrónica Avanzada', description='Permite la captura y almacenamiento de firmas electrónicas.')
-            ]
-            db.session.bulk_save_objects(modules)
-            db.session.commit()
-
-    # --- LAN-SUB1 (Subscription Management) API ROUTES ---
-
-    @app.route('/api/subscriptions/tenants', methods=['GET', 'POST'])
-    @module_access_required('LAN-SUB1')
-    def handle_tenants():
-        if request.method == 'POST':
-            data = request.get_json()
-            if Tenant.query.filter_by(name=data['name']).first():
-                return jsonify({"message": "Tenant with that name already exists."}), 409
-            new_tenant = Tenant(name=data['name'])
-            db.session.add(new_tenant)
-            db.session.commit()
-            return jsonify(new_tenant.to_dict()), 201
-
-        tenants = Tenant.query.all()
-        return jsonify([t.to_dict() for t in tenants])
-
-    @app.route('/api/subscriptions/modules', methods=['GET'])
-    @module_access_required('LAN-SUB1')
-    def handle_system_modules():
-        modules = SystemModule.query.all()
-        return jsonify([m.to_dict() for m in modules])
-
-    @app.route('/api/subscriptions', methods=['POST'])
-    @module_access_required('LAN-SUB1')
-    def handle_create_subscription():
-        data = request.get_json()
-        try:
-            start_date = date.fromisoformat(data['start_date'])
-            end_date = date.fromisoformat(data['end_date']) if data.get('end_date') else None
-
-            new_subscription = TenantSubscription(
-                tenant_id=data['tenant_id'],
-                module_id=data['module_id'],
-                start_date=start_date,
-                end_date=end_date,
-                is_active=True
-            )
-            db.session.add(new_subscription)
-            db.session.commit()
-            return jsonify(new_subscription.to_dict()), 201
-        except (ValueError, KeyError) as e:
-            return jsonify({"message": f"Invalid data provided: {e}"}), 400
-
-    @app.route('/api/subscriptions/tenants/<int:tenant_id>', methods=['GET'])
-    @module_access_required('LAN-SUB1')
-    def get_tenant_subscriptions(tenant_id):
-        subscriptions = TenantSubscription.query.filter_by(tenant_id=tenant_id).all()
-        return jsonify([s.to_dict() for s in subscriptions])
-
-    # --- LAN-FEV8 (Electronic Signature) API ROUTES ---
-
-    @app.route('/api/signatures', methods=['POST'])
-    @module_access_required('LAN-FEV8')
-    def submit_signature():
-        data = request.get_json()
-        current_user_email = get_jwt_identity()
-        user = User.query.filter_by(email=current_user_email).first()
-
-        if not user:
-            return jsonify({"message": "User not found"}), 404
-
-        try:
-            signature = firma_service.save_signature(
-                user_id=user.id,
-                signature_data=data.get('signature_data')
-            )
-            return jsonify(signature.to_dict()), 201
-        except ValueError as e:
-            return jsonify({'message': str(e)}), 400
-
-    @app.route('/api/signatures/user/<int:user_id>', methods=['GET'])
-    @module_access_required('LAN-FEV8')
-    def get_user_signatures(user_id):
-        current_user_email = get_jwt_identity()
-        requesting_user = User.query.filter_by(email=current_user_email).first()
-        claims = get_jwt()
-        user_roles = claims.get('roles', [])
-
-        # Security check: Allow access only if the user is requesting their own signatures or is an Admin.
-        if 'Admin' not in user_roles and requesting_user.id != user_id:
-            return jsonify({"message": "Acceso no autorizado"}), 403
-
-        signatures = firma_service.get_signatures_for_user(user_id)
-        return jsonify([s.to_dict() for s in signatures]), 200
 
 if __name__ == '__main__':
     app = create_app()

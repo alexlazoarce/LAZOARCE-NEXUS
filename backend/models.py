@@ -10,7 +10,6 @@ class Role(db.Model):
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=True) # Can be null for system-wide users
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
     role_id = db.Column(db.Integer, db.ForeignKey('role.id'), nullable=False)
@@ -476,81 +475,4 @@ class TicketComment(db.Model):
             'commenter_name': commenter.full_name,
             'comment_text': self.comment_text,
             'timestamp': self.timestamp.isoformat()
-        }
-
-# --- LAN-SUB1 (Subscription Management) Models ---
-
-class Tenant(db.Model):
-    """Represents a tenant in the multi-tenant system."""
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(150), unique=True, nullable=False)
-    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
-    users = db.relationship('User', backref='tenant', lazy='dynamic')
-    subscriptions = db.relationship('TenantSubscription', backref='tenant', lazy='dynamic')
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'name': self.name,
-            'created_at': self.created_at.isoformat()
-        }
-
-class SystemModule(db.Model):
-    """Represents a licensable module in the system (e.g., LAN-GP1, LAN-ET2)."""
-    id = db.Column(db.Integer, primary_key=True)
-    module_code = db.Column(db.String(20), unique=True, nullable=False) # e.g., 'LAN-ET2'
-    name = db.Column(db.String(100), nullable=False)
-    description = db.Column(db.String(255))
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'module_code': self.module_code,
-            'name': self.name,
-            'description': self.description
-        }
-
-class TenantSubscription(db.Model):
-    """Links a Tenant to a SystemModule, representing an active subscription."""
-    id = db.Column(db.Integer, primary_key=True)
-    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
-    module_id = db.Column(db.Integer, db.ForeignKey('system_module.id'), nullable=False)
-
-    start_date = db.Column(db.Date, nullable=False)
-    end_date = db.Column(db.Date, nullable=True) # Null for ongoing subscriptions
-    is_active = db.Column(db.Boolean, default=True)
-
-    module = db.relationship('SystemModule')
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'tenant_id': self.tenant_id,
-            'module_code': self.module.module_code,
-            'start_date': self.start_date.isoformat(),
-            'end_date': self.end_date.isoformat() if self.end_date else None,
-            'is_active': self.is_active
-        }
-
-# --- LAN-FEV8 (Firma Electrónica Avanzada) Models ---
-
-class SignatureRequest(db.Model):
-    """Stores a user's electronically captured signature."""
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-
-    # Store signature as a Base64 encoded PNG image
-    signature_data = db.Column(db.Text, nullable=False)
-
-    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
-
-    user = db.relationship('User', backref='signatures')
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'user_id': self.user_id,
-            'user_name': self.user.full_name,
-            'created_at': self.created_at.isoformat()
-            # Do not return signature_data by default for brevity
         }
