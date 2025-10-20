@@ -410,3 +410,24 @@ class MakeScenario(db.Model):
     scenario_blueprint = db.Column(db.JSON, nullable=False)
     is_active = db.Column(db.Boolean, default=True)
     __table_args__ = (db.UniqueConstraint('name', 'tenant_id'),)
+
+# --- Document Management Models (LAN-GD2) ---
+
+class Document(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    filename = db.Column(db.String(255), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+    latest_version_id = db.Column(db.Integer, nullable=True) # Set after first version is created
+    versions = db.relationship('DocumentVersion', backref='document', lazy='dynamic', cascade="all, delete-orphan")
+    __table_args__ = (db.UniqueConstraint('filename', 'tenant_id'),)
+
+class DocumentVersion(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    document_id = db.Column(db.Integer, db.ForeignKey('document.id'), nullable=False)
+    version_number = db.Column(db.Integer, nullable=False)
+    filepath = db.Column(db.String(512), nullable=False) # Path in the file storage
+    uploaded_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+    uploaded_by_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    uploaded_by = db.relationship('User')
