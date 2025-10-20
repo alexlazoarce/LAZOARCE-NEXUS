@@ -1,87 +1,81 @@
-from datetime import datetime, timedelta
+from decimal import Decimal, ROUND_HALF_UP
+import numpy_financial as npf
+from datetime import date
+from dateutil.relativedelta import relativedelta
 
-def generate_amortization_table(
-    capital_solicitado,
-    meses,
-    tasa_interes_mensual,
-    comision_administracion=0,
-    comisiones_iniciales=0,
-    commission_method='no_interest'  # Opciones: 'no_interest', 'add_to_capital', 'subtract_from_capital'
-):
+def _quantize(d):
+    """Redondea un Decimal a 2 decimales para consistencia."""
+    return d.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+def calculate_loan_details(principal, annual_interest_rate, term_months, commission_rate, commission_type, disbursement_date=None):
     """
-    Genera una tabla de amortización y un resumen del préstamo, soportando varios métodos de comisión.
+    Calcula los detalles completos de un préstamo, incluyendo la tabla de amortización,
+    la TIR (Tasa Interna de Retorno) y la TEA (Tasa Efectiva Anual).
     """
-    tabla = []
-    tasa_mensual = tasa_interes_mensual / 100
-    com_adm_mensual_pct = comision_administracion / 100
+    if disbursement_date is None:
+        disbursement_date = date.today()
 
-    # --- Determinar la base de cálculo y el capital recibido según el método ---
-    base_calculo = capital_solicitado
-    capital_recibido = capital_solicitado
-    comision_inicial_mensual = 0
+    principal = Decimal(str(principal))
+    annual_interest_rate = Decimal(str(annual_interest_rate))
+    monthly_interest_rate = annual_interest_rate / Decimal('12')
+    term_months = int(term_months)
+    commission_rate = Decimal(str(commission_rate))
 
-    if commission_method == 'add_to_capital':
-        base_calculo = capital_solicitado + comisiones_iniciales
-    elif commission_method == 'subtract_from_capital':
-        capital_recibido = capital_solicitado - comisiones_iniciales
-        # El interés se calcula sobre el capital solicitado original.
-        base_calculo = capital_solicitado
-    elif commission_method == 'no_interest':
-        comision_inicial_mensual = comisiones_iniciales / meses if meses > 0 else 0
-
-    # --- Cálculo de la cuota base (Método Francés) ---
-    if tasa_mensual == 0:
-        cuota_base = base_calculo / meses if meses > 0 else 0
+    if monthly_interest_rate > 0:
+        factor = (1 + monthly_interest_rate) ** term_months
+        monthly_payment = principal * (monthly_interest_rate * factor) / (factor - 1)
     else:
-        factor = (1 + tasa_mensual) ** meses
-        cuota_base = (base_calculo * tasa_mensual * factor) / (factor - 1) if factor != 1 else 0
+        monthly_payment = principal / Decimal(term_months)
 
-    saldo_restante = base_calculo
-    fecha_vencimiento = datetime.now()
+    amortization_table = []
+    current_balance = principal
+    total_payment = Decimal('0.00')
+    cash_flows = [-float(principal)]
 
-    for mes in range(1, meses + 1):
-        if saldo_restante <= 0.01:
-            break
+    for month in range(1, term_months + 1):
+        interest_for_month = _quantize(current_balance * monthly_interest_rate)
 
-        interes_ordinario = saldo_restante * tasa_mensual
-        comision_adm_monto = saldo_restante * com_adm_mensual_pct
+        commission_for_month = Decimal('0.00')
+        if commission_type == 'A':
+            commission_for_month = _quantize(current_balance * commission_rate)
+        elif commission_type == 'B' or commission_type == 'C':
+            commission_for_month = _quantize(principal * commission_rate)
 
-        amortizacion = cuota_base - interes_ordinario - comision_adm_monto
+        total_monthly_payment = monthly_payment + commission_for_month
+        principal_paid = total_monthly_payment - interest_for_month - commission_for_month
 
-        cuota_total = cuota_base + comision_inicial_mensual
+        if month == term_months:
+            principal_paid = current_balance
+            total_monthly_payment = principal_paid + interest_for_month + commission_for_month
 
-        # Ajuste en la última cuota para que el saldo final sea exactamente 0
-        if mes == meses or saldo_restante < cuota_base:
-            amortizacion = saldo_restante
-            cuota_total = amortizacion + interes_ordinario + comision_adm_monto + comision_inicial_mensual
+        current_balance -= principal_paid
+        total_payment += total_monthly_payment
+        cash_flows.append(float(total_monthly_payment))
 
-        saldo_anterior = saldo_restante
-        saldo_restante -= amortizacion
+        due_date = disbursement_date + relativedelta(months=month)
 
-        if saldo_restante < 0:
-            saldo_restante = 0
+        amortization_table.append({
+            "month": month,
+            "due_date": due_date.isoformat(),
+            "initial_balance": float(current_balance + principal_paid),
+            "payment": float(total_monthly_payment),
+            "interest": float(interest_for_month),
+            "commission": float(commission_for_month),
+            "principal": float(principal_paid),
+            "final_balance": float(current_balance)
+        })
 
-        fecha_vencimiento += timedelta(days=30)
+    try:
+        monthly_tir = npf.irr(cash_flows)
+        annual_tea = (1 + monthly_tir) ** 12 - 1
+    except Exception:
+        monthly_tir = 0.0
+        annual_tea = 0.0
 
-        fila = {
-            "Mes": mes,
-            "Fecha Vencimiento": fecha_vencimiento.strftime('%Y-%m-%d'),
-            "Saldo Inicial": round(saldo_anterior, 2),
-            "Interés": round(interes_ordinario, 2),
-            "Com. Adm": round(comision_adm_monto, 2),
-            "Com. Inic": round(comision_inicial_mensual, 2),
-            "Amortización": round(amortizacion, 2),
-            "Cuota": round(cuota_total, 2),
-            "Saldo Final": round(saldo_restante, 2),
-        }
-        tabla.append(fila)
-
-    summary = {
-        "capital_solicitado": round(capital_solicitado, 2),
-        "capital_recibido_cliente": round(capital_recibido, 2),
-        "base_calculo_intereses": round(base_calculo, 2),
-        "total_a_pagar": round(sum(f['Cuota'] for f in tabla), 2),
-        "total_intereses": round(sum(f['Interés'] for f in tabla), 2)
+    return {
+        "monthly_payment": float(_quantize(monthly_payment)),
+        "total_payment": float(_quantize(total_payment)),
+        "amortization_table": amortization_table,
+        "tir_monthly": round(monthly_tir, 6),
+        "tea_annual": round(annual_tea, 4)
     }
-
-    return {"summary": summary, "amortization_table": tabla}
