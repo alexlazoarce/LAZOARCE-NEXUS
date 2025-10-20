@@ -1,15 +1,71 @@
 name: prestamos-backend
+
 channels:
+
   - conda-forge
+
+  - defaults
+
 dependencies:
+
+  # === PYTHON CORE ===
+
   - python=3.10
-  - flask
-  - flask-sqlalchemy
-  - flask-jwt-extended
-  - pandas
-  - pytest
-  - flake8
-  - python-dateutil
-  - fpdf2
-  - xhtml2pdf
+
   - pip
+
+  # === WEB FRAMEWORK ===
+
+  - flask=2.3.*
+
+  - flask-cors=4.0.*
+
+  - flask-jwt-extended=4.5.*
+
+  - flask-migrate=4.0.*
+
+  - flask-restful=0.3.*
+
+  - flask-sqlalchemy=3.0.*
+
+  # === DATABASE ===
+
+  - sqlalchemy=2.0.*
+
+  - alembic=1.12.*
+
+  - psycopg2
+
+  - pymysql
+
+  # === DATA & UTILITIES ===
+
+  - pandas=2.1.*
+
+  - python-dateutil=2.8.*
+
+  - python-dotenv=1.0.*
+
+  # === PDF GENERATION ===
+
+  - fpdf2=2.7.*
+
+  - xhtml2pdf=0.15.*
+
+  # === DEVELOPMENT & TESTING ===
+
+  - pytest=7.4.*
+
+  - pytest-cov=4.1.*
+
+  - flake8=6.1.*
+
+  - black=23.10.*
+
+  - isort=5.12.*
+
+  - mypy=1.6.*
+
+  # === PRODUCTION ===
+
+  - gunicorn=21.2.*
