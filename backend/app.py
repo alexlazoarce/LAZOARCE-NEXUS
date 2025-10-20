@@ -1,229 +1,245 @@
 [Contenido truncado por brevedad]
 
-01
+data.get("resumen_costos", {}),
+        "amortization_table": remapped_table
+    }
 
-    @app.route('/api/campaigns/<int:campaign_id>/send', methods=['POST'])
-    @jwt_required()
-    def send_campaign(campaign_id):
-        claims = get_jwt()
-        if 'Admin' not in claims.get('roles', []):
-            return jsonify({"message": "Acceso no autorizado"}), 403
+    # --- Ensamblar la respuesta final ---
+    contract_data = {
+        "company": company_info,
+        "client": applicant_data,
+        "loan": loan_details,
+        "amortization": amortization_data_for_pdf
+    }
 
-        campaign = Campaign.query.get_or_404(campaign_id)
-        if campaign.status == 'Sent':
-            return jsonify({"message": "Esta campaña ya ha sido enviada."}), 400
+    return jsonify(contract_data)
 
-        members = campaign.mailing_list.members
-        for member in members:
-            # In a real app, you'd pass more context data if needed
-            notification_service.send_notification(member.id, campaign.template.slug, {})
 
-        campaign.status = 'Sent'
-        campaign.sent_at = datetime.utcnow()
+@app.route('/api/applications/<int:application_id>/contract.pdf')
+@jwt_required()
+def download_contract_pdf(application_id):
+    """
+    Genera y devuelve el contrato en formato PDF para su descarga.
+    """
+    # Reutilizar la lógica de obtención de datos del contrato
+    # En una aplicación más grande, esto se refactorizaría a una función de servicio
+    user_email = get_jwt_identity()
+    user = User.query.filter_by(email=user_email).first_or_404()
+    application = LoanApplication.query.get_or_404(application_id)
+
+    if application.user_id != user.id and user.role.name not in ['Administrador General', 'Super Administrador']:
+        return jsonify({"msg": "Acceso no autorizado."}), 403
+    if application.status != 'Aprobado':
+        return jsonify({"msg": "El contrato solo puede generarse para préstamos aprobados."}), 403
+
+    # Obtener los datos del contrato llamando a la lógica existente
+    # (Esto es una simplificación; idealmente se llamaría a una función interna)
+    contract_data_response = get_contract_data(application_id)
+    contract_data = contract_data_response.get_json()
+
+    # Generar el PDF en memoria
+    pdf_bytes = create_contract_pdf(contract_data)
+
+    # Crear la respuesta HTTP para la descarga del archivo
+    response = make_response(pdf_bytes)
+    response.headers['Content-Type'] = 'application/pdf'
+    response.headers['Content-Disposition'] = f'attachment; filename=contrato_{application_id}.pdf'
+
+    return response
+
+
+# --- API DE PLANILLAS (PAYROLL) ---
+
+@app.route('/api/payroll/calculate', methods=['POST'])
+@jwt_required()
+@role_required(['Contador', 'Administrador General'])
+def calculate_payroll_for_employee():
+    """
+    Calcula la planilla para un empleado específico y guarda el registro.
+    """
+    data = request.get_json()
+    empleado_id = data.get('empleado_id')
+
+    if not empleado_id:
+        return jsonify({'error': 'El campo empleado_id es requerido.'}), 400
+
+    empleado = Empleado.query.get(empleado_id)
+    if not empleado:
+        return jsonify({'error': 'Empleado no encontrado.'}), 404
+
+    # Realizar el cálculo usando el servicio de planillas
+    resultado_calculo = calcular_planilla(empleado.salario_base)
+
+    if not resultado_calculo.get('success'):
+        return jsonify({'error': 'Error al calcular la planilla.', 'detalle': resultado_calculo.get('error')}), 500
+
+    try:
+        # Crear un nuevo registro de planilla
+        nueva_planilla = Planilla(
+            empleado_id=empleado.id,
+            salario_base=resultado_calculo['salario_base'],
+            isss=resultado_calculo['isss'],
+            afp=resultado_calculo['afp'],
+            renta=resultado_calculo['renta'],
+            salario_neto=resultado_calculo['salario_neto']
+        )
+        db.session.add(nueva_planilla)
         db.session.commit()
 
-        return jsonify({"message": f"Campaña '{campaign.name}' enviada a {len(members)} miembros."})
+        # Devolver el resultado del cálculo
+        return jsonify({
+            "success": True,
+            "planilla_id": nueva_planilla.id,
+            "calculo": resultado_calculo
+        })
 
-    # --- HELPDESK / TICKETING API ROUTES ---
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': 'Error al guardar el registro de la planilla.', 'detalle': str(e)}), 500
 
-    @app.route('/api/tickets', methods=['GET', 'POST'])
-    @jwt_required()
-    def handle_tickets():
-        current_user = User.query.filter_by(email=get_jwt_identity()).first()
-        claims = get_jwt()
-        user_roles = claims.get('roles', [])
 
-        if request.method == 'POST':
-            data = request.get_json()
-            new_ticket = Ticket(
-                subject=data['subject'],
-                user_id=current_user.id,
-                priority=data.get('priority', 'Normal')
-            )
-            # The first comment is the ticket description
-            first_comment = TicketComment(
-                ticket=new_ticket,
-                user_id=current_user.id,
-                comment_text=data['description']
-            )
-            db.session.add(new_ticket)
-            db.session.add(first_comment)
-            db.session.commit()
-            return jsonify(new_ticket.to_dict()), 201
+@app.route('/api/loans/calculate', methods=['POST'])
+@jwt_required()
+def calculate_loan():
+    """
+    Endpoint para cálculo de préstamos con todas las opciones.
+    """
+    try:
+        data = request.get_json()
 
-        # GET request
-        if 'Admin' in user_roles or 'Soporte' in user_roles: # Assuming a 'Soporte' role
-            tickets = Ticket.query.order_by(Ticket.updated_at.desc()).all()
-        else: # Regular client
-            tickets = Ticket.query.filter_by(user_id=current_user.id).order_by(Ticket.updated_at.desc()).all()
+        # Parámetros obligatorios
+        monto = float(data.get('monto', 0))
+        producto_id = int(data.get('producto_id', 0))
+        plazo = int(data.get('plazo_meses', 0))
 
-        return jsonify([t.to_dict() for t in tickets])
+        # Opciones de cálculo (opcionales)
+        comisiones_intereses = data.get('comisiones_generan_intereses', None)
+        comisiones_agregan_capital = data.get('comisiones_se_agregan_capital', None)
+        comisiones_descuentan_capital = data.get('comisiones_se_descuentan_capital', None)
+        aplicar_tea = data.get('aplicar_tea', True)
 
-    @app.route('/api/tickets/<int:ticket_id>', methods=['GET', 'PUT'])
-    @jwt_required()
-    def handle_ticket(ticket_id):
-        ticket = Ticket.query.get_or_404(ticket_id)
-        # Security checks...
+        # Validaciones básicas
+        if monto <= 0 or plazo <= 0:
+            return jsonify({"error": "Monto y plazo deben ser mayores a 0"}), 400
 
-        if request.method == 'GET':
-            return jsonify(ticket.to_dict())
+        # Obtener producto y actualizar opciones si se enviaron
+        producto = ProductoCredito.query.get(producto_id)
+        if not producto:
+            return jsonify({"error": "Producto no encontrado"}), 404
 
-        if request.method == 'PUT':
-            # Logic to update status, priority, assignment for support staff
-            pass
+        # Sobrescribir configuración si se envió en la petición
+        if comisiones_intereses is not None:
+            producto.comisiones_generan_intereses = comisiones_intereses
+        if comisiones_agregan_capital is not None:
+            producto.comisiones_se_agregan_capital = comisiones_agregan_capital
+        if comisiones_descuentan_capital is not None:
+            producto.comisiones_se_descuentan_capital = comisiones_descuentan_capital
+        if aplicar_tea is not None:
+            producto.aplicar_tea = aplicar_tea
 
-    @app.route('/api/tickets/<int:ticket_id>/comments', methods=['GET', 'POST'])
-    @jwt_required()
-    def handle_ticket_comments(ticket_id):
-        ticket = Ticket.query.get_or_404(ticket_id)
-        # Security checks...
+        # Realizar cálculo
+        resultado = calcular_prestamo_completo(monto, producto, plazo)
 
-        if request.method == 'POST':
-            data = request.get_json()
-            current_user = User.query.filter_by(email=get_jwt_identity()).first()
-            new_comment = TicketComment(
-                ticket_id=ticket.id,
-                user_id=current_user.id,
-                comment_text=data['comment_text']
-            )
-            ticket.updated_at = datetime.utcnow() # Touch the ticket to bump it up
-            db.session.add(new_comment)
-            db.session.commit()
-            return jsonify(new_comment.to_dict()), 201
+        if "error" in resultado:
+            return jsonify(resultado), 400
 
-        # GET request
-        comments = ticket.comments.order_by(TicketComment.timestamp.asc()).all()
-        return jsonify([c.to_dict() for c in comments])
+        return jsonify(resultado)
 
-    # --- AUDIT LOG API ROUTE ---
-    @app.route('/api/audit-logs', methods=['GET'])
-    @jwt_required()
-    def get_audit_logs():
-        claims = get_jwt()
-        if 'Admin' not in claims.get('roles', []):
-            return jsonify({"message": "Acceso no autorizado"}), 403
+    except Exception as e:
+        return jsonify({"error": f"Error en cálculo: {str(e)}"}), 500
 
-        logs = AuditLog.query.order_by(AuditLog.timestamp.desc()).all()
-        return jsonify([log.to_dict() for log in logs])
 
-    # --- TESTING UTILITIES ---
-    @app.route('/api/testing/generate-dummy-data', methods=['POST'])
-    @jwt_required()
-    def generate_dummy_data():
-        claims = get_jwt()
-        if 'Admin' not in claims.get('roles', []):
-            return jsonify({"message": "Acceso no autorizado"}), 403
-
-        try:
-            # You can expand this logic to be more sophisticated
-            from random import randint, choice
-
-            # Create a dummy user
-            dummy_email = f"testuser{randint(1000, 9999)}@lazoarce.com"
-            client_role = Role.query.filter_by(name='Cliente').first()
-            new_user = User(email=dummy_email, full_name=f"Cliente de Prueba {randint(1,100)}", dui="00000000-0", nit="0000-000000-000-0", role_id=client_role.id)
-            new_user.set_password("testing123")
-            db.session.add(new_user)
-            db.session.flush() # Flush to get the new_user.id
-
-            # Create a loan application for the user
-            product = LoanProduct.query.first()
-            if not product: return jsonify({"message": "No hay productos de préstamo para crear datos de prueba."}), 400
-
-            new_app = LoanApplication(user_id=new_user.id, product_id=product.id, amount_requested=randint(1000, 5000), term_months=12, commission_calculation_method='A', status='Desembolsada', decision_date=datetime.utcnow())
-            db.session.add(new_app)
-            db.session.flush() # Flush to get new_app.id
-
-            # Add a payment
-            employee = Employee.query.first()
-            if employee:
-                new_payment = Payment(application_id=new_app.id, amount_paid=new_app.monthly_payment, payment_date=date.today(), registered_by_id=employee.id)
-                db.session.add(new_payment)
-
-            db.session.commit()
-            return jsonify({"message": f"Datos de prueba creados para el usuario {dummy_email}."}), 201
-
-        except Exception as e:
-            db.session.rollback()
-            return jsonify({"message": f"Error generando datos de prueba: {str(e)}"}), 500
-
-    return app
-
-def setup_database(app):
-    """Creates database tables and seeds initial data."""
+# --- FUNCIONES AUXILIARES ---
+def initialize_database():
     with app.app_context():
         db.create_all()
-        if not Role.query.first():
-            roles = [
-                Role(name='Admin'),
-                Role(name='Cliente'),
-                Role(name='Contador'),
-                Role(name='Ejecutivo de Crédito'),
-                Role(name='Cobrador')
-            ]
-            db.session.bulk_save_objects(roles)
+        if Role.query.first() is None:
+            roles = ['Super Administrador', 'Administrador General', 'Ejecutivo de Crédito', 'Cobrador', 'Contador', 'Cliente']
+            for role_name in roles:
+                db.session.add(Role(name=role_name))
             db.session.commit()
+            print("Base de datos y roles inicializados.")
+
+        # Crear usuario admin por defecto si no existe
         if not User.query.filter_by(email='admin@lazoarce.com').first():
-            admin_role = Role.query.filter_by(name='Admin').first()
-            admin_user = User(email='admin@lazoarce.com', role_id=admin_role.id, full_name='Admin Lazo Arce')
-            admin_user.set_password('admin123')
-            db.session.add(admin_user)
+            print("Creando usuario administrador por defecto...")
+            admin_role = Role.query.filter_by(name='Administrador General').first()
+            if admin_role:
+                admin_user = User(
+                    email='admin@lazoarce.com',
+                    role_id=admin_role.id
+                )
+                admin_user.set_password('admin')
+                db.session.add(admin_user)
+                db.session.commit()
+                print("Usuario administrador creado.")
+                print("\n************************************************************")
+                print("*** ADVERTENCIA DE SEGURIDAD:                            ***")
+                print("*** Se ha creado un usuario administrador por defecto.   ***")
+                print("*** Email: admin@lazoarce.com                            ***")
+                print("*** Contraseña: admin                                    ***")
+                print("*** ¡CAMBIE ESTA CONTRASEÑA EN UN ENTORNO DE PRODUCCIÓN! ***")
+                print("************************************************************\n")
+
+        # Poblar el plan de cuentas si está vacío
+        if not Account.query.first():
+            print("Creando plan de cuentas por defecto...")
+            accounts = [
+                {'code': '1101', 'name': 'Caja', 'account_type': 'Activo'},
+                {'code': '1102', 'name': 'Bancos', 'account_type': 'Activo'},
+                {'code': '1201', 'name': 'Cuentas por Cobrar - Préstamos', 'account_type': 'Activo'},
+                {'code': '3101', 'name': 'Capital Social', 'account_type': 'Patrimonio'},
+                {'code': '4101', 'name': 'Ingresos por Intereses', 'account_type': 'Ingreso'},
+            ]
+            for acc_data in accounts:
+                account = Account(**acc_data)
+                db.session.add(account)
             db.session.commit()
+            print("Plan de cuentas creado.")
+
+        # Crear producto de préstamo por defecto si no existe
         if not LoanProduct.query.first():
-            # Add a default product for testing
+            print("Creando producto de prestamo por defecto...")
             default_product = LoanProduct(
-                name="Préstamo Personal Clásico",
-                min_amount=500.00,
-                max_amount=10000.00,
-                interest_rate=0.12, # 12% annual
-                commission_rate=0.01, # 1% monthly
-                term_months=36
+                name='Préstamo de Prueba', loan_type='Personal',
+                min_amount=500, max_amount=10000,
+                default_interest_rate=5, default_admin_commission=1
             )
             db.session.add(default_product)
             db.session.commit()
+            print("Producto de prestamo por defecto creado.")
 
-        if not Account.query.first():
-            # Seed the chart of accounts
-            accounts = [
-                # Assets
-                Account(name='Caja', category='Asset', normal_balance='Debit'),
-                Account(name='Bancos', category='Asset', normal_balance='Debit'),
-                Account(name='Cuentas por Cobrar Clientes', category='Asset', normal_balance='Debit'),
-                Account(name='Intereses por Cobrar', category='Asset', normal_balance='Debit'),
-                # Liabilities
-                Account(name='Préstamos por Pagar', category='Liability', normal_balance='Credit'),
-                # Equity
-                Account(name='Capital Social', category='Equity', normal_balance='Credit'),
-                # Revenue
-                Account(name='Ingresos por Intereses', category='Revenue', normal_balance='Credit'),
-                Account(name='Ingresos por Comisiones', category='Revenue', normal_balance='Credit'),
-            ]
-            db.session.bulk_save_objects(accounts)
+        # Crear producto de crédito avanzado por defecto si no existe
+        if not ProductoCredito.query.first():
+            print("Creando producto de crédito avanzado por defecto...")
+            default_credit_product = ProductoCredito(
+                nombre='Crédito Avanzado de Prueba',
+                tasa_interes_anual=24.0,  # 24%
+                comision_apertura=0.02, # 2%
+                comision_administracion=0.005, # 0.5% mensual
+                seguro=0.001, # 0.1% mensual
+                plazo_maximo=60,
+                monto_minimo=1000,
+                monto_maximo=50000,
+                comisiones_se_descuentan_capital=True,
+                aplicar_tea=True
+            )
+            db.session.add(default_credit_product)
             db.session.commit()
+            print("Producto de crédito avanzado por defecto creado.")
 
-        if not NotificationTemplate.query.first():
-            templates = [
-                NotificationTemplate(
-                    slug='loan-approved',
-                    subject='¡Tu préstamo ha sido aprobado!',
-                    body='Hola {customer_name},\n\nNos complace informarte que tu solicitud de préstamo por un monto de ${amount} ha sido aprobada. ¡Felicidades!\n\nSaludos,\nEl equipo de LAZOARCE UNIVERSAL'
-                ),
-                NotificationTemplate(
-                    slug='loan-rejected',
-                    subject='Actualización sobre tu solicitud de préstamo',
-                    body='Hola {customer_name},\n\nDespués de una cuidadosa revisión, lamentamos informarte que no podemos aprobar tu solicitud de préstamo en este momento.\n\nGracias por tu interés.\n\nSaludos,\nEl equipo de LAZOARCE UNIVERSAL'
-                ),
-                NotificationTemplate(
-                    slug='payment-reminder',
-                    subject='Recordatorio de Pago',
-                    body='Hola {customer_name},\n\nEste es un recordatorio amistoso de que tu próxima cuota de ${payment_amount} para tu préstamo vence el {due_date}.\n\nSaludos,\nEl equipo de LAZOARCE UNIVERSAL'
-                )
-            ]
-            db.session.bulk_save_objects(templates)
+        # Crear un empleado de prueba si no existe
+        if not Empleado.query.first():
+            print("Creando empleado de prueba por defecto...")
+            default_empleado = Empleado(
+                nombre='Juan Ejemplo Perez',
+                salario_base=1500.00
+            )
+            db.session.add(default_empleado)
             db.session.commit()
+            print("Empleado de prueba creado.")
 
 if __name__ == '__main__':
-    app = create_app()
-    with app.app_context():
-        setup_database(app)
-    app.run(debug=True, port=5001)
+    initialize_database()
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=True)
