@@ -23,10 +23,9 @@ from datetime import datetime, date, timedelta
 def create_app():
     app = Flask(__name__)
     CORS(app)
-    app.config['SECRET_KEY'] = 'dev'
-    app.config['JWT_SECRET_KEY'] = 'dev'
-    # Point to the provided PostgreSQL database with the corrected hostname
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:1sQl4WixNdQihHxd@db.efntaqjschznzrnzrnhh.supabase.co:5432/postgres?sslmode=require'
+    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev')
+    app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'dev')
+    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///app.db')
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
     db.init_app(app)
