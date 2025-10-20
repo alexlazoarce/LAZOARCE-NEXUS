@@ -1,50 +1,53 @@
-function MyApplications({ token, onViewDetails, onViewContract }) {
+const MyApplications = ({ token, onViewContract }) => {
     const [applications, setApplications] = React.useState([]);
+    const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState('');
-    const [isLoading, setIsLoading] = React.useState(true);
-
-    const fetchApplications = async () => {
-        setIsLoading(true);
-        try {
-            const res = await fetch(`${API_BASE_URL}/api/loan-applications`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.msg || 'Failed to fetch applications');
-            setApplications(data);
-        } catch (err) {
-            setError(err.message);
-        } finally {
-            setIsLoading(false);
-        }
-    };
+    const [selectedAppId, setSelectedAppId] = React.useState(null);
 
     React.useEffect(() => {
-        fetchApplications();
-    }, [token]);
+        const fetchApplications = async () => {
+            try {
+                setLoading(true);
+                const response = await fetch(`${API_BASE_URL}/api/applications`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!response.ok) {
+                    const errData = await response.json();
+                    throw new Error(errData.message || 'No se pudieron cargar las solicitudes.');
+                }
+                const data = await response.json();
+                setApplications(data);
+            } catch (err) {
+                setError(err.message);
+            } finally {
+                setLoading(false);
+            }
+        };
 
-    if (isLoading) {
-        return <p>Cargando solicitudes...</p>;
+        if (token && !selectedAppId) { // Only fetch list if no detail is being viewed
+            fetchApplications();
+        }
+    }, [token, selectedAppId]);
+
+    if (selectedAppId) {
+        return <LoanStatementView token={token} applicationId={selectedAppId} onBack={() => setSelectedAppId(null)} />;
     }
 
-    if (error) {
-        return <p style={{ color: 'red' }}>{error}</p>;
-    }
+    if (loading) return <p>Cargando solicitudes...</p>;
+    if (error) return <p className="error" style={{color: 'red'}}>{error}</p>;
 
     return (
         <div>
-            <h2>Mis Solicitudes de Préstamo</h2>
-            <button onClick={fetchApplications}>Recargar</button>
+            <h3>Mis Solicitudes de Préstamo</h3>
             {applications.length === 0 ? (
-                <p>No has enviado ninguna solicitud.</p>
+                <p>No tienes solicitudes de préstamo todavía.</p>
             ) : (
-                <table style={{marginTop: '1em'}}>
+                <table>
                     <thead>
                         <tr>
                             <th>ID</th>
                             <th>Producto</th>
-                            <th>Monto</th>
-                            <th>Fecha</th>
+                            <th>Monto Solicitado</th>
                             <th>Estado</th>
                             <th>Acciones</th>
                         </tr>
@@ -52,17 +55,23 @@ function MyApplications({ token, onViewDetails, onViewContract }) {
                     <tbody>
                         {applications.map(app => (
                             <tr key={app.id}>
-                                <td>{app.id}</td>
+                                <td>
+                                    {app.status === 'Desembolsada' ? (
+                                        <button className="link-button" onClick={() => setSelectedAppId(app.id)}>
+                                            #{app.id} (Ver Estado de Cuenta)
+                                        </button>
+                                    ) : (
+                                        `#${app.id}`
+                                    )}
+                                </td>
                                 <td>{app.product_name}</td>
-                                <td>${app.requested_amount.toFixed(2)}</td>
-                                <td>{new Date(app.application_date).toLocaleDateString()}</td>
+                                <td>${app.amount_requested.toFixed(2)}</td>
                                 <td>{app.status}</td>
                                 <td>
-                                    {app.status === 'Desembolsado' && (
-                                        <>
-                                            <button onClick={() => onViewDetails(app.id)}>Detalles</button>
-                                            <button onClick={() => onViewContract(app.id)} style={{marginLeft: '5px'}}>Contrato</button>
-                                        </>
+                                    {['Aprobada', 'Desembolsada'].includes(app.status) && (
+                                        <button onClick={() => onViewContract(app.id)}>
+                                            Ver Contrato
+                                        </button>
                                     )}
                                 </td>
                             </tr>
@@ -72,4 +81,4 @@ function MyApplications({ token, onViewDetails, onViewContract }) {
             )}
         </div>
     );
-}
+};

@@ -1,127 +1,128 @@
-function ContractView({ token, loanId, onBack }) {
+const ContractView = ({ token, applicationId, onBack }) => {
     const [contractData, setContractData] = React.useState(null);
+    const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState('');
-    const [isLoading, setIsLoading] = React.useState(true);
 
     React.useEffect(() => {
         const fetchContractData = async () => {
-            setError('');
-            setIsLoading(true);
+            if (!applicationId) return;
             try {
-                const res = await fetch(`${API_BASE_URL}/api/applications/${loanId}/contract-data`, {
+                setLoading(true);
+                const response = await fetch(`${API_BASE_URL}/api/applications/${applicationId}/contract-data`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.msg || 'Failed to fetch contract data');
+                if (!response.ok) {
+                    const errData = await response.json();
+                    throw new Error(errData.message || 'No se pudieron cargar los datos del contrato.');
+                }
+                const data = await response.json();
                 setContractData(data);
             } catch (err) {
                 setError(err.message);
             } finally {
-                setIsLoading(false);
+                setLoading(false);
             }
         };
+        fetchContractData();
+    }, [token, applicationId]);
 
-        if (loanId) {
-            fetchContractData();
-        }
-    }, [loanId, token]);
+    if (loading) return <p>Cargando contrato...</p>;
+    if (error) return <p className="error" style={{ color: 'red' }}>{error}</p>;
+    if (!contractData) return null;
+
+    const { application, client, company, amortization_table } = contractData;
 
     const handleDownloadPdf = async () => {
         try {
-            const res = await fetch(`${API_BASE_URL}/api/applications/${loanId}/contract.pdf`, {
-                headers: { 'Authorization': `Bearer ${token}` }
+            const response = await fetch(`${API_BASE_URL}/api/applications/${applicationId}/contract.pdf`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
             });
-            if (!res.ok) throw new Error('Failed to download PDF');
 
-            const blob = await res.blob();
+            if (!response.ok) {
+                throw new Error('Error al generar el PDF.');
+            }
+
+            const blob = await response.blob();
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
+            a.style.display = 'none';
             a.href = url;
-            a.download = `contrato_${loanId}.pdf`;
+            a.download = `contrato_lazo_arce_${applicationId}.pdf`;
             document.body.appendChild(a);
             a.click();
-            a.remove();
             window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
 
         } catch (err) {
             setError(err.message);
         }
     };
 
-    if (isLoading) {
-        return <p>Cargando contrato...</p>;
-    }
-
-    if (error) {
-        return <p style={{ color: 'red' }}>{error}</p>;
-    }
-
-    if (!contractData) {
-        return <p>No se encontraron datos del contrato.</p>;
-    }
-
-    const { client, loan, company, amortization_table } = contractData;
-
     return (
-        <div>
-            <button onClick={onBack}>&larr; Volver</button>
-            <button onClick={handleDownloadPdf} style={{marginLeft: '1em'}}>Descargar PDF</button>
-            <hr />
-            <div className="contract-preview" style={{border: '1px solid #ccc', padding: '2em', marginTop: '1em'}}>
-                <h2 style={{textAlign: 'center'}}>Contrato de Préstamo Simple</h2>
-                <p>
-                    <strong>Fecha:</strong> {new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}
-                </p>
+        <div className="contract-container">
+            <button onClick={onBack}>Volver a Mis Solicitudes</button>
+            <button onClick={handleDownloadPdf} style={{marginLeft: '10px'}}>Descargar PDF</button>
 
-                <h3>Partes Involucradas</h3>
-                <p>
-                    <strong>Acreedor:</strong> {company.name} (NIT: {company.nit}), representado por {company.legal_rep}.
-                </p>
-                <p>
-                    <strong>Deudor:</strong> {client.name} (DUI: {client.dui}, NIT: {client.nit}).
-                </p>
+            <h2 style={{textAlign: 'center', marginTop: '20px'}}>CONTRATO DE PRÉSTAMO</h2>
 
-                <h3>Términos del Préstamo</h3>
-                <p>
-                    Por el presente, el Acreedor acuerda prestar al Deudor la suma de <strong>{loan.amount_text}</strong>.
-                    El préstamo se regirá por los siguientes términos:
-                </p>
-                <ul>
-                    <li><strong>Producto:</strong> {loan.product_name}</li>
-                    <li><strong>Plazo:</strong> {loan.term_months} meses</li>
-                    <li><strong>Tasa de Interés Anual:</strong> {loan.interest_rate_annual}</li>
-                    <li><strong>Cuota Mensual Fija:</strong> {loan.monthly_payment}</li>
-                </ul>
+            <p>
+                Este Contrato de Préstamo se celebra el {new Date().toLocaleDateString()} entre
+                <strong> {company.name}</strong> (en adelante, "el Prestamista") y
+                <strong> {client.full_name}</strong> (en adelante, "el Prestatario").
+            </p>
 
-                <h3>Tabla de Amortización</h3>
-                <table>
-                    <thead>
-                        <tr><th>Mes</th><th>Cuota</th><th>Principal</th><th>Interés</th><th>Saldo</th></tr>
-                    </thead>
-                    <tbody>
-                        {amortization_table.map(row => (
-                            <tr key={row.month}>
-                                <td>{row.month}</td>
-                                <td>${row.payment.toFixed(2)}</td>
-                                <td>${row.principal.toFixed(2)}</td>
-                                <td>${row.interest.toFixed(2)}</td>
-                                <td>${row.balance.toFixed(2)}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
+            <h4>CLÁUSULAS</h4>
+            <ol>
+                <li><strong>Monto del Préstamo:</strong> El Prestamista acuerda prestar al Prestatario la suma de ${application.amount_requested.toFixed(2)}.</li>
+                <li><strong>Tasa de Interés:</strong> El préstamo devengará un interés anual del {(application.product.interest_rate * 100).toFixed(2)}%.</li>
+                <li><strong>Plazo:</strong> El préstamo será reembolsado en {application.term_months} cuotas mensuales.</li>
+                <li><strong>Cuota Mensual:</strong> El Prestatario se compromete a pagar una cuota mensual de ${application.monthly_payment.toFixed(2)}.</li>
+                <li><strong>Comisiones:</strong> Se aplicará una comisión del {(application.product.commission_rate * 100).toFixed(2)}% mensual, calculada con el método: {application.commission_calculation_method}.</li>
+            </ol>
 
-                <div style={{marginTop: '40px', display: 'flex', justifyContent: 'space-around'}}>
-                    <div>
-                        <p>_________________________</p>
-                        <p style={{textAlign: 'center'}}>{client.name}<br/>(Deudor)</p>
-                    </div>
-                    <div>
-                        <p>_________________________</p>
-                        <p style={{textAlign: 'center'}}>{company.name}<br/>(Acreedor)</p>
-                    </div>
+            <h4>TABLA DE AMORTIZACIÓN</h4>
+            <table border="1" cellPadding="5" style={{width: '100%', borderCollapse: 'collapse'}}>
+                <thead>
+                    <tr>
+                        <th>Mes</th>
+                        <th>Saldo Inicial</th>
+                        <th>Cuota</th>
+                        <th>Interés</th>
+                        <th>Comisión</th>
+                        <th>Amortización</th>
+                        <th>Saldo Final</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {amortization_table.map(row => (
+                        <tr key={row.month}>
+                            <td>{row.month}</td>
+                            <td>${row.initial_balance.toFixed(2)}</td>
+                            <td>${row.payment.toFixed(2)}</td>
+                            <td>${row.interest.toFixed(2)}</td>
+                            <td>${row.commission.toFixed(2)}</td>
+                            <td>${row.principal.toFixed(2)}</td>
+                            <td>${row.final_balance.toFixed(2)}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+
+            <div className="signatures" style={{marginTop: '50px', display: 'flex', justifyContent: 'space-around'}}>
+                <div>
+                    <p>_________________________</p>
+                    <p>{company.name}</p>
+                    <p>El Prestamista</p>
+                </div>
+                <div>
+                    <p>_________________________</p>
+                    <p>{client.full_name}</p>
+                    <p>El Prestatario</p>
                 </div>
             </div>
         </div>
     );
-}
+};

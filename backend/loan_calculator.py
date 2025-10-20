@@ -1,72 +1,81 @@
-import pandas as pd
+from decimal import Decimal, ROUND_HALF_UP
+import numpy_financial as npf
+from datetime import date
+from dateutil.relativedelta import relativedelta
 
-def generate_amortization_table(capital, interest_rate, term_months, commission_type, admin_commission_rate):
+def _quantize(d):
+    """Redondea un Decimal a 2 decimales para consistencia."""
+    return d.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+def calculate_loan_details(principal, annual_interest_rate, term_months, commission_rate, commission_type, disbursement_date=None):
     """
-    Generates a French Method amortization schedule.
-
-    Args:
-        capital (float): The principal amount of the loan.
-        interest_rate (float): The annual interest rate (e.g., 0.15 for 15%).
-        term_months (int): The total number of months for the loan.
-        commission_type (str): The type of administrative commission ('A', 'B', or 'C').
-        admin_commission_rate (float): The administrative commission rate.
-
-    Returns:
-        A dictionary containing the amortization schedule (as a list of dicts)
-        and a summary of totals.
+    Calcula los detalles completos de un préstamo, incluyendo la tabla de amortización,
+    la TIR (Tasa Interna de Retorno) y la TEA (Tasa Efectiva Anual).
     """
-    if not all([capital > 0, interest_rate > 0, term_months > 0, admin_commission_rate >= 0]):
-        raise ValueError("Loan parameters must be positive.")
+    if disbursement_date is None:
+        disbursement_date = date.today()
 
-    # Calculate monthly interest rate
-    monthly_interest_rate = interest_rate / 12
+    principal = Decimal(str(principal))
+    annual_interest_rate = Decimal(str(annual_interest_rate))
+    monthly_interest_rate = annual_interest_rate / Decimal('12')
+    term_months = int(term_months)
+    commission_rate = Decimal(str(commission_rate))
 
-    # Calculate the fixed monthly payment (annuity) using the formula
     if monthly_interest_rate > 0:
-        monthly_payment = capital * (monthly_interest_rate * (1 + monthly_interest_rate)**term_months) / ((1 + monthly_interest_rate)**term_months - 1)
+        factor = (1 + monthly_interest_rate) ** term_months
+        monthly_payment = principal * (monthly_interest_rate * factor) / (factor - 1)
     else:
-        monthly_payment = capital / term_months
+        monthly_payment = principal / Decimal(term_months)
 
-    # Calculate administrative commission based on the selected type
-    total_admin_commission = 0
-    if commission_type == 'A': # On principal amount
-        total_admin_commission = capital * admin_commission_rate
-    elif commission_type == 'B': # On total interest
-        total_interest_precalc = (monthly_payment * term_months) - capital
-        total_admin_commission = total_interest_precalc * admin_commission_rate
-    elif commission_type == 'C': # On principal + interest
-        total_interest_precalc = (monthly_payment * term_months) - capital
-        total_admin_commission = (capital + total_interest_precalc) * admin_commission_rate
+    amortization_table = []
+    current_balance = principal
+    total_payment = Decimal('0.00')
+    cash_flows = [-float(principal)]
 
-    total_loan_cost = capital + (monthly_payment * term_months) - capital + total_admin_commission
-    total_monthly_payment_with_commission = (monthly_payment * term_months + total_admin_commission) / term_months
+    for month in range(1, term_months + 1):
+        interest_for_month = _quantize(current_balance * monthly_interest_rate)
 
-    # Generate the schedule
-    schedule = []
-    remaining_balance = capital
-    total_interest_paid = 0
+        commission_for_month = Decimal('0.00')
+        if commission_type == 'A':
+            commission_for_month = _quantize(current_balance * commission_rate)
+        elif commission_type == 'B' or commission_type == 'C':
+            commission_for_month = _quantize(principal * commission_rate)
 
-    for i in range(1, term_months + 1):
-        interest_for_month = remaining_balance * monthly_interest_rate
-        principal_for_month = monthly_payment - interest_for_month
-        remaining_balance -= principal_for_month
-        total_interest_paid += interest_for_month
+        total_monthly_payment = monthly_payment + commission_for_month
+        principal_paid = total_monthly_payment - interest_for_month - commission_for_month
 
-        schedule.append({
-            'month': i,
-            'payment': round(monthly_payment, 2),
-            'principal': round(principal_for_month, 2),
-            'interest': round(interest_for_month, 2),
-            'balance': round(abs(remaining_balance), 2)
+        if month == term_months:
+            principal_paid = current_balance
+            total_monthly_payment = principal_paid + interest_for_month + commission_for_month
+
+        current_balance -= principal_paid
+        total_payment += total_monthly_payment
+        cash_flows.append(float(total_monthly_payment))
+
+        due_date = disbursement_date + relativedelta(months=month)
+
+        amortization_table.append({
+            "month": month,
+            "due_date": due_date.isoformat(),
+            "initial_balance": float(current_balance + principal_paid),
+            "payment": float(total_monthly_payment),
+            "interest": float(interest_for_month),
+            "commission": float(commission_for_month),
+            "principal": float(principal_paid),
+            "final_balance": float(current_balance)
         })
 
-    summary = {
-        'total_principal': round(capital, 2),
-        'total_interest': round(total_interest_paid, 2),
-        'total_admin_commission': round(total_admin_commission, 2),
-        'total_loan_cost': round(total_loan_cost, 2),
-        'fixed_monthly_payment': round(monthly_payment, 2),
-        'total_monthly_payment_with_commission': round(total_monthly_payment_with_commission, 2)
-    }
+    try:
+        monthly_tir = npf.irr(cash_flows)
+        annual_tea = (1 + monthly_tir) ** 12 - 1
+    except Exception:
+        monthly_tir = 0.0
+        annual_tea = 0.0
 
-    return {'schedule': schedule, 'summary': summary}
+    return {
+        "monthly_payment": float(_quantize(monthly_payment)),
+        "total_payment": float(_quantize(total_payment)),
+        "amortization_table": amortization_table,
+        "tir_monthly": round(monthly_tir, 6),
+        "tea_annual": round(annual_tea, 4)
+    }
