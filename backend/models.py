@@ -251,60 +251,6 @@ class Lead(db.Model):
             'updated_at': self.updated_at.isoformat(),
         }
 
-# --- LAN-SUB1 (Subscription Management) Models ---
-
-class Tenant(db.Model):
-    """Represents a tenant in the multi-tenant system."""
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(150), unique=True, nullable=False)
-    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
-    users = db.relationship('User', backref='tenant', lazy='dynamic')
-    subscriptions = db.relationship('TenantSubscription', backref='tenant', lazy='dynamic')
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'name': self.name,
-            'created_at': self.created_at.isoformat()
-        }
-
-class SystemModule(db.Model):
-    """Represents a licensable module in the system (e.g., LAN-GP1, LAN-ET2)."""
-    id = db.Column(db.Integer, primary_key=True)
-    module_code = db.Column(db.String(20), unique=True, nullable=False) # e.g., 'LAN-ET2'
-    name = db.Column(db.String(100), nullable=False)
-    description = db.Column(db.String(255))
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'module_code': self.module_code,
-            'name': self.name,
-            'description': self.description
-        }
-
-class TenantSubscription(db.Model):
-    """Links a Tenant to a SystemModule, representing an active subscription."""
-    id = db.Column(db.Integer, primary_key=True)
-    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
-    module_id = db.Column(db.Integer, db.ForeignKey('system_module.id'), nullable=False)
-
-    start_date = db.Column(db.Date, nullable=False)
-    end_date = db.Column(db.Date, nullable=True) # Null for ongoing subscriptions
-    is_active = db.Column(db.Boolean, default=True)
-
-    module = db.relationship('SystemModule')
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'tenant_id': self.tenant_id,
-            'module_code': self.module.module_code,
-            'start_date': self.start_date.isoformat(),
-            'end_date': self.end_date.isoformat() if self.end_date else None,
-            'is_active': self.is_active
-        }
-
 class CommunicationLog(db.Model):
     """Represents a single interaction with a lead or client."""
     id = db.Column(db.Integer, primary_key=True)
@@ -530,4 +476,100 @@ class TicketComment(db.Model):
             'commenter_name': commenter.full_name,
             'comment_text': self.comment_text,
             'timestamp': self.timestamp.isoformat()
+        }
+
+# --- LAN-SUB1 (Subscription Management) Models ---
+
+class Tenant(db.Model):
+    """Represents a tenant in the multi-tenant system."""
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(150), unique=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+    users = db.relationship('User', backref='tenant', lazy='dynamic')
+    subscriptions = db.relationship('TenantSubscription', backref='tenant', lazy='dynamic')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'created_at': self.created_at.isoformat()
+        }
+
+class SystemModule(db.Model):
+    """Represents a licensable module in the system (e.g., LAN-GP1, LAN-ET2)."""
+    id = db.Column(db.Integer, primary_key=True)
+    module_code = db.Column(db.String(20), unique=True, nullable=False) # e.g., 'LAN-ET2'
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.String(255))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'module_code': self.module_code,
+            'name': self.name,
+            'description': self.description
+        }
+
+class TenantSubscription(db.Model):
+    """Links a Tenant to a SystemModule, representing an active subscription."""
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    module_id = db.Column(db.Integer, db.ForeignKey('system_module.id'), nullable=False)
+
+    start_date = db.Column(db.Date, nullable=False)
+    end_date = db.Column(db.Date, nullable=True) # Null for ongoing subscriptions
+    is_active = db.Column(db.Boolean, default=True)
+
+    module = db.relationship('SystemModule')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'tenant_id': self.tenant_id,
+            'module_code': self.module.module_code,
+            'start_date': self.start_date.isoformat(),
+            'end_date': self.end_date.isoformat() if self.end_date else None,
+            'is_active': self.is_active
+        }
+
+# --- LAN-ET2 (Empresa de Trabajo Temporal) Models ---
+
+class ClientCompany(db.Model):
+    """Represents a client company that hires temporary workers."""
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(150), unique=True, nullable=False)
+    contact_person = db.Column(db.String(120), nullable=True)
+    contact_email = db.Column(db.String(120), nullable=False)
+    assignments = db.relationship('TemporaryAssignment', backref='client_company', lazy='dynamic')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'contact_person': self.contact_person,
+            'contact_email': self.contact_email
+        }
+
+class TemporaryAssignment(db.Model):
+    """Represents the assignment of an employee to a client company."""
+    id = db.Column(db.Integer, primary_key=True)
+    employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
+    client_company_id = db.Column(db.Integer, db.ForeignKey('client_company.id'), nullable=False)
+
+    start_date = db.Column(db.Date, nullable=False)
+    end_date = db.Column(db.Date, nullable=False)
+    hourly_rate = db.Column(db.Float, nullable=False)
+
+    employee = db.relationship('Employee', backref='temporary_assignments')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'employee_id': self.employee_id,
+            'employee_name': self.employee.full_name,
+            'client_company_id': self.client_company_id,
+            'client_company_name': self.client_company.name,
+            'start_date': self.start_date.isoformat(),
+            'end_date': self.end_date.isoformat(),
+            'hourly_rate': self.hourly_rate
         }

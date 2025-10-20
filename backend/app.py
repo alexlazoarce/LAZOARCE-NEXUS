@@ -4,7 +4,7 @@ from flask_cors import CORS
 from functools import wraps
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, JWTManager, get_jwt
 
-from models import db, Role, User, LoanProduct, LoanApplication, Account, Employee, PayrollLog, PaySlip, Lead, CommunicationLog, Payment, NotificationTemplate, AuditLog, Opportunity, MailingList, Campaign, Ticket, TicketComment, Tenant, SystemModule, TenantSubscription
+from models import db, Role, User, LoanProduct, LoanApplication, Account, Employee, PayrollLog, PaySlip, Lead, CommunicationLog, Payment, NotificationTemplate, AuditLog, Opportunity, MailingList, Campaign, Ticket, TicketComment, Tenant, SystemModule, TenantSubscription, ClientCompany, TemporaryAssignment
 from loan_calculator import calculate_loan_details
 from pdf_generator import generate_contract_pdf
 import accounting_service
@@ -12,7 +12,8 @@ import payroll_service
 import collections_service
 import notification_service
 import audit_service
-import subscription_service # Import the new service
+import subscription_service
+import ett_service
 from datetime import datetime, date, timedelta
     """Application factory function."""
     app = Flask(__name__)
@@ -1455,6 +1456,56 @@ def setup_database(app):
     def get_tenant_subscriptions(tenant_id):
         subscriptions = subscription_service.get_subscriptions_for_tenant(tenant_id)
         return jsonify([s.to_dict() for s in subscriptions])
+
+    # --- LAN-ET2 (ETT Management) API ROUTES ---
+
+    @app.route('/api/ett/companies', methods=['POST'])
+    @module_access_required('LAN-ET2')
+    def create_client_company():
+        data = request.get_json()
+        try:
+            new_company = ett_service.add_client_company(
+                name=data.get('name'),
+                contact_person=data.get('contact_person'),
+                contact_email=data.get('contact_email')
+            )
+            return jsonify(new_company.to_dict()), 201
+        except ValueError as e:
+            return jsonify({'message': str(e)}), 400
+
+    @app.route('/api/ett/companies', methods=['GET'])
+    @module_access_required('LAN-ET2')
+    def list_client_companies():
+        companies = ett_service.get_all_client_companies()
+        return jsonify([company.to_dict() for company in companies]), 200
+
+    @app.route('/api/ett/assignments', methods=['POST'])
+    @module_access_required('LAN-ET2')
+    def create_temporary_assignment():
+        data = request.get_json()
+        try:
+            new_assignment = ett_service.add_temporary_assignment(
+                employee_id=data.get('employee_id'),
+                client_company_id=data.get('client_company_id'),
+                start_date_str=data.get('start_date'),
+                end_date_str=data.get('end_date'),
+                hourly_rate=data.get('hourly_rate')
+            )
+            return jsonify(new_assignment.to_dict()), 201
+        except ValueError as e:
+            return jsonify({'message': str(e)}), 400
+
+    @app.route('/api/ett/assignments/employee/<int:employee_id>', methods=['GET'])
+    @module_access_required('LAN-ET2')
+    def list_assignments_by_employee(employee_id):
+        assignments = ett_service.get_assignments_for_employee(employee_id)
+        return jsonify([assignment.to_dict() for assignment in assignments]), 200
+
+    @app.route('/api/ett/assignments/active', methods=['GET'])
+    @module_access_required('LAN-ET2')
+    def list_active_assignments():
+        assignments = ett_service.get_active_assignments()
+        return jsonify([assignment.to_dict() for assignment in assignments]), 200
 
 
 if __name__ == '__main__':
