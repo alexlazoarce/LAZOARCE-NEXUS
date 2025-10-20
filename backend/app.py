@@ -2,16 +2,18 @@ import os
 from flask import Flask, jsonify, request, make_response
 from flask_cors import CORS
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, JWTManager, get_jwt
-
-from models import db, Role, User, LoanProduct, LoanApplication, Account, Employee, PayrollLog, PaySlip, Lead, CommunicationLog, Payment, NotificationTemplate, AuditLog, Opportunity, MailingList, Campaign, Ticket, TicketComment
-from loan_calculator import calculate_loan_details
-from pdf_generator import generate_contract_pdf
-import accounting_service
-import payroll_service
-import collections_service
-import notification_service
-import audit_service
 from datetime import datetime, date, timedelta
+
+from .models import db, Role, User, LoanProduct, LoanApplication, Account, Employee, PayrollLog, PaySlip, Lead, CommunicationLog, Payment, NotificationTemplate, AuditLog, Opportunity, MailingList, Campaign, Ticket, TicketComment
+from .loan_calculator import calculate_loan_details
+from .pdf_generator import generate_contract_pdf
+from . import accounting_service
+from . import payroll_service
+from . import collections_service
+from . import notification_service
+from . import audit_service
+
+def create_app():
     """Application factory function."""
     app = Flask(__name__)
     CORS(app)
@@ -30,7 +32,8 @@ from datetime import datetime, date, timedelta
     @app.route('/api/auth/register', methods=['POST'])
     def register():
         data = request.get_json()
-        if User.query.filter_by(email=data['email']).first(): return jsonify({"message": "El correo ya está registrado"}), 409
+        if User.query.filter_by(email=data['email']).first():
+            return jsonify({"message": "El correo ya está registrado"}), 409
         # Default to 'Cliente' role
         client_role = Role.query.filter_by(name='Cliente').first()
         if not client_role:
@@ -1086,7 +1089,7 @@ from datetime import datetime, date, timedelta
 
     @app.route('/api/mailing-lists', methods=['GET', 'POST'])
     @jwt_required()
-    def handle_mailing_lists():
+    def handle_mailing_lists_duplicate():
         claims = get_jwt()
         if 'Admin' not in claims.get('roles', []):
             return jsonify({"message": "Acceso no autorizado"}), 403
@@ -1103,7 +1106,7 @@ from datetime import datetime, date, timedelta
 
     @app.route('/api/mailing-lists/<int:list_id>/members', methods=['POST', 'DELETE'])
     @jwt_required()
-    def handle_mailing_list_members(list_id):
+    def handle_mailing_list_members_duplicate(list_id):
         claims = get_jwt()
         if 'Admin' not in claims.get('roles', []):
             return jsonify({"message": "Acceso no autorizado"}), 403
