@@ -148,7 +148,7 @@ jobs:
 
       run: |
 
-        mypy . --non-interactive || true
+        mypy . --non-interactive
 
     - name: Test with pytest
 
@@ -164,7 +164,7 @@ jobs:
 
       run: |
 
-        pytest -v --cov=backend --cov-report=term-missing
+        pytest -v --cov=backend --cov-report=term-missing --cov-fail-under=70
 
     - name: Security audit with bandit
 
@@ -172,7 +172,17 @@ jobs:
 
       run: |
 
-        bandit -r backend/ -f json -o bandit-report.json || true
+        bandit -r . -f json -o bandit-report.json || true
+
+    - name: Upload coverage reports
+
+      uses: codecov/codecov-action@v4
+
+      with:
+
+        file: ./coverage.xml
+
+        fail_ci_if_error: false
 
   build-docker:
 
@@ -213,6 +223,8 @@ jobs:
       with:
 
         context: .
+
+        file: ./Dockerfile
 
         push: true
 
@@ -260,7 +272,7 @@ jobs:
 
         ssh -i deploy_key -o StrictHostKeyChecking=no $DEPLOY_USER@$DEPLOY_SERVER << 'EOF'
 
-          cd /opt/prestamos-backend
+          cd /opt/prestamos-backend || mkdir -p /opt/prestamos-backend && cd /opt/prestamos-backend
 
           git pull origin develop
 
@@ -306,7 +318,7 @@ jobs:
 
         ssh -i deploy_key -o StrictHostKeyChecking=no $DEPLOY_USER@$DEPLOY_SERVER << 'EOF'
 
-          cd /opt/prestamos-backend
+          cd /opt/prestamos-backend || mkdir -p /opt/prestamos-backend && cd /opt/prestamos-backend
 
           git pull origin main
 

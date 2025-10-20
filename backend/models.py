@@ -4,21 +4,33 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 from datetime import datetime, date
 
-from sqlalchemy import func
+from sqlalchemy import func, Boolean, DateTime, Float, Integer, String, Text
 
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, backref
+
+from sqlalchemy import ForeignKey
 
 # Inicializar SQLAlchemy
 
 db = SQLAlchemy()
 
-# Tabla intermedia para MailingList
+# Tabla intermedia para relaciones many-to-many
 
 mailing_list_members = db.Table('mailing_list_members',
 
-    db.Column('mailing_list_id', db.Integer, db.ForeignKey('mailing_list.id'), primary_key=True),
+    db.Column('mailing_list_id', Integer, ForeignKey('mailing_list.id'), primary_key=True),
 
-    db.Column('user_id', db.Integer, db.ForeignKey('user.id'), primary_key=True)
+    db.Column('user_id', Integer, ForeignKey('user.id'), primary_key=True)
+
+)
+
+# Tabla intermedia para roles de usuario (many-to-many)
+
+user_roles = db.Table('user_roles',
+
+    db.Column('user_id', Integer, ForeignKey('user.id'), primary_key=True),
+
+    db.Column('role_id', Integer, ForeignKey('role.id'), primary_key=True)
 
 )
 
@@ -30,15 +42,15 @@ class Role(db.Model):
 
     
 
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(Integer, primary_key=True)
 
-    name = db.Column(db.String(80), unique=True, nullable=False)
+    name = db.Column(String(80), unique=True, nullable=False, index=True)
 
     
 
     # Relaciones
 
-    users = db.relationship('User', backref='role', lazy=True)
+    users = db.relationship('User', secondary=user_roles, back_populates='roles')
 
     
 
@@ -58,23 +70,31 @@ class User(db.Model):
 
     
 
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(Integer, primary_key=True)
 
-    email = db.Column(db.String(120), unique=True, nullable=False, index=True)
+    email = db.Column(String(120), unique=True, nullable=False, index=True)
 
-    password_hash = db.Column(db.String(256), nullable=False)
+    password_hash = db.Column(String(256), nullable=False)
 
-    full_name = db.Column(db.String(120), nullable=True)
+    full_name = db.Column(String(120), nullable=True)
 
-    dui = db.Column(db.String(20), nullable=True, unique=True)
+    dui = db.Column(String(20), unique=True, nullable=True)
 
-    nit = db.Column(db.String(20), nullable=True, unique=True)
+    nit = db.Column(String(20), unique=True, nullable=True)
 
-    role_id = db.Column(db.Integer, db.ForeignKey('role.id'), nullable=False, index=True)
+    is_active = db.Column(Boolean, default=True)
+
+    last_login = db.Column(DateTime)
 
     
 
-    # Relaciones principales
+    # Relaciones
+
+    role_id = db.Column(Integer, ForeignKey('role.id'), nullable=False)  # Rol principal
+
+    roles = db.relationship('Role', secondary=user_roles, back_populates='users')  # Roles adicionales
+
+    profile = db.relationship('ClientProfile', backref='user', uselist=False)
 
     applications = db.relationship('LoanApplication', backref='applicant', lazy=True)
 
@@ -86,7 +106,9 @@ class User(db.Model):
 
     subscriptions = db.relationship('Subscription', backref='user', lazy=True)
 
-    mailing_lists = db.relationship('MailingList', secondary=mailing_list_members, lazy='dynamic', backref=db.backref('members', lazy=True))
+    mailing_lists = db.relationship('MailingList', secondary=mailing_list_members, lazy='dynamic', 
+
+                                   backref=db.backref('members', lazy=True))
 
     
 
@@ -104,6 +126,22 @@ class User(db.Model):
 
     
 
+    @property
+
+    def role(self):
+
+        return Role.query.get(self.role_id)
+
+    
+
+    def has_role(self, *role_names):
+
+        """Verifica si el usuario tiene alguno de los roles especificados"""
+
+        return any(role.name in role_names for role in self.roles) or self.role.name in role_names
+
+    
+
     def to_dict(self):
 
         return {
@@ -118,7 +156,11 @@ class User(db.Model):
 
             'nit': self.nit,
 
-            'role': self.role.name if self.role else None
+            'is_active': self.is_active,
+
+            'roles': [role.name for role in self.roles],
+
+            'primary_role': self.role.name if self.role else None
 
         }
 
@@ -128,6 +170,42 @@ class User(db.Model):
 
         return f'<User {self.email}>'
 
+class ClientProfile(db.Model):
+
+    __tablename__ = 'client_profile'
+
+    
+
+    id = db.Column(Integer, primary_key=True)
+
+    user_id = db.Column(Integer, ForeignKey('user.id'), unique=True, nullable=False)
+
+    full_name = db.Column(String(120))
+
+    phone_number = db.Column(String(20))
+
+    address = db.Column(Text)
+
+    birth_date = db.Column(Date)
+
+    
+
+    def to_dict(self):
+
+        return {
+
+            'id': self.id,
+
+            'full_name': self.full_name,
+
+            'phone_number': self.phone_number,
+
+            'address': self.address,
+
+            'birth_date': self.birth_date.isoformat() if self.birth_date else None
+
+        }
+
 # --- MODELOS DE PRÉSTAMOS ---
 
 class LoanProduct(db.Model):
@@ -136,45 +214,43 @@ class LoanProduct(db.Model):
 
     
 
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(Integer, primary_key=True)
 
-    name = db.Column(db.String(100), nullable=False, unique=True)
+    name = db.Column(String(100), unique=True, nullable=False, index=True)
 
-    min_amount = db.Column(db.Float, nullable=False, default=0.0)
+    min_amount = db.Column(Float, nullable=False, default=0.0)
 
-    max_amount = db.Column(db.Float, nullable=False, default=0.0)
+    max_amount = db.Column(Float, nullable=False, default=0.0)
 
-    interest_rate = db.Column(db.Float, nullable=False, default=0.0)  # Tasa anual %
+    interest_rate = db.Column(Float, nullable=False, default=0.0)  # Tasa anual %
 
-    commission_rate = db.Column(db.Float, nullable=False, default=0.01)  # Comisión %
+    commission_rate = db.Column(Float, nullable=False, default=0.01)
 
-    term_months = db.Column(db.Integer, nullable=False, default=12)
+    term_months = db.Column(Integer, nullable=False, default=12)
 
-    is_active = db.Column(db.Boolean, default=True)
+    is_active = db.Column(Boolean, default=True)
 
     
 
-    # Campos para calculadora de préstamos
+    # Campos avanzados de cálculo
 
-    comision_apertura = db.Column(db.Float, default=0.0)
+    comision_apertura = db.Column(Float, default=0.0)
 
-    comision_administracion = db.Column(db.Float, default=0.0)
+    comision_administracion = db.Column(Float, default=0.0)
 
-    seguro = db.Column(db.Float, default=0.0)
+    seguro = db.Column(Float, default=0.0)
 
-    comisiones_se_descuentan_capital = db.Column(db.Boolean, default=True)
+    comisiones_se_descuentan_capital = db.Column(Boolean, default=True)
 
-    comisiones_se_agregan_capital = db.Column(db.Boolean, default=False)
-
-    aplicar_tea = db.Column(db.Boolean, default=True)
+    aplicar_tea = db.Column(Boolean, default=True)
 
     
 
     # Timestamps
 
-    created_at = db.Column(db.DateTime, default=func.current_timestamp())
+    created_at = db.Column(DateTime, default=func.current_timestamp())
 
-    updated_at = db.Column(db.DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp())
+    updated_at = db.Column(DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp())
 
     
 
@@ -204,11 +280,7 @@ class LoanProduct(db.Model):
 
             'is_active': self.is_active,
 
-            'comision_apertura': self.comision_apertura,
-
-            'comision_administracion': self.comision_administracion,
-
-            'seguro': self.seguro
+            **{k: v for k, v in self.__dict__.items() if k.startswith('comision_') or k.startswith('seguro')}
 
         }
 
@@ -224,47 +296,47 @@ class LoanApplication(db.Model):
 
     
 
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(Integer, primary_key=True)
 
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+    user_id = db.Column(Integer, ForeignKey('user.id'), nullable=False, index=True)
 
-    product_id = db.Column(db.Integer, db.ForeignKey('loan_product.id'), nullable=False, index=True)
+    product_id = db.Column(Integer, ForeignKey('loan_product.id'), nullable=False, index=True)
 
     
 
-    amount_requested = db.Column(db.Float, nullable=False)
+    amount_requested = db.Column(Float, nullable=False)
 
-    term_months = db.Column(db.Integer, nullable=False)
+    term_months = db.Column(Integer, nullable=False)
 
-    commission_calculation_method = db.Column(db.String(1), default='A')  # A, B, C
+    commission_calculation_method = db.Column(String(1), default='A')  # A, B, C
 
     
 
     # Campos calculados
 
-    monthly_payment = db.Column(db.Float, nullable=True)
+    monthly_payment = db.Column(Float, nullable=True)
 
-    total_payment = db.Column(db.Float, nullable=True)
+    total_payment = db.Column(Float, nullable=True)
 
-    tea_calculada = db.Column(db.Float, nullable=True)  # TEA %
+    tea_calculada = db.Column(Float, nullable=True)
 
     
 
-    status = db.Column(db.String(20), nullable=False, default='Pendiente', index=True)
+    status = db.Column(String(20), nullable=False, default='Pendiente', index=True)
 
     
 
     # Timestamps
 
-    application_date = db.Column(db.DateTime, default=func.current_timestamp(), index=True)
+    application_date = db.Column(DateTime, default=func.current_timestamp(), index=True)
 
-    decision_date = db.Column(db.DateTime, nullable=True)
+    decision_date = db.Column(DateTime, nullable=True)
 
     
 
     # Relación contable
 
-    disbursement_entry_id = db.Column(db.Integer, db.ForeignKey('journal_entry.id'), nullable=True)
+    disbursement_entry_id = db.Column(Integer, ForeignKey('journal_entry.id'), nullable=True)
 
     disbursement_entry = db.relationship('JournalEntry', foreign_keys=[disbursement_entry_id])
 
@@ -272,7 +344,9 @@ class LoanApplication(db.Model):
 
     # Relaciones
 
-    payments = db.relationship('Payment', backref='application', lazy='dynamic', cascade="all, delete-orphan")
+    payments = db.relationship('Payment', backref='application', lazy='dynamic', 
+
+                              cascade="all, delete-orphan")
 
     
 
@@ -294,15 +368,11 @@ class LoanApplication(db.Model):
 
             'term_months': self.term_months,
 
-            'commission_calculation_method': self.commission_calculation_method,
-
             'status': self.status,
 
             'monthly_payment': self.monthly_payment,
 
             'total_payment': self.total_payment,
-
-            'tea_calculada': self.tea_calculada,
 
             'application_date': self.application_date.isoformat() if self.application_date else None,
 
@@ -316,7 +386,7 @@ class LoanApplication(db.Model):
 
         return f'<LoanApplication {self.id} - {self.status}>'
 
-# --- MODELOS CONTABLES (NUEVO SISTEMA) ---
+# --- MODELOS CONTABLES ---
 
 class Account(db.Model):
 
@@ -324,19 +394,21 @@ class Account(db.Model):
 
     
 
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(Integer, primary_key=True)
 
-    name = db.Column(db.String(100), unique=True, nullable=False)
+    account_code = db.Column(String(20), unique=True, nullable=False, index=True)
 
-    category = db.Column(db.String(50), nullable=False)  # Asset, Liability, Equity, Revenue, Expense
+    name = db.Column(String(100), unique=True, nullable=False)
 
-    normal_balance = db.Column(db.String(10), nullable=False)  # Debit, Credit
+    category = db.Column(String(50), nullable=False)  # Asset, Liability, Equity, Revenue, Expense
 
-    account_code = db.Column(db.String(20), unique=True)
+    normal_balance = db.Column(String(10), nullable=False)  # Debit, Credit
 
-    account_type = db.Column(db.String(50))
+    account_type = db.Column(String(50))
 
-    account_class = db.Column(db.String(100))
+    account_class = db.Column(String(100))
+
+    is_active = db.Column(Boolean, default=True)
 
     
 
@@ -352,13 +424,15 @@ class Account(db.Model):
 
             'id': self.id,
 
-            'name': self.name,
-
             'account_code': self.account_code,
+
+            'name': self.name,
 
             'category': self.category,
 
-            'normal_balance': self.normal_balance
+            'normal_balance': self.normal_balance,
+
+            'is_active': self.is_active
 
         }
 
@@ -366,7 +440,7 @@ class Account(db.Model):
 
     def __repr__(self):
 
-        return f'<Account {self.name}>'
+        return f'<Account {self.account_code} - {self.name}>'
 
 class JournalEntry(db.Model):
 
@@ -374,13 +448,15 @@ class JournalEntry(db.Model):
 
     
 
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(Integer, primary_key=True)
 
-    date = db.Column(db.DateTime, default=func.current_timestamp(), index=True)
+    date = db.Column(DateTime, default=func.current_timestamp(), index=True)
 
-    description = db.Column(db.String(500), nullable=False)
+    description = db.Column(String(500), nullable=False)
 
-    reference = db.Column(db.String(100), nullable=True)
+    reference = db.Column(String(100))
+
+    created_by_id = db.Column(Integer, ForeignKey('user.id'))
 
     
 
@@ -388,7 +464,33 @@ class JournalEntry(db.Model):
 
     transactions = db.relationship('Transaction', backref='journal_entry', 
 
-                                 lazy='dynamic', cascade="all, delete-orphan")
+                                  lazy='dynamic', cascade="all, delete-orphan")
+
+    created_by = db.relationship('User')
+
+    
+
+    @property
+
+    def total_debit(self):
+
+        return sum(t.amount for t in self.transactions if t.type == 'Debit')
+
+    
+
+    @property
+
+    def total_credit(self):
+
+        return sum(t.amount for t in self.transactions if t.type == 'Credit')
+
+    
+
+    @property
+
+    def is_balanced(self):
+
+        return self.total_debit == self.total_credit
 
     
 
@@ -404,15 +506,15 @@ class JournalEntry(db.Model):
 
             'reference': self.reference,
 
+            'total_debit': self.total_debit,
+
+            'total_credit': self.total_credit,
+
+            'is_balanced': self.is_balanced,
+
             'transactions': [t.to_dict() for t in self.transactions.all()]
 
         }
-
-    
-
-    def __repr__(self):
-
-        return f'<JournalEntry {self.id}>'
 
 class Transaction(db.Model):
 
@@ -420,17 +522,15 @@ class Transaction(db.Model):
 
     
 
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(Integer, primary_key=True)
 
-    journal_entry_id = db.Column(db.Integer, db.ForeignKey('journal_entry.id'), 
+    journal_entry_id = db.Column(Integer, ForeignKey('journal_entry.id'), nullable=False, index=True)
 
-                               nullable=False, index=True)
+    account_id = db.Column(Integer, ForeignKey('account.id'), nullable=False, index=True)
 
-    account_id = db.Column(db.Integer, db.ForeignKey('account.id'), nullable=False, index=True)
+    type = db.Column(String(10), nullable=False)  # Debit, Credit
 
-    type = db.Column(db.String(10), nullable=False)  # Debit, Credit
-
-    amount = db.Column(db.Float, nullable=False, default=0.0)
+    amount = db.Column(Float, nullable=False, default=0.0)
 
     
 
@@ -439,6 +539,8 @@ class Transaction(db.Model):
         return {
 
             'id': self.id,
+
+            'account_code': self.account.account_code if self.account else None,
 
             'account_name': self.account.name if self.account else None,
 
@@ -462,33 +564,33 @@ class Employee(db.Model):
 
     
 
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(Integer, primary_key=True)
 
-    full_name = db.Column(db.String(120), nullable=False)
+    full_name = db.Column(String(120), nullable=False, index=True)
 
-    employee_type = db.Column(db.String(20), default='interno')  # interno, temporal
+    employee_type = db.Column(String(20), default='interno')  # interno, temporal
 
-    position = db.Column(db.String(100), nullable=True)
+    position = db.Column(String(100))
 
-    salary = db.Column(db.Float, default=0.0)
+    salary = db.Column(Float, default=0.0)
 
-    hire_date = db.Column(db.Date, nullable=True)
+    hire_date = db.Column(Date, nullable=True)
 
-    is_active = db.Column(db.Boolean, default=True)
+    termination_date = db.Column(Date, nullable=True)
+
+    is_active = db.Column(Boolean, default=True)
 
     
 
-    # Datos personales
+    # Datos legales (El Salvador)
 
-    country_code = db.Column(db.String(2), default='SV')
+    dui = db.Column(String(20), unique=True)
 
-    dui = db.Column(db.String(20), unique=True)
+    nit = db.Column(String(20), unique=True)
 
-    nit = db.Column(db.String(20), unique=True)
+    isss_number = db.Column(String(20), unique=True)
 
-    isss_number = db.Column(db.String(20), unique=True)
-
-    afp_number = db.Column(db.String(20), unique=True)
+    afp_number = db.Column(String(20), unique=True)
 
     
 
@@ -498,17 +600,13 @@ class Employee(db.Model):
 
     payments_registered = db.relationship('Payment', foreign_keys='Payment.registered_by_id', 
 
-                                        backref='registered_by', lazy='dynamic')
-
-    assigned_tickets = db.relationship('Ticket', foreign_keys='Ticket.assigned_to_id',
-
-                                     backref='assigned_employee', lazy='dynamic')
+                                         backref='registered_by', lazy='dynamic')
 
     assignments = db.relationship('TemporaryAssignment', backref='employee', lazy='dynamic')
 
     communication_logs = db.relationship('CommunicationLog', foreign_keys='CommunicationLog.employee_id', 
 
-                                       backref='employee', lazy='dynamic')
+                                        backref='employee', lazy='dynamic')
 
     
 
@@ -542,212 +640,6 @@ class Employee(db.Model):
 
         return f'<Employee {self.full_name}>'
 
-# --- MODELOS ET2 (EMPRESA DE TRABAJO TEMPORAL) ---
-
-class ClientCompany(db.Model):
-
-    __tablename__ = 'client_company'
-
-    
-
-    id = db.Column(db.Integer, primary_key=True)
-
-    name = db.Column(db.String(150), unique=True, nullable=False)
-
-    contact_person = db.Column(db.String(120))
-
-    contact_email = db.Column(db.String(120))
-
-    phone_number = db.Column(db.String(20))
-
-    
-
-    # Relaciones
-
-    assignments = db.relationship('TemporaryAssignment', backref='client_company', lazy='dynamic')
-
-    
-
-    def to_dict(self):
-
-        return {
-
-            'id': self.id,
-
-            'name': self.name,
-
-            'contact_person': self.contact_person,
-
-            'contact_email': self.contact_email,
-
-            'phone_number': self.phone_number
-
-        }
-
-    
-
-    def __repr__(self):
-
-        return f'<ClientCompany {self.name}>'
-
-class TemporaryAssignment(db.Model):
-
-    __tablename__ = 'temporary_assignment'
-
-    
-
-    id = db.Column(db.Integer, primary_key=True)
-
-    employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False, index=True)
-
-    client_company_id = db.Column(db.Integer, db.ForeignKey('client_company.id'), nullable=False, index=True)
-
-    
-
-    project_name = db.Column(db.String(150))
-
-    position_in_client = db.Column(db.String(100), nullable=False)
-
-    start_date = db.Column(db.Date, nullable=False, index=True)
-
-    end_date = db.Column(db.Date, nullable=True)
-
-    assignment_salary = db.Column(db.Float, nullable=False)
-
-    is_active = db.Column(db.Boolean, default=True)
-
-    
-
-    created_at = db.Column(db.DateTime, default=func.current_timestamp())
-
-    
-
-    def to_dict(self):
-
-        return {
-
-            'id': self.id,
-
-            'employee_name': self.employee.full_name if self.employee else None,
-
-            'client_company_name': self.client_company.name if self.client_company else None,
-
-            'project_name': self.project_name,
-
-            'position_in_client': self.position_in_client,
-
-            'start_date': self.start_date.isoformat(),
-
-            'end_date': self.end_date.isoformat() if self.end_date else None,
-
-            'assignment_salary': self.assignment_salary,
-
-            'is_active': self.is_active
-
-        }
-
-    
-
-    def __repr__(self):
-
-        return f'<TemporaryAssignment {self.id}>'
-
-# --- MODELOS DE NÓMINA ---
-
-class PayrollLog(db.Model):
-
-    __tablename__ = 'payroll_log'
-
-    
-
-    id = db.Column(db.Integer, primary_key=True)
-
-    period_start_date = db.Column(db.Date, nullable=False, index=True)
-
-    period_end_date = db.Column(db.Date, nullable=False, index=True)
-
-    execution_date = db.Column(db.DateTime, default=func.current_timestamp())
-
-    total_paid = db.Column(db.Float, default=0.0)
-
-    
-
-    # Relación contable
-
-    journal_entry_id = db.Column(db.Integer, db.ForeignKey('journal_entry.id'), nullable=True)
-
-    journal_entry = db.relationship('JournalEntry')
-
-    
-
-    # Relaciones
-
-    payslips = db.relationship('PaySlip', backref='payroll_log', lazy=True)
-
-    
-
-    def to_dict(self):
-
-        return {
-
-            'id': self.id,
-
-            'period_start_date': self.period_start_date.isoformat(),
-
-            'period_end_date': self.period_end_date.isoformat(),
-
-            'execution_date': self.execution_date.isoformat() if self.execution_date else None,
-
-            'total_paid': self.total_paid
-
-        }
-
-class PaySlip(db.Model):
-
-    __tablename__ = 'payslip'
-
-    
-
-    id = db.Column(db.Integer, primary_key=True)
-
-    employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
-
-    payroll_log_id = db.Column(db.Integer, db.ForeignKey('payroll_log.id'), nullable=False)
-
-    
-
-    gross_salary = db.Column(db.Float, nullable=False)
-
-    isss_deduction = db.Column(db.Float, default=0.0)
-
-    afp_deduction = db.Column(db.Float, default=0.0)
-
-    renta_deduction = db.Column(db.Float, default=0.0)
-
-    net_salary = db.Column(db.Float, nullable=False)
-
-    
-
-    def to_dict(self):
-
-        return {
-
-            'id': self.id,
-
-            'employee_name': self.employee.full_name if self.employee else None,
-
-            'gross_salary': self.gross_salary,
-
-            'isss_deduction': self.isss_deduction,
-
-            'afp_deduction': self.afp_deduction,
-
-            'renta_deduction': self.renta_deduction,
-
-            'net_salary': self.net_salary
-
-        }
-
 # --- MODELOS CRM ---
 
 class Lead(db.Model):
@@ -756,29 +648,25 @@ class Lead(db.Model):
 
     
 
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(Integer, primary_key=True)
 
-    full_name = db.Column(db.String(120), nullable=False)
+    full_name = db.Column(String(120), nullable=False, index=True)
 
-    email = db.Column(db.String(120))
+    email = db.Column(String(120))
 
-    phone = db.Column(db.String(20))
+    phone = db.Column(String(20))
 
-    
+    status = db.Column(String(50), default='Nuevo', index=True)
 
-    status = db.Column(db.String(50), default='Nuevo')
+    source = db.Column(String(100))
 
-    source = db.Column(db.String(100))
-
-    notes = db.Column(db.Text)
+    notes = db.Column(Text)
 
     
 
-    created_at = db.Column(db.DateTime, default=func.current_timestamp())
+    created_at = db.Column(DateTime, default=func.current_timestamp(), index=True)
 
-    updated_at = db.Column(db.DateTime, default=func.current_timestamp(), 
-
-                          onupdate=func.current_timestamp())
+    updated_at = db.Column(DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp())
 
     
 
@@ -818,21 +706,25 @@ class CommunicationLog(db.Model):
 
     
 
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(Integer, primary_key=True)
 
-    lead_id = db.Column(db.Integer, db.ForeignKey('lead.id'), nullable=True)
+    lead_id = db.Column(Integer, ForeignKey('lead.id'), nullable=True)
 
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    user_id = db.Column(Integer, ForeignKey('user.id'), nullable=True)
 
-    employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
+    employee_id = db.Column(Integer, ForeignKey('employee.id'), nullable=False)
 
     
 
-    type = db.Column(db.String(50), nullable=False)  # Llamada, Email, Reunión
+    type = db.Column(String(50), nullable=False)  # Llamada, Email, WhatsApp, Reunión
 
-    notes = db.Column(db.Text, nullable=False)
+    notes = db.Column(Text, nullable=False)
 
-    timestamp = db.Column(db.DateTime, default=func.current_timestamp())
+    duration_minutes = db.Column(Integer, default=0)
+
+    
+
+    timestamp = db.Column(DateTime, default=func.current_timestamp(), index=True)
 
     
 
@@ -841,74 +733,20 @@ class CommunicationLog(db.Model):
         return {
 
             'id': self.id,
-
-            'employee_name': self.employee.full_name if self.employee else None,
 
             'type': self.type,
 
             'notes': self.notes,
 
-            'timestamp': self.timestamp.isoformat() if self.timestamp else None
+            'duration_minutes': self.duration_minutes,
+
+            'timestamp': self.timestamp.isoformat() if self.timestamp else None,
+
+            'employee_name': self.employee.full_name if self.employee else None
 
         }
 
-class Opportunity(db.Model):
-
-    __tablename__ = 'opportunity'
-
-    
-
-    id = db.Column(db.Integer, primary_key=True)
-
-    name = db.Column(db.String(255), nullable=False)
-
-    amount = db.Column(db.Float)
-
-    stage = db.Column(db.String(50), default='Calificación')
-
-    close_date = db.Column(db.Date)
-
-    
-
-    lead_id = db.Column(db.Integer, db.ForeignKey('lead.id'), nullable=True)
-
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
-
-    
-
-    created_at = db.Column(db.DateTime, default=func.current_timestamp())
-
-    updated_at = db.Column(db.DateTime, default=func.current_timestamp(), 
-
-                          onupdate=func.current_timestamp())
-
-    
-
-    # Relaciones
-
-    client = db.relationship('User')
-
-    
-
-    def to_dict(self):
-
-        return {
-
-            'id': self.id,
-
-            'name': self.name,
-
-            'amount': self.amount,
-
-            'stage': self.stage,
-
-            'close_date': self.close_date.isoformat() if self.close_date else None,
-
-            'client_name': self.client.full_name if self.client else (self.lead.full_name if self.lead else None)
-
-        }
-
-# --- MODELOS DE COBRANZA (NUEVO SISTEMA) ---
+# --- MODELOS DE COBRANZA ---
 
 class Payment(db.Model):
 
@@ -916,27 +754,25 @@ class Payment(db.Model):
 
     
 
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(Integer, primary_key=True)
 
-    application_id = db.Column(db.Integer, db.ForeignKey('loan_application.id'), 
+    application_id = db.Column(Integer, ForeignKey('loan_application.id'), nullable=False, index=True)
 
-                             nullable=False, index=True)
+    amount_paid = db.Column(Float, nullable=False)
 
-    amount_paid = db.Column(db.Float, nullable=False)
+    payment_date = db.Column(Date, nullable=False, index=True)
 
-    payment_date = db.Column(db.Date, nullable=False, index=True)
-
-    type = db.Column(db.String(50), default='Cuota')  # Cuota, Abono, Cancelación
+    type = db.Column(String(50), default='Cuota')  # Cuota, Abono, Cancelación Total
 
     
 
-    registered_by_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
+    registered_by_id = db.Column(Integer, ForeignKey('employee.id'), nullable=False)
 
     
 
     # Relación contable
 
-    journal_entry_id = db.Column(db.Integer, db.ForeignKey('journal_entry.id'), nullable=True)
+    journal_entry_id = db.Column(Integer, ForeignKey('journal_entry.id'), nullable=True)
 
     journal_entry = db.relationship('JournalEntry')
 
@@ -960,7 +796,7 @@ class Payment(db.Model):
 
         }
 
-# --- MODELOS DE NOTIFICACIONES ---
+# --- MODELOS DE NOTIFICACIONES Y AUDITORÍA ---
 
 class NotificationTemplate(db.Model):
 
@@ -968,15 +804,15 @@ class NotificationTemplate(db.Model):
 
     
 
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(Integer, primary_key=True)
 
-    slug = db.Column(db.String(50), unique=True, nullable=False)
+    slug = db.Column(String(50), unique=True, nullable=False, index=True)
 
-    subject = db.Column(db.String(255), nullable=False)
+    subject = db.Column(String(255), nullable=False)
 
-    body = db.Column(db.Text, nullable=False)
+    body = db.Column(Text, nullable=False)
 
-    type = db.Column(db.String(20), default='Email')  # Email, SMS
+    type = db.Column(String(20), default='Email')  # Email, SMS, WhatsApp
 
     
 
@@ -996,23 +832,27 @@ class NotificationTemplate(db.Model):
 
         }
 
-# --- MODELOS DE AUDITORÍA ---
-
 class AuditLog(db.Model):
 
     __tablename__ = 'audit_log'
 
     
 
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(Integer, primary_key=True)
 
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+    user_id = db.Column(Integer, ForeignKey('user.id'), nullable=False, index=True)
 
-    action = db.Column(db.String(100), nullable=False)
+    action = db.Column(String(100), nullable=False, index=True)
 
-    details = db.Column(db.Text)
+    details = db.Column(Text)
 
-    timestamp = db.Column(db.DateTime, default=func.current_timestamp(), index=True)
+    ip_address = db.Column(String(45))
+
+    user_agent = db.Column(String(500))
+
+    
+
+    timestamp = db.Column(DateTime, default=func.current_timestamp(), index=True)
 
     
 
@@ -1032,90 +872,6 @@ class AuditLog(db.Model):
 
         }
 
-# --- MODELOS DE MARKETING ---
-
-class MailingList(db.Model):
-
-    __tablename__ = 'mailing_list'
-
-    
-
-    id = db.Column(db.Integer, primary_key=True)
-
-    name = db.Column(db.String(100), unique=True, nullable=False)
-
-    description = db.Column(db.String(255))
-
-    
-
-    def to_dict(self):
-
-        return {
-
-            'id': self.id,
-
-            'name': self.name,
-
-            'description': self.description,
-
-            'member_count': self.members.count()
-
-        }
-
-class Campaign(db.Model):
-
-    __tablename__ = 'campaign'
-
-    
-
-    id = db.Column(db.Integer, primary_key=True)
-
-    name = db.Column(db.String(150), nullable=False)
-
-    subject = db.Column(db.String(255), nullable=False)
-
-    status = db.Column(db.String(50), default='Draft')
-
-    
-
-    mailing_list_id = db.Column(db.Integer, db.ForeignKey('mailing_list.id'), nullable=False)
-
-    template_id = db.Column(db.Integer, db.ForeignKey('notification_template.id'), nullable=False)
-
-    
-
-    sent_at = db.Column(db.DateTime)
-
-    
-
-    # Relaciones
-
-    mailing_list = db.relationship('MailingList')
-
-    template = db.relationship('NotificationTemplate')
-
-    
-
-    def to_dict(self):
-
-        return {
-
-            'id': self.id,
-
-            'name': self.name,
-
-            'subject': self.subject,
-
-            'status': self.status,
-
-            'mailing_list_name': self.mailing_list.name if self.mailing_list else None,
-
-            'template_slug': self.template.slug if self.template else None,
-
-            'sent_at': self.sent_at.isoformat() if self.sent_at else None
-
-        }
-
 # --- MODELOS DE HELP DESK ---
 
 class Ticket(db.Model):
@@ -1124,27 +880,27 @@ class Ticket(db.Model):
 
     
 
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(Integer, primary_key=True)
 
-    subject = db.Column(db.String(255), nullable=False)
+    subject = db.Column(String(255), nullable=False)
 
-    status = db.Column(db.String(50), default='Abierto')
+    description = db.Column(Text)
 
-    priority = db.Column(db.String(50), default='Normal')
+    status = db.Column(String(50), default='Abierto', index=True)
 
-    
-
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
-
-    assigned_to_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=True, index=True)
+    priority = db.Column(String(50), default='Normal')
 
     
 
-    created_at = db.Column(db.DateTime, default=func.current_timestamp())
+    user_id = db.Column(Integer, ForeignKey('user.id'), nullable=False, index=True)
 
-    updated_at = db.Column(db.DateTime, default=func.current_timestamp(), 
+    assigned_to_id = db.Column(Integer, ForeignKey('employee.id'), nullable=True, index=True)
 
-                          onupdate=func.current_timestamp())
+    
+
+    created_at = db.Column(DateTime, default=func.current_timestamp(), index=True)
+
+    updated_at = db.Column(DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp())
 
     
 
@@ -1152,7 +908,7 @@ class Ticket(db.Model):
 
     comments = db.relationship('TicketComment', backref='ticket', 
 
-                             lazy='dynamic', cascade="all, delete-orphan")
+                              lazy='dynamic', cascade="all, delete-orphan")
 
     
 
@@ -1182,15 +938,19 @@ class TicketComment(db.Model):
 
     
 
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(Integer, primary_key=True)
 
-    ticket_id = db.Column(db.Integer, db.ForeignKey('ticket.id'), nullable=False)
+    ticket_id = db.Column(Integer, ForeignKey('ticket.id'), nullable=False, index=True)
 
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    user_id = db.Column(Integer, ForeignKey('user.id'), nullable=False)
 
-    comment_text = db.Column(db.Text, nullable=False)
+    comment_text = db.Column(Text, nullable=False)
 
-    timestamp = db.Column(db.DateTime, default=func.current_timestamp())
+    is_internal = db.Column(Boolean, default=False)
+
+    
+
+    timestamp = db.Column(DateTime, default=func.current_timestamp())
 
     
 
@@ -1204,351 +964,173 @@ class TicketComment(db.Model):
 
             'commenter_name': commenter.full_name if commenter else 'Usuario eliminado',
 
+            'commenter_email': commenter.email if commenter else None,
+
             'comment_text': self.comment_text,
+
+            'is_internal': self.is_internal,
 
             'timestamp': self.timestamp.isoformat() if self.timestamp else None
 
         }
 
-# --- MODELOS DE FACTURACIÓN ---
-
-class Invoice(db.Model):
-
-    __tablename__ = 'invoice'
-
-    
-
-    id = db.Column(db.Integer, primary_key=True)
-
-    customer_name = db.Column(db.String(200), nullable=False)
-
-    customer_nit = db.Column(db.String(20), nullable=False)
-
-    total_amount = db.Column(db.Float, nullable=False)
-
-    status = db.Column(db.String(20), default='draft')
-
-    
-
-    issue_date = db.Column(db.DateTime, default=func.current_timestamp())
-
-    
-
-    # Relación contable
-
-    journal_entry_id = db.Column(db.Integer, db.ForeignKey('journal_entry.id'), nullable=True)
-
-    journal_entry = db.relationship('JournalEntry')
-
-    
-
-    # Relaciones
-
-    items = db.relationship('InvoiceItem', backref='invoice', 
-
-                          lazy='dynamic', cascade="all, delete-orphan")
-
-    
-
-    def to_dict(self):
-
-        return {
-
-            'id': self.id,
-
-            'customer_name': self.customer_name,
-
-            'customer_nit': self.customer_nit,
-
-            'total_amount': self.total_amount,
-
-            'status': self.status,
-
-            'issue_date': self.issue_date.isoformat() if self.issue_date else None
-
-        }
-
-class InvoiceItem(db.Model):
-
-    __tablename__ = 'invoice_item'
-
-    
-
-    id = db.Column(db.Integer, primary_key=True)
-
-    invoice_id = db.Column(db.Integer, db.ForeignKey('invoice.id'), nullable=False)
-
-    description = db.Column(db.String(255), nullable=False)
-
-    quantity = db.Column(db.Float, nullable=False, default=1.0)
-
-    price = db.Column(db.Float, nullable=False)
-
-    
-
-    @property
-
-    def total(self):
-
-        return self.quantity * self.price
-
-# --- MODELOS DE IMPUESTOS ---
-
-class TaxType(db.Model):
-
-    __tablename__ = 'tax_type'
-
-    
-
-    id = db.Column(db.Integer, primary_key=True)
-
-    name = db.Column(db.String(50), nullable=False)
-
-    rate = db.Column(db.Float, nullable=False)
-
-    country_code = db.Column(db.String(2), nullable=False)
-
-    
-
-    def to_dict(self):
-
-        return {
-
-            'id': self.id,
-
-            'name': self.name,
-
-            'rate': self.rate,
-
-            'country_code': self.country_code
-
-        }
-
-# --- MODELOS DE SUSCRIPCIONES ---
-
-class SubscriptionPlan(db.Model):
-
-    __tablename__ = 'subscription_plan'
-
-    
-
-    id = db.Column(db.Integer, primary_key=True)
-
-    name = db.Column(db.String(100), unique=True, nullable=False)
-
-    price = db.Column(db.Float, nullable=False)
-
-    billing_interval = db.Column(db.String(20), default='monthly')
-
-    
-
-    def to_dict(self):
-
-        return {
-
-            'id': self.id,
-
-            'name': self.name,
-
-            'price': self.price,
-
-            'billing_interval': self.billing_interval
-
-        }
-
-class Subscription(db.Model):
-
-    __tablename__ = 'subscription'
-
-    
-
-    id = db.Column(db.Integer, primary_key=True)
-
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-
-    plan_id = db.Column(db.Integer, db.ForeignKey('subscription_plan.id'), nullable=False)
-
-    
-
-    status = db.Column(db.String(20), default='active')
-
-    start_date = db.Column(db.Date, default=func.current_date())
-
-    next_billing_date = db.Column(db.Date, nullable=False)
-
-    
-
-    # Relaciones
-
-    plan = db.relationship('SubscriptionPlan')
-
-    
-
-    def to_dict(self):
-
-        return {
-
-            'id': self.id,
-
-            'plan_name': self.plan.name if self.plan else None,
-
-            'status': self.status,
-
-            'start_date': self.start_date.isoformat() if self.start_date else None,
-
-            'next_billing_date': self.next_billing_date.isoformat() if self.next_billing_date else None
-
-        }
-
 # --- FUNCIONES DE UTILIDAD ---
 
-def create_tables():
+def create_tables(app=None):
 
     """Crea todas las tablas de la base de datos."""
 
-    db.create_all()
+    if app:
+
+        with app.app_context():
+
+            db.create_all()
+
+    else:
+
+        db.create_all()
 
     print("✅ Todas las tablas creadas exitosamente")
 
-def seed_initial_data():
+def seed_initial_data(app=None):
 
     """Siembra datos iniciales esenciales."""
 
-    with db.app.app_context():
+    if app:
 
-        # Roles
+        with app.app_context():
 
-        roles_data = [
+            _seed_data()
 
-            'Super Administrador',
+    else:
 
-            'Administrador General', 
+        with db.app.app_context():
 
-            'Ejecutivo de Crédito',
+            _seed_data()
 
-            'Cobrador',
+def _seed_data():
 
-            'Contador',
+    """Función interna para sembrar datos."""
 
-            'Cliente'
+    
 
-        ]
+    # Roles
 
-        
+    roles_data = [
 
-        if Role.query.count() == 0:
+        'Super Administrador', 'Administrador General', 'Ejecutivo de Crédito',
 
-            for role_name in roles_data:
+        'Cobrador', 'Contador', 'Cliente'
 
-                role = Role(name=role_name)
+    ]
 
-                db.session.add(role)
+    
 
-            db.session.commit()
+    if Role.query.count() == 0:
 
-            print(f"✅ {len(roles_data)} roles creados")
+        for role_name in roles_data:
 
-        
+            role = Role(name=role_name)
 
-        # Cuentas contables básicas
+            db.session.add(role)
 
-        accounts_data = [
+        db.session.commit()
 
-            # Activos
+        print(f"✅ {len(roles_data)} roles creados")
 
-            ('1101', 'Caja', 'Asset', 'Debit'),
+    
 
-            ('1102', 'Bancos', 'Asset', 'Debit'),
+    # Cuentas contables
 
-            ('1201', 'Cuentas por Cobrar Clientes', 'Asset', 'Debit'),
+    accounts_data = [
 
-            # Pasivos
+        ('1101', 'Caja', 'Asset', 'Debit'),
 
-            ('2101', 'Retenciones por Pagar', 'Liability', 'Credit'),
+        ('1102', 'Bancos', 'Asset', 'Debit'),
 
-            ('2102', 'Sueldos por Pagar', 'Liability', 'Credit'),
+        ('1201', 'Cuentas por Cobrar Clientes', 'Asset', 'Debit'),
 
-            # Patrimonio
+        ('2101', 'Retenciones por Pagar', 'Liability', 'Credit'),
 
-            ('3101', 'Capital Social', 'Equity', 'Credit'),
+        ('2102', 'Sueldos por Pagar', 'Liability', 'Credit'),
 
-            # Ingresos
+        ('3101', 'Capital Social', 'Equity', 'Credit'),
 
-            ('4101', 'Ingresos por Intereses', 'Revenue', 'Credit'),
+        ('4101', 'Ingresos por Intereses', 'Revenue', 'Credit'),
 
-            ('4102', 'Ingresos por Comisiones', 'Revenue', 'Credit'),
+        ('4102', 'Ingresos por Comisiones', 'Revenue', 'Credit'),
 
-            # Gastos
+        ('5101', 'Sueldos y Salarios', 'Expense', 'Debit')
 
-            ('5101', 'Sueldos y Salarios', 'Expense', 'Debit')
+    ]
 
-        ]
+    
 
-        
+    if Account.query.count() == 0:
 
-        if Account.query.count() == 0:
+        for code, name, category, normal_balance in accounts_data:
 
-            for code, name, category, normal_balance in accounts_data:
+            account = Account(
 
-                account = Account(
+                account_code=code,
 
-                    account_code=code,
+                name=name,
 
-                    name=name,
+                category=category,
 
-                    category=category,
-
-                    normal_balance=normal_balance
-
-                )
-
-                db.session.add(account)
-
-            db.session.commit()
-
-            print(f"✅ {len(accounts_data)} cuentas contables creadas")
-
-        
-
-        # Producto de préstamo por defecto
-
-        if LoanProduct.query.count() == 0:
-
-            default_product = LoanProduct(
-
-                name="Préstamo Personal Clásico",
-
-                min_amount=1000.0,
-
-                max_amount=50000.0,
-
-                interest_rate=12.0,
-
-                commission_rate=2.0,
-
-                term_months=12,
-
-                comision_apertura=0.02,
-
-                comision_administracion=10.0,
-
-                seguro=5.0
+                normal_balance=normal_balance
 
             )
 
-            db.session.add(default_product)
+            db.session.add(account)
 
-            db.session.commit()
+        db.session.commit()
 
-            print("✅ Producto de préstamo por defecto creado")
+        print(f"✅ {len(accounts_data)} cuentas contables creadas")
 
-        
+    
 
-        print("✅ Datos iniciales sembrados exitosamente")
+    # Producto por defecto
+
+    if LoanProduct.query.count() == 0:
+
+        product = LoanProduct(
+
+            name="Préstamo Personal Clásico",
+
+            min_amount=1000.0,
+
+            max_amount=50000.0,
+
+            interest_rate=12.0,
+
+            commission_rate=2.0,
+
+            term_months=12,
+
+            comision_apertura=0.02,
+
+            comision_administracion=10.0,
+
+            seguro=5.0
+
+        )
+
+        db.session.add(product)
+
+        db.session.commit()
+
+        print("✅ Producto de préstamo por defecto creado")
+
+    
+
+    print("✅ Datos iniciales sembrados exitosamente")
 
 if __name__ == '__main__':
 
     from flask import Flask
+
+    
 
     app = Flask(__name__)
 
@@ -1556,14 +1138,18 @@ if __name__ == '__main__':
 
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+    
+
     db.init_app(app)
 
     
 
     with app.app_context():
 
-        create_tables()
+        create_tables(app)
 
-        seed_initial_data()
+        seed_initial_data(app)
+
+    
 
     print("🚀 Sistema de modelos listo para usar!")
