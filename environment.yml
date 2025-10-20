@@ -1,0 +1,15 @@
+name: prestamos-backend
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - flask
+  - flask-sqlalchemy
+  - flask-jwt-extended
+  - pandas
+  - pytest
+  - flake8
+  - python-dateutil
+  - fpdf2
+  - xhtml2pdf
+  - pip
