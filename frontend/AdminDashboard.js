@@ -3,7 +3,6 @@ const AdminDashboard = ({ token, onManagePayments }) => {
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState('');
     const [disbursementSources, setDisbursementSources] = React.useState({}); // { appId: 'Bancos' | 'Caja' }
-    const [filterStatus, setFilterStatus] = React.useState('Todos'); // State for the filter
 
     const fetchApplications = async () => {
         try {
@@ -59,33 +58,9 @@ const AdminDashboard = ({ token, onManagePayments }) => {
     if (loading) return <p>Cargando panel de administrador...</p>;
     if (error) return <p className="error" style={{color: 'red'}}>{error}</p>;
 
-    // Filter applications based on the selected status
-    const filteredApplications = applications.filter(app => {
-        if (filterStatus === 'Todos') {
-            return true;
-        }
-        return app.status === filterStatus;
-    });
-
     return (
         <div>
             <h3>Panel de Administración - Todas las Solicitudes</h3>
-
-            <div style={{ marginBottom: '1rem' }}>
-                <label htmlFor="status-filter">Filtrar por estado: </label>
-                <select
-                    id="status-filter"
-                    value={filterStatus}
-                    onChange={e => setFilterStatus(e.target.value)}
-                >
-                    <option value="Todos">Todos</option>
-                    <option value="Pendiente">Pendiente</option>
-                    <option value="Aprobada">Aprobada</option>
-                    <option value="Rechazada">Rechazada</option>
-                    <option value="Desembolsada">Desembolsada</option>
-                </select>
-            </div>
-
             <table>
                 <thead>
                     <tr>
@@ -99,7 +74,7 @@ const AdminDashboard = ({ token, onManagePayments }) => {
                     </tr>
                 </thead>
                 <tbody>
-                    {filteredApplications.map(app => (
+                    {applications.map(app => (
                         <tr key={app.id}>
                             <td>{app.id}</td>
                             <td>{app.applicant_name}</td>

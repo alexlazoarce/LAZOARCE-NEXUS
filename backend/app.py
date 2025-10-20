@@ -16,11 +16,12 @@ from datetime import datetime, date, timedelta
     app = Flask(__name__)
     CORS(app)
 
-    app.config['SECRET_KEY'] = 'dev'
-    app.config['JWT_SECRET_KEY'] = 'dev'
-    instance_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance')
-    os.makedirs(instance_path, exist_ok=True)
-    app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(instance_path, 'lazoarce.db')}"
+    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev')
+    app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'dev')
+
+    # Database configuration
+    default_db_path = f"sqlite:///{os.path.join(app.instance_path, 'lazoarce.db')}"
+    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', default_db_path)
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
     db.init_app(app)

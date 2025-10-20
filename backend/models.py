@@ -1,7 +1,19 @@
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
+from sqlalchemy import MetaData
 
-db = SQLAlchemy()
+# Define a naming convention for constraints to support Alembic migrations
+# This helps prevent errors with unnamed constraints in SQLite and other databases.
+convention = {
+    "ix": 'ix_%(column_0_label)s',
+    "uq": "uq_%(table_name)s_%(column_0_name)s",
+    "ck": "ck_%(table_name)s_%(constraint_name)s",
+    "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
+    "pk": "pk_%(table_name)s"
+}
+
+metadata = MetaData(naming_convention=convention)
+db = SQLAlchemy(metadata_obj=metadata)
 
 class Role(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -475,4 +487,46 @@ class TicketComment(db.Model):
             'commenter_name': commenter.full_name,
             'comment_text': self.comment_text,
             'timestamp': self.timestamp.isoformat()
+        }
+
+# --- Electronic Signature Models ---
+
+class SignatureRequest(db.Model):
+    """Represents a request for an electronic signature on a document."""
+    id = db.Column(db.Integer, primary_key=True)
+
+    # The document being signed, could be a loan contract, etc.
+    # In a more complex system, this might link to a dedicated Documents table.
+    loan_application_id = db.Column(db.Integer, db.ForeignKey('loan_application.id'), nullable=True)
+    loan_application = db.relationship('LoanApplication')
+
+    # The user who needs to sign the document
+    signer_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    signer = db.relationship('User', foreign_keys=[signer_user_id])
+
+    # The user who initiated the request (e.g., an admin)
+    requester_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    requester = db.relationship('User', foreign_keys=[requester_user_id])
+
+    # e.g., 'Pending', 'Signed', 'Rejected'
+    status = db.Column(db.String(50), nullable=False, default='Pending')
+
+    # A unique token for the signing URL to prevent unauthorized access
+    signature_token = db.Column(db.String(128), unique=True, nullable=False)
+
+    # Store the signed data hash for verification
+    signed_data_hash = db.Column(db.String(256), nullable=True)
+
+    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+    signed_at = db.Column(db.DateTime, nullable=True)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'loan_application_id': self.loan_application_id,
+            'signer_name': self.signer.full_name,
+            'requester_name': self.requester.full_name,
+            'status': self.status,
+            'created_at': self.created_at.isoformat(),
+            'signed_at': self.signed_at.isoformat() if self.signed_at else None
         }
