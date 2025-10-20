@@ -1,19 +1,7 @@
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
-from sqlalchemy import MetaData
 
-# Define a naming convention for constraints to support Alembic migrations
-# This helps prevent errors with unnamed constraints in SQLite and other databases.
-convention = {
-    "ix": 'ix_%(column_0_label)s',
-    "uq": "uq_%(table_name)s_%(column_0_name)s",
-    "ck": "ck_%(table_name)s_%(constraint_name)s",
-    "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
-    "pk": "pk_%(table_name)s"
-}
-
-metadata = MetaData(naming_convention=convention)
-db = SQLAlchemy(metadata_obj=metadata)
+db = SQLAlchemy()
 
 class Role(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -22,6 +10,7 @@ class Role(db.Model):
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=True) # Can be null for system-wide users
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
     role_id = db.Column(db.Integer, db.ForeignKey('role.id'), nullable=False)
@@ -262,6 +251,60 @@ class Lead(db.Model):
             'updated_at': self.updated_at.isoformat(),
         }
 
+# --- LAN-SUB1 (Subscription Management) Models ---
+
+class Tenant(db.Model):
+    """Represents a tenant in the multi-tenant system."""
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(150), unique=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+    users = db.relationship('User', backref='tenant', lazy='dynamic')
+    subscriptions = db.relationship('TenantSubscription', backref='tenant', lazy='dynamic')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'created_at': self.created_at.isoformat()
+        }
+
+class SystemModule(db.Model):
+    """Represents a licensable module in the system (e.g., LAN-GP1, LAN-ET2)."""
+    id = db.Column(db.Integer, primary_key=True)
+    module_code = db.Column(db.String(20), unique=True, nullable=False) # e.g., 'LAN-ET2'
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.String(255))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'module_code': self.module_code,
+            'name': self.name,
+            'description': self.description
+        }
+
+class TenantSubscription(db.Model):
+    """Links a Tenant to a SystemModule, representing an active subscription."""
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    module_id = db.Column(db.Integer, db.ForeignKey('system_module.id'), nullable=False)
+
+    start_date = db.Column(db.Date, nullable=False)
+    end_date = db.Column(db.Date, nullable=True) # Null for ongoing subscriptions
+    is_active = db.Column(db.Boolean, default=True)
+
+    module = db.relationship('SystemModule')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'tenant_id': self.tenant_id,
+            'module_code': self.module.module_code,
+            'start_date': self.start_date.isoformat(),
+            'end_date': self.end_date.isoformat() if self.end_date else None,
+            'is_active': self.is_active
+        }
+
 class CommunicationLog(db.Model):
     """Represents a single interaction with a lead or client."""
     id = db.Column(db.Integer, primary_key=True)
@@ -487,46 +530,4 @@ class TicketComment(db.Model):
             'commenter_name': commenter.full_name,
             'comment_text': self.comment_text,
             'timestamp': self.timestamp.isoformat()
-        }
-
-# --- Electronic Signature Models ---
-
-class SignatureRequest(db.Model):
-    """Represents a request for an electronic signature on a document."""
-    id = db.Column(db.Integer, primary_key=True)
-
-    # The document being signed, could be a loan contract, etc.
-    # In a more complex system, this might link to a dedicated Documents table.
-    loan_application_id = db.Column(db.Integer, db.ForeignKey('loan_application.id'), nullable=True)
-    loan_application = db.relationship('LoanApplication')
-
-    # The user who needs to sign the document
-    signer_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    signer = db.relationship('User', foreign_keys=[signer_user_id])
-
-    # The user who initiated the request (e.g., an admin)
-    requester_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    requester = db.relationship('User', foreign_keys=[requester_user_id])
-
-    # e.g., 'Pending', 'Signed', 'Rejected'
-    status = db.Column(db.String(50), nullable=False, default='Pending')
-
-    # A unique token for the signing URL to prevent unauthorized access
-    signature_token = db.Column(db.String(128), unique=True, nullable=False)
-
-    # Store the signed data hash for verification
-    signed_data_hash = db.Column(db.String(256), nullable=True)
-
-    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
-    signed_at = db.Column(db.DateTime, nullable=True)
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'loan_application_id': self.loan_application_id,
-            'signer_name': self.signer.full_name,
-            'requester_name': self.requester.full_name,
-            'status': self.status,
-            'created_at': self.created_at.isoformat(),
-            'signed_at': self.signed_at.isoformat() if self.signed_at else None
         }

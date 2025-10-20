@@ -1,9 +1,10 @@
 import os
 from flask import Flask, jsonify, request, make_response
 from flask_cors import CORS
+from functools import wraps
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, JWTManager, get_jwt
 
-from models import db, Role, User, LoanProduct, LoanApplication, Account, Employee, PayrollLog, PaySlip, Lead, CommunicationLog, Payment, NotificationTemplate, AuditLog, Opportunity, MailingList, Campaign, Ticket, TicketComment
+from models import db, Role, User, LoanProduct, LoanApplication, Account, Employee, PayrollLog, PaySlip, Lead, CommunicationLog, Payment, NotificationTemplate, AuditLog, Opportunity, MailingList, Campaign, Ticket, TicketComment, Tenant, SystemModule, TenantSubscription
 from loan_calculator import calculate_loan_details
 from pdf_generator import generate_contract_pdf
 import accounting_service
@@ -11,21 +12,57 @@ import payroll_service
 import collections_service
 import notification_service
 import audit_service
+import subscription_service # Import the new service
 from datetime import datetime, date, timedelta
     """Application factory function."""
     app = Flask(__name__)
     CORS(app)
 
-    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev')
-    app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'dev')
-
-    # Database configuration
-    default_db_path = f"sqlite:///{os.path.join(app.instance_path, 'lazoarce.db')}"
-    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', default_db_path)
+    app.config['SECRET_KEY'] = 'dev'
+    app.config['JWT_SECRET_KEY'] = 'dev'
+    instance_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance')
+    os.makedirs(instance_path, exist_ok=True)
+    app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(instance_path, 'lazoarce.db')}"
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
     db.init_app(app)
     jwt = JWTManager(app)
+
+    # --- Custom Decorators ---
+    def module_access_required(module_code):
+        def decorator(fn):
+            @wraps(fn)
+            @jwt_required()
+            def wrapper(*args, **kwargs):
+                current_user_email = get_jwt_identity()
+                user = User.query.filter_by(email=current_user_email).first()
+
+                if not user:
+                    return jsonify({"message": "Usuario no encontrado."}), 404
+
+                # System-wide admins have access to everything
+                if user.role.name == 'Admin' and user.tenant_id is None:
+                    return fn(*args, **kwargs)
+
+                if not user.tenant:
+                    return jsonify({"message": "Acceso no autorizado. El usuario no pertenece a un tenant."}), 403
+
+                # Check for an active subscription
+                today = date.today()
+                subscription = TenantSubscription.query.join(SystemModule).filter(
+                    TenantSubscription.tenant_id == user.tenant_id,
+                    SystemModule.module_code == module_code,
+                    TenantSubscription.is_active == True,
+                    TenantSubscription.start_date <= today,
+                    (TenantSubscription.end_date == None) | (TenantSubscription.end_date >= today)
+                ).first()
+
+                if not subscription:
+                    return jsonify({"message": f"Acceso no autorizado. Se requiere una suscripción activa para el módulo '{module_code}'."}), 403
+
+                return fn(*args, **kwargs)
+            return wrapper
+        return decorator
 
     # --- AUTH & USER ROUTES ---
     @app.route('/api/auth/register', methods=['POST'])
@@ -1368,6 +1405,57 @@ def setup_database(app):
             ]
             db.session.bulk_save_objects(templates)
             db.session.commit()
+
+    # --- LAN-SUB1 (Subscription Management) API ROUTES ---
+
+    @app.route('/api/subscriptions/tenants', methods=['GET', 'POST'])
+    @module_access_required('LAN-SUB1') # Protected by the decorator
+    def handle_tenants():
+        if request.method == 'POST':
+            data = request.get_json()
+            try:
+                tenant = subscription_service.create_tenant(data['name'])
+                return jsonify(tenant.to_dict()), 201
+            except ValueError as e:
+                return jsonify({"message": str(e)}), 409
+
+        tenants = subscription_service.get_all_tenants()
+        return jsonify([t.to_dict() for t in tenants])
+
+    @app.route('/api/subscriptions/modules', methods=['GET', 'POST'])
+    @module_access_required('LAN-SUB1')
+    def handle_system_modules():
+        if request.method == 'POST':
+            data = request.get_json()
+            try:
+                module = subscription_service.create_system_module(
+                    data['module_code'], data['name'], data.get('description', '')
+                )
+                return jsonify(module.to_dict()), 201
+            except ValueError as e:
+                return jsonify({"message": str(e)}), 409
+
+        modules = subscription_service.get_all_system_modules()
+        return jsonify([m.to_dict() for m in modules])
+
+    @app.route('/api/subscriptions', methods=['POST'])
+    @module_access_required('LAN-SUB1')
+    def handle_create_subscription():
+        data = request.get_json()
+        try:
+            subscription = subscription_service.create_subscription(
+                data['tenant_id'], data['module_id'], data['start_date'], data.get('end_date')
+            )
+            return jsonify(subscription.to_dict()), 201
+        except ValueError as e:
+            return jsonify({"message": str(e)}), 400
+
+    @app.route('/api/subscriptions/tenants/<int:tenant_id>', methods=['GET'])
+    @module_access_required('LAN-SUB1')
+    def get_tenant_subscriptions(tenant_id):
+        subscriptions = subscription_service.get_subscriptions_for_tenant(tenant_id)
+        return jsonify([s.to_dict() for s in subscriptions])
+
 
 if __name__ == '__main__':
     app = create_app()
