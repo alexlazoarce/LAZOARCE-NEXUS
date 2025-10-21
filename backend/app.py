@@ -67,6 +67,8 @@ class User(db.Model):
     email = db.Column(String(120), unique=True, nullable=False, index=True)
     password_hash = db.Column(String(256), nullable=False)
     full_name = db.Column(String(120), nullable=True)
+    dui = db.Column(String(20), unique=True, nullable=True, index=True)
+    nit = db.Column(String(20), unique=True, nullable=True, index=True)
     is_active = db.Column(Boolean, default=True)
     last_login = db.Column(DateTime)
     created_at = db.Column(DateTime, default=func.current_timestamp())
@@ -100,6 +102,7 @@ class LoanProduct(db.Model):
     id = db.Column(Integer, primary_key=True)
     name = db.Column(String(100), nullable=False)
     tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False)
+    # ... otras columnas
 class ProductoCredito(LoanProduct): __mapper_args__ = {'polymorphic_identity': 'producto_credito'}
 class Payment(db.Model):
     __tablename__ = 'payment'
@@ -138,13 +141,19 @@ class Cliente(db.Model):
     __tablename__ = 'cliente'
     id = db.Column(Integer, primary_key=True)
     contrato_integracion_id = db.Column(String(50), ForeignKey('contrato_integracion.contrato_id'))
+    firma_electronica_id = db.Column(String(50), ForeignKey('firma_electronica.firma_id'))
     contrato_integracion = relationship("ContratoIntegracion", back_populates="clientes", foreign_keys=[contrato_integracion_id])
+    firma_electronica = relationship("FirmaElectronica", back_populates="clientes", foreign_keys=[firma_electronica_id])
 class ContratoIntegracion(db.Model):
     __tablename__ = 'contrato_integracion'
     id = db.Column(Integer, primary_key=True)
     contrato_id = db.Column(String(50), unique=True)
     clientes = relationship("Cliente", back_populates="contrato_integracion")
-class FirmaElectronica(db.Model): __tablename__ = 'firma_electronica'; id = db.Column(Integer, primary_key=True)
+class FirmaElectronica(db.Model):
+    __tablename__ = 'firma_electronica'
+    id = db.Column(Integer, primary_key=True)
+    firma_id = db.Column(String(50), unique=True)
+    clientes = relationship("Cliente", back_populates="firma_electronica")
 class CertificadoValidacion(db.Model): __tablename__='certificado_validacion'; id=db.Column(Integer, primary_key=True)
 
 # --- Modelos de Módulos ---
@@ -179,7 +188,6 @@ class DepreciationEntry(db.Model): __tablename__ = 'depreciation_entry'; id = db
 class MailingList(db.Model): __tablename__='mailing_list'; id=db.Column(Integer, primary_key=True)
 class AuditLog(db.Model): __tablename__='audit_log'; id=db.Column(Integer, primary_key=True)
 class NotificationTemplate(db.Model): __tablename__='notification_template'; id=db.Column(Integer, primary_key=True)
-# Nuevos modelos para Caja y Bancos
 class BankAccount(db.Model): __tablename__='bank_account'; id=db.Column(Integer, primary_key=True)
 class BankTransaction(db.Model): __tablename__='bank_transaction'; id=db.Column(Integer, primary_key=True)
 class CashBox(db.Model): __tablename__='cash_box'; id=db.Column(Integer, primary_key=True)
@@ -332,7 +340,7 @@ def create_app(config_object=None, testing_config=None):
     # ... (Otras rutas de assets)
     app.register_blueprint(assets_bp)
 
-    # Comando CLI
+    # Comando CLI para inicializar la base de datos
     @app.cli.command("init-db")
     def init_db_command():
         with app.app_context():

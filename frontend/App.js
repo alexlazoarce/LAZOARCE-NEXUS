@@ -27,6 +27,8 @@ function App() {
             if (response.status === 401) { handleLogout(); return; }
             if (!response.ok) throw new Error('Error al cargar perfil de usuario.');
             const data = await response.json();
+            // CORRECCIÓN: Se asume que el backend devuelve un array de roles en la clave 'roles'.
+            // Si la clave es 'role' (singular), sería: setUserRoles([data.role] || []);
             setUserRoles(data.roles || []);
         } catch (error) { console.error(error.message); setUserRoles([]); }
         finally { setLoadingProfile(false); }
@@ -106,11 +108,11 @@ function App() {
         if (viewingContractId) return <ContractView token={token} applicationId={viewingContractId} onBack={() => setViewingContractId(null)} />;
         if (managingPaymentsForApp) return <PaymentView token={token} application={managingPaymentsForApp} onBack={() => setManagingPaymentsForApp(null)} />;
 
-        const isAdmin = userRoles.includes('Admin');
+        const isAdmin = userRoles.includes('Admin') || userRoles.includes('Administrador General');
         const isContador = userRoles.includes('Contador');
         const isEjecutivo = userRoles.includes('Ejecutivo de Crédito');
         const isCobrador = userRoles.includes('Cobrador');
-        const isSupport = userRoles.includes('Soporte'); // Future role
+        const isSupport = userRoles.includes('Soporte');
 
         switch (view) {
             case 'dashboard': return isAdmin ? <AdminDashboard token={token} onManagePayments={setManagingPaymentsForApp} /> : <MyApplications token={token} onViewContract={setViewingContractId} />;
@@ -119,6 +121,7 @@ function App() {
             case 'newApplication': return <LoanApplication token={token} onNavigate={setView} />;
             case 'accounting': return (isAdmin || isContador) ? <AccountingPortal /> : <p>Acceso no autorizado.</p>;
             case 'cash_and_banks': return (isAdmin || isContador) ? <CashAndBanksView token={token} /> : <p>Acceso no autorizado.</p>;
+            case 'tax': return (isAdmin || isContador) ? <TaxView token={token} /> : <p>Acceso no autorizado.</p>;
             case 'hr': return isAdmin ? <HRPortal /> : <p>Acceso no autorizado.</p>;
             case 'crm': return (isAdmin || isEjecutivo) ? <CRMPortal /> : <p>Acceso no autorizado.</p>;
             case 'collections': return (isAdmin || isCobrador) ? <PortfolioView token={token} /> : <p>Acceso no autorizado.</p>;
@@ -134,7 +137,8 @@ function App() {
 
     const NavigationView = () => {
         if (loadingProfile || !token || viewingContractId || viewingPaySlipsForLogId || managingPaymentsForApp) return null;
-        const isAdmin = userRoles.includes('Admin');
+        
+        const isAdmin = userRoles.includes('Admin') || userRoles.includes('Administrador General');
         const isContador = userRoles.includes('Contador');
         const isEjecutivo = userRoles.includes('Ejecutivo de Crédito');
         const isCobrador = userRoles.includes('Cobrador');
@@ -152,6 +156,7 @@ function App() {
                 {!isAdmin && !isContador && !isEjecutivo && !isCobrador && <button onClick={() => setView('newApplication')}>Nueva Solicitud</button>}
                 {(isAdmin || isContador) && <button onClick={() => setView('accounting')}>Contabilidad</button>}
                 {(isAdmin || isContador) && <button onClick={() => setView('cash_and_banks')}>Caja y Bancos</button>}
+                {(isAdmin || isContador) && <button onClick={() => setView('tax')}>Impuestos</button>}
                 {isAdmin && <button onClick={() => setView('hr')}>RRHH</button>}
                 {isAdmin && (
                     <div style={{border: '1px solid grey', padding: '5px', marginTop: '5px'}}>
