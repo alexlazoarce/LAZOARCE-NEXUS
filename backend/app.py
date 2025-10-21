@@ -13,36 +13,46 @@ from sqlalchemy import func, Boolean, Date, DateTime, Float, Integer, String, Te
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import JSONB
 from flask_cors import CORS
-# Importaciones de blueprints de la rama feature-LAN-F2C-contract-formulation (asumimos que existen en otros módulos)
+
+# Importaciones de blueprints
 try:
     from backend.routes.health_routes import health_bp
     from backend.routes.education_routes import education_bp
     from backend.routes.logistics_routes import logistics_bp
+    from backend.routes.cash_and_banks_routes import cash_and_banks_bp
+    from backend.routes.tax_routes import tax_bp
+    from backend.routes.material_routes import material_bp
+    from backend.routes.construction_routes import construction_bp
+    from backend.routes.restaurant_routes import restaurant_bp
 except ImportError:
-    # Si los módulos no existen, definimos placeholders para evitar errores inmediatos
     health_bp = Blueprint('health', __name__, url_prefix='/api/health')
     education_bp = Blueprint('education', __name__, url_prefix='/api/education')
     logistics_bp = Blueprint('logistics', __name__, url_prefix='/api/logistics')
+    cash_and_banks_bp = Blueprint('cash_and_banks', __name__, url_prefix='/api/cash_and_banks')
+    tax_bp = Blueprint('tax', __name__, url_prefix='/api/tax')
+    material_bp = Blueprint('material', __name__, url_prefix='/api/material')
+    construction_bp = Blueprint('construction', __name__, url_prefix='/api/construction')
+    restaurant_bp = Blueprint('restaurant', __name__, url_prefix='/api/restaurant')
 
-# --- DEFINICIÓN GLOBAL DE EXTENSIONES ---
+# Definición global de extensiones
 db = SQLAlchemy()
 jwt = JWTManager()
 migrate = Migrate()
 
-# === TABLAS INTERMEDIAS (Many-to-Many) ===
+# Tablas intermedias (Many-to-Many)
 user_roles = db.Table('user_roles',
     db.Column('user_id', Integer, ForeignKey('user.id'), primary_key=True, comment='Foreign key al usuario'),
     db.Column('role_id', Integer, ForeignKey('role.id'), primary_key=True, comment='Foreign key al rol'),
     schema='public'
 )
+
 mailing_list_members = db.Table('mailing_list_members',
     db.Column('mailing_list_id', Integer, ForeignKey('mailing_list.id'), primary_key=True, comment='Foreign key a la lista de correo'),
     db.Column('user_id', Integer, ForeignKey('user.id'), primary_key=True, comment='Foreign key al usuario'),
     schema='public'
 )
 
-# === MODELOS DE LA APLICACIÓN ===
-# --- Modelos de Seguridad y Tenants ---
+# Modelos de la aplicación
 class Tenant(db.Model):
     __tablename__ = 'tenant'
     id = db.Column(Integer, primary_key=True)
@@ -84,13 +94,13 @@ class User(db.Model):
     employee = relationship('Employee', backref='user', uselist=False, cascade="all, delete-orphan")
     applications = relationship('LoanApplication', backref='applicant', lazy='dynamic', cascade="all, delete-orphan")
     audit_logs = relationship('AuditLog', backref='user', lazy='dynamic', cascade="all, delete-orphan")
-   
+
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
-   
+
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
-   
+
     @property
     def role(self):
         if self.role_id:
@@ -106,7 +116,6 @@ class ClientProfile(db.Model):
     address = db.Column(Text)
     birth_date = db.Column(Date)
 
-# --- Modelos de Préstamos ---
 class LoanProduct(db.Model):
     __tablename__ = 'loan_product'
     id = db.Column(Integer, primary_key=True)
@@ -131,7 +140,6 @@ class LoanApplication(db.Model):
     status = db.Column(String(50), default='Pendiente')
     applicant = relationship('User')
 
-# --- Modelos Contables ---
 class Account(db.Model):
     __tablename__ = 'account'
     id = db.Column(Integer, primary_key=True)
@@ -144,7 +152,6 @@ class Transaction(db.Model):
     __tablename__ = 'transaction'
     id = db.Column(Integer, primary_key=True)
 
-# --- Modelos de RRHH ---
 class Employee(db.Model):
     __tablename__ = 'employee'
     id = db.Column(Integer, primary_key=True)
@@ -167,7 +174,6 @@ class PaySlip(db.Model):
 class Planilla(PaySlip):
     __mapper_args__ = {'polymorphic_identity': 'planilla'}
 
-# --- Modelos de Firma y Contratos (Integración) ---
 class Cliente(db.Model):
     __tablename__ = 'cliente'
     id = db.Column(Integer, primary_key=True)
@@ -192,7 +198,6 @@ class CertificadoValidacion(db.Model):
     __tablename__ = 'certificado_validacion'
     id = db.Column(Integer, primary_key=True)
 
-# --- Modelos de Módulos ---
 class ContractTemplate(db.Model):
     __tablename__ = 'contract_template'
     id = db.Column(Integer, primary_key=True)
@@ -418,20 +423,20 @@ class Certification(db.Model):
     __tablename__ = 'certification'
     id = db.Column(Integer, primary_key=True)
 
-# === MOCK DE SERVICIOS Y UTILIDADES ===
+# Mock de servicios
 class MockService:
     def __init__(self, name):
         self.name = name
-   
+
     def __call__(self, *args, **kwargs):
         return self
-   
+
     def send_email(self, *args, **kwargs):
         return True, "OK"
-   
+
     def log_action(self, *args, **kwargs):
         pass
-   
+
     def get_asset_details(self, *args, **kwargs):
         class A:
             id = 1
@@ -443,10 +448,10 @@ class MockService:
             salvage_value = 0
             depreciation_entries = []
         return A()
-   
+
     def get_asset_book_value(self, *args, **kwargs):
         return 900
-   
+
     def get_assets_for_tenant(self, *args, **kwargs):
         class A:
             id = 1
@@ -454,18 +459,18 @@ class MockService:
             purchase_cost = 1000
             status = 'Active'
         return [A()]
-   
+
     def create_asset(self, *args, **kwargs):
         class A:
             id = 2
         return A()
-   
+
     def calculate_monthly_depreciation(self, *args, **kwargs):
         class E:
             id = 3
             amount = 100
         return E()
-   
+
     def get_projects_for_tenant(self, *args, **kwargs):
         class P:
             id = 1
@@ -473,12 +478,12 @@ class MockService:
             status = 'In Progress'
             end_date = datetime.now().date()
         return [P()]
-   
+
     def create_project(self, *args, **kwargs):
         class P:
             id = 2
         return P()
-   
+
     def get_project_details(self, *args, **kwargs):
         class P:
             id = 1
@@ -487,7 +492,7 @@ class MockService:
             status = 'In Progress'
             budget = 100
         return P()
-   
+
     def get_tasks_for_project(self, *args, **kwargs):
         class T:
             id = 1
@@ -495,18 +500,18 @@ class MockService:
             status = 'To Do'
             due_date = datetime.now().date()
         return [T()]
-   
+
     def create_task(self, *args, **kwargs):
         class T:
             id = 2
         return T()
-   
+
     def update_task_status(self, *args, **kwargs):
         class T:
             id = 1
             status = 'Done'
         return T()
-   
+
     def get_tickets_for_tenant(self, *args, **kwargs):
         class T:
             id = 1
@@ -515,12 +520,12 @@ class MockService:
             priority = 'High'
             updated_at = datetime.utcnow()
         return [T()]
-   
+
     def create_ticket(self, *args, **kwargs):
         class T:
             id = 2
         return T()
-   
+
     def get_ticket_details(self, *args, **kwargs):
         class T:
             id = 1
@@ -530,23 +535,23 @@ class MockService:
             priority = 'High'
             updates = []
         return T()
-   
+
     def add_ticket_update(self, *args, **kwargs):
         class U:
             id = 3
         return U()
-   
+
     def assign_ticket(self, *args, **kwargs):
         class T:
             id = 1
         return T()
-   
+
     def change_ticket_status(self, *args, **kwargs):
         class T:
             id = 1
             status = 'Closed'
         return T()
-   
+
     def get_documents_for_tenant(self, *args, **kwargs):
         class D:
             id = 1
@@ -556,23 +561,23 @@ class MockService:
             created_at = datetime.utcnow()
             updated_at = datetime.utcnow()
         return [D()]
-   
+
     def create_document(self, *args, **kwargs):
         class D:
             id = 1
         return D()
-   
+
     def add_new_version(self, *args, **kwargs):
         class V:
             id = 2
         return V()
-   
+
     def get_document_version(self, *args, **kwargs):
         class V:
             id = 1
             filepath = '/path/to/file'
         return V()
-   
+
     def get_user_channels(self, *args, **kwargs):
         class C:
             id = 1
@@ -580,12 +585,12 @@ class MockService:
             description = 'Test Channel'
             channel_type = 'public'
         return [C()]
-   
+
     def create_channel(self, *args, **kwargs):
         class C:
             id = 1
         return C()
-   
+
     def get_messages_for_channel(self, *args, **kwargs):
         class M:
             id = 1
@@ -594,24 +599,24 @@ class MockService:
             created_at = datetime.utcnow()
             author = type('User', (), {'full_name': 'Test User'})()
         return [M()]
-   
+
     def post_message(self, *args, **kwargs):
         class M:
             id = 1
         return M()
-   
+
     def get_templates_for_tenant(self, *args, **kwargs):
         class T:
             id = 1
             name = 'Template1'
             description = 'Test Template'
         return [T()]
-   
+
     def create_template(self, *args, **kwargs):
         class T:
             id = 1
         return T()
-   
+
     def get_signature_requests(self, *args, **kwargs):
         class R:
             id = 1
@@ -620,12 +625,12 @@ class MockService:
             status = 'sent'
             created_at = datetime.utcnow()
         return [R()]
-   
+
     def create_signature_request(self, *args, **kwargs):
         class R:
             id = 1
         return R()
-   
+
     def get_request_by_token(self, *args, **kwargs):
         class R:
             id = 1
@@ -633,33 +638,33 @@ class MockService:
             final_document_content = 'Document Content'
             status = 'sent'
         return R()
-   
+
     def send_signature_request(self, *args, **kwargs):
         pass
-   
+
     def sign_document(self, *args, **kwargs):
         pass
-   
+
     def get_forms_for_tenant(self, *args, **kwargs):
         class F:
             id = 1
             name = 'Form1'
             public_token = 'token123'
         return [F()]
-   
+
     def create_form(self, *args, **kwargs):
         class F:
             id = 1
             public_token = 'token123'
         return F()
-   
+
     def get_submissions_for_form(self, *args, **kwargs):
         class S:
             id = 1
             data = {}
             submitted_at = datetime.utcnow()
         return [S()]
-   
+
     def get_form_by_token(self, *args, **kwargs):
         class F:
             id = 1
@@ -667,13 +672,13 @@ class MockService:
             description = 'Test Form'
             fields = []
         return F()
-   
+
     def submit_form(self, *args, **kwargs):
         pass
-   
+
     def get_balance_sheet(self, *args, **kwargs):
         return {}
-   
+
     def get_income_statement(self, *args, **kwargs):
         return {}
 
@@ -692,12 +697,12 @@ def firma_electronica_avanzada(contrato_id, data, datos_biometricos):
 def calcular_planilla(salario_base):
     return {'success': True, 'salario_base': salario_base, 'isss': 100, 'afp': 100, 'renta': 50, 'salario_neto': salario_base - 250}
 
-# --- APP FACTORY ---
+# App factory
 def create_app(config_object=None, testing_config=None):
     app = Flask(__name__)
     CORS(app)
     load_dotenv()
-   
+
     # Configuración
     app.config.from_mapping(
         SECRET_KEY=os.environ.get('SECRET_KEY', 'dev-secret-key-change-me'),
@@ -706,20 +711,20 @@ def create_app(config_object=None, testing_config=None):
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
         UPLOAD_FOLDER=os.path.join(app.instance_path, 'Uploads')
     )
-   
+
     if testing_config:
         app.config.from_mapping(testing_config)
-   
+
     os.makedirs(app.instance_path, exist_ok=True)
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-   
+
     # Inicialización de extensiones
     db.init_app(app)
     jwt.init_app(app)
     migrate.init_app(app, db)
-   
+
     with app.app_context():
-        # Asignar modelos al contexto de la app (combinando ambas ramas)
+        # Asignar modelos al contexto de la app
         app.models = {
             'Role': Role, 'User': User, 'LoanProduct': LoanProduct, 'LoanApplication': LoanApplication,
             'Account': Account, 'Transaction': Transaction, 'JournalEntry': JournalEntry, 'Cliente': Cliente,
@@ -737,13 +742,13 @@ def create_app(config_object=None, testing_config=None):
             'TaxType': TaxType, 'TaxDeclaration': TaxDeclaration, 'Material': Material, 'MaterialRequest': MaterialRequest,
             'ConstructionProject': ConstructionProject, 'BudgetItem': BudgetItem, 'ProgressReport': ProgressReport,
             'Certification': Certification,
-            # Modelos no definidos de feature-LAN-F2C-contract-formulation (asumimos que están en otros módulos)
             'PatientRecord': 'PatientRecord', 'MedicalAppointment': 'MedicalAppointment', 'Prescription': 'Prescription',
             'LabOrder': 'LabOrder', 'Student': 'Student', 'Course': 'Course', 'Enrollment': 'Enrollment', 'Grade': 'Grade',
-            'Vehicle': 'Vehicle', 'Driver': 'Driver', 'Route': 'Route', 'Delivery': 'Delivery'
+            'Vehicle': 'Vehicle', 'Driver': 'Driver', 'Route': 'Route', 'Delivery': 'Delivery',
+            'MenuItem': 'MenuItem', 'Table': 'Table', 'RestaurantOrder': 'RestaurantOrder', 'RestaurantOrderItem': 'RestaurantOrderItem'
         }
-       
-        # Asignar servicios mock
+
+        # Asignar servicios
         app.services = {
             'audit_service': MockService('Audit'),
             'contract_service': MockService('Contract'),
@@ -763,17 +768,17 @@ def create_app(config_object=None, testing_config=None):
             'tax_service': MockService('Tax'),
             'material_service': MockService('Material'),
             'construction_service': MockService('Construction'),
-            # Servicios adicionales de feature-LAN-F2C-contract-formulation
             'health_service': MockService('Health'),
             'education_service': MockService('Education'),
-            'logistics_service': MockService('Logistics')
+            'logistics_service': MockService('Logistics'),
+            'restaurant_service': MockService('Restaurant')
         }
-   
+
     # Decorador de autorización
     def role_required(required_roles):
         if not isinstance(required_roles, list):
             required_roles = [required_roles]
-       
+
         def decorator(fn):
             @wraps(fn)
             @jwt_required()
@@ -791,12 +796,12 @@ def create_app(config_object=None, testing_config=None):
                 return fn(*args, **kwargs)
             return wrapper
         return decorator
-   
+
     # Rutas base
     @app.route('/api/health')
     def health_check():
         return jsonify({"status": "healthy"})
-   
+
     @app.route('/api/login', methods=['POST'])
     def login():
         data = request.get_json()
@@ -808,8 +813,14 @@ def create_app(config_object=None, testing_config=None):
             access_token = create_access_token(identity=user.email, additional_claims={'roles': list(set(user_roles)), 'user_id': user.id, 'tenant_id': user.tenant_id})
             return jsonify(access_token=access_token)
         return jsonify({"msg": "Credenciales inválidas"}), 401
-   
-    # --- RUTAS PARA PRÉSTAMOS ---
+
+    # Rutas para préstamos
+    @app.route('/api/loan-applications/submit', methods=['POST'])
+    @jwt_required()
+    def submit_loan_application():
+        data = request.get_json()
+        return jsonify({"message": "Solicitud de préstamo enviada."}), 201
+
     @app.route('/api/applications/<int:app_id>/send-reminder', methods=['POST'])
     @jwt_required()
     @role_required(['Administrador General'])
@@ -826,7 +837,7 @@ def create_app(config_object=None, testing_config=None):
             g.current_user.tenant
         )
         return jsonify({"message": f"Recordatorio de pago enviado para la solicitud {app_id}."}), 200
-   
+
     @app.route('/api/applications/<int:app_id>/status', methods=['PUT'])
     @jwt_required()
     @role_required(['Ejecutivo de Crédito', 'Administrador General'])
@@ -840,152 +851,145 @@ def create_app(config_object=None, testing_config=None):
         application.status = new_status
         db.session.commit()
         return jsonify({"message": f"Estado de la solicitud {app_id} actualizado a '{new_status}'."})
-   
-    # --- RUTA DE feature-LAN-F2C-contract-formulation para enviar solicitud de préstamo ---
-    @app.route('/api/loan-applications/submit', methods=['POST'])
-    @jwt_required()
-    def submit_loan_application():
-        data = request.get_json()
-        return jsonify({"message": "Solicitud de préstamo enviada."}), 201
-   
-    # --- RUTAS PARA GESTIÓN DE CONTRATOS (LAN-F2C) ---
+
+    # Rutas para gestión de contratos
     @app.route('/api/contracts/templates', methods=['POST'])
     @jwt_required()
     @role_required(['Administrador General'])
     def create_contract_template_route():
         data = request.get_json()
         return jsonify({"message": "Ruta para crear plantilla de contrato implementada."}), 201
-   
+
     @app.route('/api/contracts/templates/<int:template_id>', methods=['GET'])
     @jwt_required()
     def get_contract_template_route(template_id):
         return jsonify({"message": f"Ruta para obtener plantilla {template_id}."}), 200
-   
+
     @app.route('/api/contracts/templates/<int:template_id>', methods=['PUT'])
     @jwt_required()
     @role_required(['Administrador General'])
     def update_contract_template_route(template_id):
         data = request.get_json()
         return jsonify({"message": f"Ruta para actualizar plantilla {template_id}."}), 200
-   
+
     @app.route('/api/contracts/templates/<int:template_id>', methods=['DELETE'])
     @jwt_required()
     @role_required(['Administrador General'])
     def delete_contract_template_route(template_id):
         return jsonify({"message": f"Ruta para eliminar plantilla {template_id}."}), 200
-   
+
     @app.route('/api/contracts/generate', methods=['POST'])
     @jwt_required()
     @role_required(['Ejecutivo de Crédito', 'Administrador General'])
     def generate_contract_route():
         data = request.get_json()
         return jsonify({"message": "Ruta para generar un contrato implementada."}), 201
-   
-    # --- RUTAS PARA CRM (LAN-CRM3) ---
+
+    # Rutas para CRM
     @app.route('/api/crm/contacts', methods=['POST'])
     @jwt_required()
     @role_required(['Ejecutivo de Crédito', 'Administrador General'])
     def create_crm_contact():
         data = request.get_json()
         return jsonify({"message": "Ruta para crear contacto de CRM implementada."}), 201
-   
+
     @app.route('/api/crm/contacts', methods=['GET'])
     @jwt_required()
     def get_crm_contacts():
         return jsonify([]), 200
-   
+
     @app.route('/api/crm/contacts/<int:contact_id>', methods=['GET'])
     @jwt_required()
     def get_crm_contact_details(contact_id):
         return jsonify({"message": f"Ruta para obtener detalles del contacto {contact_id}."}), 200
-   
+
     @app.route('/api/crm/contacts/<int:contact_id>/interactions', methods=['POST'])
     @jwt_required()
     def add_crm_interaction(contact_id):
         data = request.get_json()
         return jsonify({"message": f"Ruta para añadir interacción al contacto {contact_id}."}), 201
-   
+
     @app.route('/api/crm/opportunities', methods=['POST'])
     @jwt_required()
     @role_required(['Ejecutivo de Crédito', 'Administrador General'])
     def create_crm_opportunity():
         data = request.get_json()
         return jsonify({"message": "Ruta para crear oportunidad de CRM implementada."}), 201
-   
+
     @app.route('/api/crm/opportunities/<int:opp_id>/stage', methods=['PUT'])
     @jwt_required()
     @role_required(['Ejecutivo de Crédito', 'Administrador General'])
     def update_crm_opportunity_stage(opp_id):
         data = request.get_json()
         return jsonify({"message": f"Ruta para actualizar etapa de la oportunidad {opp_id}."}), 200
-   
-    # --- RUTAS PARA INVENTARIO (LAN-INV9) ---
+
+    # Rutas para inventario
     @app.route('/api/inventory/products', methods=['POST'])
     @jwt_required()
     @role_required(['Administrador General'])
     def create_inventory_product():
         data = request.get_json()
         return jsonify({"message": "Ruta para crear producto de inventario implementada."}), 201
-   
+
     @app.route('/api/inventory/products', methods=['GET'])
     @jwt_required()
     def get_inventory_products():
         return jsonify([]), 200
-   
+
     @app.route('/api/inventory/products/<int:product_id>/movements', methods=['POST'])
     @jwt_required()
     @role_required(['Administrador General'])
     def record_inventory_movement(product_id):
         data = request.get_json()
         return jsonify({"message": f"Ruta para registrar movimiento de stock para el producto {product_id}."}), 201
-   
-    # --- RUTAS PARA VENTAS (LAN-SLS2) ---
+
+    # Rutas para ventas
     @app.route('/api/sales/quotes', methods=['POST'])
     @jwt_required()
     @role_required(['Ejecutivo de Crédito', 'Administrador General'])
     def create_sales_quote():
         data = request.get_json()
         return jsonify({"message": "Ruta para crear cotización de venta implementada."}), 201
-   
+
     @app.route('/api/sales/orders', methods=['GET'])
     @jwt_required()
     def get_sales_orders():
         return jsonify([]), 200
-   
+
     @app.route('/api/sales/quotes/<int:quote_id>/convert', methods=['POST'])
     @jwt_required()
     @role_required(['Ejecutivo de Crédito', 'Administrador General'])
     def convert_quote_to_order(quote_id):
         return jsonify({"message": f"Ruta para convertir cotización {quote_id} a orden de venta."}), 201
-   
+
     @app.route('/api/sales/orders/<int:order_id>/confirm', methods=['POST'])
     @jwt_required()
     @role_required(['Administrador General'])
     def confirm_sales_order(order_id):
         return jsonify({"message": f"Ruta para confirmar la orden de venta {order_id} y ajustar stock."}), 200
-   
-    # --- RUTAS PARA COMPRAS (LAN-CO1M) ---
+
+    # Rutas para compras
     @app.route('/api/purchasing/suppliers', methods=['POST'])
     @jwt_required()
     @role_required(['Administrador General'])
     def create_supplier():
         data = request.get_json()
         return jsonify({"message": "Ruta para crear proveedor implementada."}), 201
-   
+
     @app.route('/api/purchasing/orders', methods=['POST'])
     @jwt_required()
     @role_required(['Administrador General'])
     def create_purchase_order():
         data = request.get_json()
         return jsonify({"message": "Ruta para crear orden de compra implementada."}), 201
-   
+
     @app.route('/api/purchasing/orders/<int:order_id>/receive', methods=['POST'])
     @jwt_required()
     @role_required(['Administrador General'])
     def receive_purchase_order(order_id):
         return jsonify({"message": f"Ruta para registrar la recepción de la orden {order_id}."}), 200
-   
-    # --- RUTAS PARA REPORTES CONTABLES (LAN-BKS1) ---
+
+    # Rutas para reportes contables
     @app.route('/api/reports/balance-sheet', methods=['GET'])
     @jwt_required()
     @role_required(['Contador', 'Administrador General'])
@@ -993,7 +997,7 @@ def create_app(config_object=None, testing_config=None):
         tenant_id = g.current_user.tenant_id
         report_data = app.services['accounting_service'].get_balance_sheet(tenant_id)
         return jsonify(report_data), 200
-   
+
     @app.route('/api/reports/income-statement', methods=['GET'])
     @jwt_required()
     @role_required(['Contador', 'Administrador General'])
@@ -1001,8 +1005,8 @@ def create_app(config_object=None, testing_config=None):
         tenant_id = g.current_user.tenant_id
         report_data = app.services['accounting_service'].get_income_statement(tenant_id)
         return jsonify(report_data), 200
-   
-    # --- RUTAS PARA CORREO (LAN-MAIL1) ---
+
+    # Rutas para correo
     @app.route('/api/email/test', methods=['POST'])
     @jwt_required()
     @role_required(['Administrador General'])
@@ -1023,10 +1027,10 @@ def create_app(config_object=None, testing_config=None):
             return jsonify({"message": message}), 200
         else:
             return jsonify({"error": message}), 500
-   
-    # --- RUTAS PARA GESTOR DE DOCUMENTOS (LAN-GD2) ---
+
+    # Rutas para gestor de documentos
     documents_bp = Blueprint('documents', __name__, url_prefix='/api/documents')
-   
+
     @documents_bp.route('/', methods=['GET'])
     @jwt_required()
     def list_documents():
@@ -1040,7 +1044,7 @@ def create_app(config_object=None, testing_config=None):
             'created_at': doc.created_at.isoformat(),
             'updated_at': doc.updated_at.isoformat()
         } for doc in documents])
-   
+
     @documents_bp.route('/', methods=['POST'])
     @jwt_required()
     def upload_document():
@@ -1058,7 +1062,7 @@ def create_app(config_object=None, testing_config=None):
         except Exception as e:
             app.logger.error(f"Error al crear documento: {e}")
             return jsonify({"error": "Error interno al guardar el documento"}), 500
-   
+
     @documents_bp.route('/<int:doc_id>/versions', methods=['POST'])
     @jwt_required()
     def upload_new_version(doc_id):
@@ -1074,7 +1078,7 @@ def create_app(config_object=None, testing_config=None):
         except Exception as e:
             app.logger.error(f"Error al añadir nueva versión: {e}")
             return jsonify({"error": "Error interno al guardar la nueva versión"}), 500
-   
+
     @documents_bp.route('/versions/<int:version_id>/download', methods=['GET'])
     @jwt_required()
     def download_version(version_id):
@@ -1085,41 +1089,458 @@ def create_app(config_object=None, testing_config=None):
             return send_from_directory(directory, filename, as_attachment=True)
         except FileNotFoundError:
             return jsonify({"error": "Archivo no encontrado en el servidor."}), 404
-   
-    # Registrar blueprints
+
     app.register_blueprint(documents_bp)
-    app.register_blueprint(health_bp)  # Blueprint de la rama feature-LAN-F2C-contract-formulation
-    app.register_blueprint(education_bp)  # Blueprint de la rama feature-LAN-F2C-contract-formulation
-    app.register_blueprint(logistics_bp)  # Blueprint de la rama feature-LAN-F2C-contract-formulation
-   
+
+    # Rutas para mensajería corporativa
+    messaging_bp = Blueprint('messaging', __name__, url_prefix='/api/messaging')
+
+    @messaging_bp.route('/channels', methods=['GET'])
+    @jwt_required()
+    def get_channels():
+        user_id = g.current_user.id
+        tenant_id = g.current_user.tenant_id
+        channels = app.services['messaging_service'].get_user_channels(user_id, tenant_id)
+        return jsonify([{'id': c.id, 'name': c.name, 'description': c.description, 'type': c.channel_type} for c in channels])
+
+    @messaging_bp.route('/channels', methods=['POST'])
+    @jwt_required()
+    def create_messaging_channel():
+        data = request.get_json()
+        name = data.get('name')
+        description = data.get('description', '')
+        channel_type = data.get('type', 'public')
+        tenant_id = g.current_user.tenant_id
+        creator_id = g.current_user.id
+        try:
+            channel = app.services['messaging_service'].create_channel(name, description, channel_type, tenant_id, creator_id)
+            return jsonify({'message': 'Canal creado exitosamente', 'channel_id': channel.id}), 201
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+
+    @messaging_bp.route('/channels/<int:channel_id>/messages', methods=['GET'])
+    @jwt_required()
+    def get_channel_messages(channel_id):
+        messages = app.services['messaging_service'].get_messages_for_channel(channel_id)
+        messages.reverse()
+        return jsonify([{
+            'id': m.id,
+            'content': m.content,
+            'author': m.author.full_name if m.author else 'Usuario Desconocido',
+            'user_id': m.user_id,
+            'created_at': m.created_at.isoformat()
+        } for m in messages])
+
+    @messaging_bp.route('/channels/<int:channel_id>/messages', methods=['POST'])
+    @jwt_required()
+    def post_channel_message(channel_id):
+        data = request.get_json()
+        content = data.get('content')
+        user_id = g.current_user.id
+        try:
+            message = app.services['messaging_service'].post_message(channel_id, user_id, content)
+            return jsonify({'message': 'Mensaje enviado exitosamente', 'message_id': message.id}), 201
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+
+    app.register_blueprint(messaging_bp)
+
+    # Rutas para firmar
+    sign_bp = Blueprint('signer', __name__, url_prefix='/api/signer')
+
+    @sign_bp.route('/templates', methods=['GET'])
+    @jwt_required()
+    def get_sign_templates():
+        templates = app.services['sign_service'].get_templates_for_tenant(g.current_user.tenant_id)
+        return jsonify([{'id': t.id, 'name': t.name, 'description': t.description} for t in templates])
+
+    @sign_bp.route('/templates', methods=['POST'])
+    @jwt_required()
+    def create_sign_template():
+        data = request.get_json()
+        try:
+            template = app.services['sign_service'].create_template(
+                name=data.get('name'),
+                description=data.get('description'),
+                content=data.get('content'),
+                tenant_id=g.current_user.tenant_id,
+                user_id=g.current_user.id
+            )
+            return jsonify({'message': 'Plantilla creada exitosamente', 'template_id': template.id}), 201
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+
+    @sign_bp.route('/requests', methods=['GET'])
+    @jwt_required()
+    def get_sign_requests():
+        requests = app.services['sign_service'].get_signature_requests(g.current_user.tenant_id)
+        return jsonify([{
+            'id': r.id,
+            'signer_name': r.signer_name,
+            'signer_email': r.signer_email,
+            'status': r.status,
+            'created_at': r.created_at.isoformat()
+        } for r in requests])
+
+    @sign_bp.route('/requests', methods=['POST'])
+    @jwt_required()
+    def create_sign_request():
+        data = request.get_json()
+        try:
+            req = app.services['sign_service'].create_signature_request(
+                template_id=data.get('template_id'),
+                signer_name=data.get('signer_name'),
+                signer_email=data.get('signer_email'),
+                data_payload=data.get('payload', {}),
+                tenant_id=g.current_user.tenant_id,
+                user_id=g.current_user.id
+            )
+            if data.get('send_now', False):
+                app.services['sign_service'].send_signature_request(req.id)
+            return jsonify({'message': 'Solicitud de firma creada', 'request_id': req.id}), 201
+        except Exception as e:
+            return jsonify({'error': f'Error al crear la solicitud: {str(e)}'}), 500
+
+    @sign_bp.route('/public/request/<string:token>', methods=['GET'])
+    def get_public_sign_request(token):
+        try:
+            req = app.services['sign_service'].get_request_by_token(token)
+            if req.status not in ['sent', 'viewed']:
+                return jsonify({'error': 'Esta solicitud de firma ya no es válida o ha sido completada.'}), 410
+            if req.status == 'sent':
+                req.status = 'viewed'
+                db.session.commit()
+            return jsonify({
+                'signer_name': req.signer_name,
+                'document_content': req.final_document_content,
+                'status': req.status
+            })
+        except Exception:
+            return jsonify({'error': 'Solicitud de firma no encontrada o inválida.'}), 404
+
+    @sign_bp.route('/public/request/<string:token>/sign', methods=['POST'])
+    def sign_public_document(token):
+        data = request.get_json()
+        signature_data = data.get('signature_data')
+        if not signature_data:
+            return jsonify({'error': 'No se proporcionaron datos de firma.'}), 400
+        try:
+            app.services['sign_service'].sign_document(token, signature_data)
+            return jsonify({'message': 'Documento firmado exitosamente.'}), 200
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+        except Exception:
+            return jsonify({'error': 'No se pudo completar la firma.'}), 500
+
+    app.register_blueprint(sign_bp)
+
+    # Rutas para formularios
+    forms_bp = Blueprint('forms', __name__, url_prefix='/api/forms')
+
+    @forms_bp.route('/', methods=['GET'])
+    @jwt_required()
+    def get_forms():
+        forms = app.services['form_service'].get_forms_for_tenant(g.current_user.tenant_id)
+        return jsonify([{'id': f.id, 'name': f.name, 'public_token': f.public_token} for f in forms])
+
+    @forms_bp.route('/', methods=['POST'])
+    @jwt_required()
+    def create_form_route():
+        data = request.get_json()
+        try:
+            form = app.services['form_service'].create_form(
+                name=data.get('name'),
+                description=data.get('description'),
+                fields=data.get('fields', []),
+                tenant_id=g.current_user.tenant_id,
+                user_id=g.current_user.id
+            )
+            return jsonify({'message': 'Formulario creado exitosamente', 'form_id': form.id, 'public_token': form.public_token}), 201
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+
+    @forms_bp.route('/<int:form_id>/submissions', methods=['GET'])
+    @jwt_required()
+    def get_form_submissions(form_id):
+        submissions = app.services['form_service'].get_submissions_for_form(form_id, g.current_user.tenant_id)
+        return jsonify([{'id': s.id, 'data': s.data, 'submitted_at': s.submitted_at.isoformat()} for s in submissions])
+
+    @forms_bp.route('/public/<string:token>', methods=['GET'])
+    def get_public_form(token):
+        try:
+            form = app.services['form_service'].get_form_by_token(token)
+            return jsonify({
+                'name': form.name,
+                'description': form.description,
+                'fields': form.fields
+            })
+        except Exception:
+            return jsonify({'error': 'Formulario no encontrado.'}), 404
+
+    @forms_bp.route('/public/<string:token>/submit', methods=['POST'])
+    def submit_public_form(token):
+        data = request.get_json()
+        try:
+            app.services['form_service'].submit_form(token, data)
+            return jsonify({'message': 'Formulario enviado exitosamente.'}), 200
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+        except Exception:
+            return jsonify({'error': 'No se pudo procesar el envío.'}), 500
+
+    app.register_blueprint(forms_bp)
+
+    # Rutas para gestión de proyectos
+    projects_bp = Blueprint('projects', __name__, url_prefix='/api/projects')
+
+    @projects_bp.route('/', methods=['GET'])
+    @jwt_required()
+    def get_projects():
+        projects = app.services['project_service'].get_projects_for_tenant(g.current_user.tenant_id)
+        return jsonify([{'id': p.id, 'name': p.name, 'status': p.status, 'end_date': p.end_date.isoformat() if p.end_date else None} for p in projects])
+
+    @projects_bp.route('/', methods=['POST'])
+    @jwt_required()
+    def create_project_route():
+        data = request.get_json()
+        try:
+            project = app.services['project_service'].create_project(
+                name=data.get('name'),
+                description=data.get('description'),
+                budget=data.get('budget'),
+                start_date=data.get('start_date'),
+                end_date=data.get('end_date'),
+                manager_id=g.current_user.id,
+                tenant_id=g.current_user.tenant_id
+            )
+            return jsonify({'message': 'Proyecto creado exitosamente', 'project_id': project.id}), 201
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+
+    @projects_bp.route('/<int:project_id>', methods=['GET'])
+    @jwt_required()
+    def get_project_details_route(project_id):
+        project = app.services['project_service'].get_project_details(project_id, g.current_user.tenant_id)
+        tasks = app.services['project_service'].get_tasks_for_project(project_id, g.current_user.tenant_id)
+        return jsonify({
+            'id': project.id,
+            'name': project.name,
+            'description': project.description,
+            'status': project.status,
+            'budget': project.budget,
+            'tasks': [{'id': t.id, 'title': t.title, 'status': t.status, 'due_date': t.due_date.isoformat() if t.due_date else None} for t in tasks]
+        })
+
+    @projects_bp.route('/<int:project_id>/tasks', methods=['POST'])
+    @jwt_required()
+    def create_task_route(project_id):
+        data = request.get_json()
+        try:
+            task = app.services['project_service'].create_task(
+                project_id=project_id,
+                title=data.get('title'),
+                description=data.get('description'),
+                due_date=data.get('due_date'),
+                assigned_to_id=data.get('assigned_to_id'),
+                tenant_id=g.current_user.tenant_id
+            )
+            return jsonify({'message': 'Tarea creada exitosamente', 'task_id': task.id}), 201
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+
+    @projects_bp.route('/tasks/<int:task_id>/status', methods=['PUT'])
+    @jwt_required()
+    def update_task_status_route(task_id):
+        data = request.get_json()
+        try:
+            task = app.services['project_service'].update_task_status(task_id, data.get('status'), g.current_user.tenant_id)
+            return jsonify({'message': 'Estado de la tarea actualizado', 'task_id': task.id, 'new_status': task.status})
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+
+    app.register_blueprint(projects_bp)
+
+    # Rutas para soporte técnico
+    support_bp = Blueprint('support', __name__, url_prefix='/api/support')
+
+    @support_bp.route('/tickets', methods=['GET'])
+    @jwt_required()
+    def get_tickets():
+        user_role = g.current_user.role.name if g.current_user.role else 'Cliente'
+        tickets = app.services['support_service'].get_tickets_for_tenant(g.current_user.tenant_id, user_role, g.current_user.id)
+        return jsonify([{'id': t.id, 'subject': t.subject, 'status': t.status, 'priority': t.priority, 'updated_at': t.updated_at.isoformat()} for t in tickets])
+
+    @support_bp.route('/tickets', methods=['POST'])
+    @jwt_required()
+    def create_ticket_route():
+        data = request.get_json()
+        try:
+            ticket = app.services['support_service'].create_ticket(
+                subject=data.get('subject'),
+                description=data.get('description'),
+                priority=data.get('priority', 'Media'),
+                tenant_id=g.current_user.tenant_id,
+                user_id=g.current_user.id
+            )
+            return jsonify({'message': 'Ticket creado exitosamente', 'ticket_id': ticket.id}), 201
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+
+    @support_bp.route('/tickets/<int:ticket_id>', methods=['GET'])
+    @jwt_required()
+    def get_ticket_details_route(ticket_id):
+        ticket = app.services['support_service'].get_ticket_details(ticket_id, g.current_user.tenant_id)
+        return jsonify({
+            'id': ticket.id,
+            'subject': ticket.subject,
+            'description': ticket.description,
+            'status': ticket.status,
+            'priority': ticket.priority,
+            'updates': [{'id': u.id, 'comment': u.comment, 'author': u.author.full_name, 'created_at': u.created_at.isoformat()} for u in ticket.updates]
+        })
+
+    @support_bp.route('/tickets/<int:ticket_id>/updates', methods=['POST'])
+    @jwt_required()
+    def add_ticket_update_route(ticket_id):
+        data = request.get_json()
+        try:
+            update = app.services['support_service'].add_ticket_update(
+                ticket_id=ticket_id,
+                user_id=g.current_user.id,
+                comment=data.get('comment')
+            )
+            return jsonify({'message': 'Actualización añadida al ticket', 'update_id': update.id}), 201
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+
+    @support_bp.route('/tickets/<int:ticket_id>/assign', methods=['PUT'])
+    @jwt_required()
+    @role_required(['Administrador General', 'Soporte'])
+    def assign_ticket_route(ticket_id):
+        data = request.get_json()
+        assignee_id = data.get('assignee_id')
+        try:
+            ticket = app.services['support_service'].assign_ticket(ticket_id, assignee_id, g.current_user.tenant_id)
+            return jsonify({'message': f'Ticket asignado a usuario {assignee_id}', 'ticket_id': ticket.id})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 404
+
+    @support_bp.route('/tickets/<int:ticket_id>/status', methods=['PUT'])
+    @jwt_required()
+    @role_required(['Administrador General', 'Soporte'])
+    def change_ticket_status_route(ticket_id):
+        data = request.get_json()
+        try:
+            ticket = app.services['support_service'].change_ticket_status(ticket_id, data.get('status'), g.current_user.tenant_id)
+            return jsonify({'message': 'Estado del ticket actualizado', 'new_status': ticket.status})
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+
+    app.register_blueprint(support_bp)
+
+    # Rutas para activos fijos
+    assets_bp = Blueprint('assets', __name__, url_prefix='/api/assets')
+
+    @assets_bp.route('/', methods=['GET'])
+    @jwt_required()
+    @role_required(['Contador', 'Administrador General'])
+    def get_assets():
+        assets = app.services['asset_service'].get_assets_for_tenant(g.current_user.tenant_id)
+        return jsonify([{'id': a.id, 'name': a.name, 'purchase_cost': a.purchase_cost, 'status': a.status} for a in assets])
+
+    @assets_bp.route('/', methods=['POST'])
+    @jwt_required()
+    @role_required(['Contador', 'Administrador General'])
+    def create_asset_route():
+        data = request.get_json()
+        try:
+            asset = app.services['asset_service'].create_asset(
+                name=data.get('name'),
+                description=data.get('description'),
+                purchase_date=date.fromisoformat(data.get('purchase_date')),
+                purchase_cost=data.get('purchase_cost'),
+                useful_life=data.get('useful_life'),
+                salvage_value=data.get('salvage_value', 0),
+                tenant_id=g.current_user.tenant_id
+            )
+            return jsonify({'message': 'Activo fijo creado exitosamente', 'asset_id': asset.id}), 201
+        except (ValueError, TypeError) as e:
+            return jsonify({'error': str(e)}), 400
+
+    @assets_bp.route('/<int:asset_id>', methods=['GET'])
+    @jwt_required()
+    @role_required(['Contador', 'Administrador General'])
+    def get_asset_details_route(asset_id):
+        asset = app.services['asset_service'].get_asset_details(asset_id, g.current_user.tenant_id)
+        book_value = app.services['asset_service'].get_asset_book_value(asset_id, g.current_user.tenant_id)
+        return jsonify({
+            'id': asset.id,
+            'name': asset.name,
+            'description': asset.description,
+            'purchase_cost': asset.purchase_cost,
+            'book_value': book_value,
+            'depreciation_entries': [{'id': e.id, 'entry_date': e.entry_date.isoformat(), 'amount': e.amount} for e in asset.depreciation_entries]
+        })
+
+    @assets_bp.route('/<int:asset_id>/depreciate', methods=['POST'])
+    @jwt_required()
+    @role_required(['Contador', 'Administrador General'])
+    def depreciate_asset_route(asset_id):
+        try:
+            entry = app.services['asset_service'].calculate_monthly_depreciation(asset_id, g.current_user.tenant_id)
+            return jsonify({'message': 'Depreciación calculada exitosamente', 'entry_id': entry.id, 'amount': entry.amount}), 201
+        except (ValueError, NotImplementedError) as e:
+            return jsonify({'error': str(e)}), 400
+
+    app.register_blueprint(assets_bp)
+
+    # Registrar blueprints adicionales
+    app.register_blueprint(cash_and_banks_bp)
+    app.register_blueprint(tax_bp)
+    app.register_blueprint(material_bp)
+    app.register_blueprint(construction_bp)
+    app.register_blueprint(health_bp)
+    app.register_blueprint(education_bp)
+    app.register_blueprint(logistics_bp)
+    app.register_blueprint(restaurant_bp)
+
+    # Registro de comandos CLI
+    @app.cli.command("init-db")
+    def init_db_command():
+        """Inicializa la base de datos y crea los datos por defecto."""
+        with app.app_context():
+            Role = app.models.get('Role')
+            User = app.models.get('User')
+
+            db.create_all()
+
+            if Role and Role.query.first() is None:
+                roles = ['Super Administrador', 'Administrador General', 'Ejecutivo de Crédito', 'Cobrador', 'Contador', 'Cliente']
+                for role_name in roles:
+                    db.session.add(Role(name=role_name))
+                db.session.commit()
+                print("Roles creados.")
+
+            if User and Role and not User.query.filter_by(email='admin@lazoarce.com').first():
+                admin_role = Role.query.filter_by(name='Administrador General').first()
+                if admin_role:
+                    admin_user = User(email='admin@lazoarce.com', role_id=admin_role.id, full_name='Administrador Principal')
+                    admin_user.set_password('admin')
+                    db.session.add(admin_user)
+                    db.session.commit()
+                    print("Usuario administrador por defecto creado (admin@lazoarce.com / admin).")
+
+            click.echo("Base de datos inicializada y poblada con datos por defecto.")
+
+    # Error handlers
+    @app.errorhandler(404)
+    def not_found(error):
+        return jsonify({"message": "Endpoint no encontrado"}), 404
+
+    @app.errorhandler(500)
+    def internal_error(error):
+        db.session.rollback()
+        return jsonify({"message": "Error interno del servidor"}), 500
+
     return app
 ```
-
-### Cambios realizados
-1. **Resolución de conflictos de Git**:
-   - En la sección de modelos (`app.models`), incluí todos los modelos definidos en `Business-Management-System-Connection` y añadí los modelos no definidos de `feature-LAN-F2C-contract-formulation` (`PatientRecord`, etc.) como cadenas de texto en el diccionario `app.models`, asumiendo que están definidos en otros módulos. Esto evita errores inmediatos en `app.models` pero permite que el código falle si los modelos no existen al acceder a ellos.
-   - En la sección de servicios (`app.services`), añadí los servicios adicionales de `feature-LAN-F2C-contract-formulation` (`health_service`, `education_service`, `logistics_service`) para mantener la funcionalidad completa.
-   - En las rutas, combiné todas las rutas de ambas ramas, eliminando duplicados (por ejemplo, manteniendo una sola versión de `/api/applications/<int:app_id>/send-reminder`) y preservando la ruta única `/api/loan-applications/submit` de `feature-LAN-F2C-contract-formulation`.
-
-2. **Preservación de datos**:
-   - Mantuve todas las referencias a los modelos no definidos (`PatientRecord`, etc.) y los blueprints (`health_bp`, `education_bp`, `logistics_bp`) de `feature-LAN-F2C-contract-formulation`.
-   - Incluí importaciones condicionales para los blueprints con un bloque `try-except` que define placeholders si las importaciones fallan, evitando errores inmediatos pero alertando sobre la necesidad de verificar los módulos.
-
-3. **Rutas duplicadas**:
-   - Eliminé rutas duplicadas, como `/api/applications/<int:app_id>/send-reminder`, manteniendo la versión de `Business-Management-System-Connection` porque es más completa (incluye lógica de envío de correo).
-   - Preservé la ruta `/api/loan-applications/submit` de `feature-LAN-F2C-contract-formulation`, ya que no está duplicada.
-
-4. **Modelos no definidos**:
-   - Incluí los modelos no definidos en `app.models` como placeholders (cadenas de texto) para evitar eliminar datos. Esto asume que los modelos (`PatientRecord`, etc.) están definidos en otros módulos (por ejemplo, `backend.models.health`). Si no existen, las rutas en `health_bp`, `education_bp`, o `logistics_bp` que los usen fallarán en tiempo de ejecución.
-
-### Riesgo de errores
-- **Modelos no definidos**: Al mantener las referencias a `PatientRecord`, `MedicalAppointment`, etc., en `app.models`, el código no generará errores inmediatos en la inicialización de la aplicación. Sin embargo, si los blueprints (`health_bp`, etc.) intentan acceder a estos modelos y no están definidos en otros módulos, se producirán errores como `NameError` o `AttributeError` al ejecutar las rutas asociadas.
-- **Blueprints no definidos**: Si los módulos `backend.routes.health_routes`, etc., no existen, las importaciones fallarán, pero el bloque `try-except` define blueprints vacíos como placeholders. Esto permite que la aplicación se inicie, pero las rutas de esos blueprints no funcionarán a menos que se implementen correctamente.
-
-### Recomendaciones
-- **Verificar existencia de modelos y blueprints**: Revisa el directorio del proyecto (por ejemplo, `backend/models/` y `backend/routes/`) para confirmar si los modelos (`PatientRecord`, etc.) y blueprints (`health_bp`, etc.) están definidos. Si no existen, considera implementar los modelos o eliminar las referencias a los blueprints si no son necesarios.
-- **Pruebas**: Ejecuta la aplicación en un entorno de desarrollo y prueba las rutas asociadas con `health_bp`, `education_bp`, y `logistics_bp` para detectar errores relacionados con modelos no definidos.
-- **Documentación**: Consulta la documentación del proyecto o al equipo para confirmar si los módulos de salud, educación y logística son parte del sistema y dónde están definidos.
-
-### Respuesta directa
-No eliminé datos intencionalmente; en la versión anterior, opté por la rama `Business-Management-System-Connection` para evitar errores de importación, pero en esta versión he preservado **todos los datos** de ambas ramas, incluyendo las referencias a los modelos no definidos y los blueprints. Si los modelos `PatientRecord`, `MedicalAppointment`, etc., están definidos en otros módulos, no generarán errores; de lo contrario, las rutas que los usen fallarán. ¿Necesitas que profundice en algún módulo específico (salud, educación, logística) o que verifique algo más en el código?
