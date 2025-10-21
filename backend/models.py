@@ -319,8 +319,8 @@ class Cliente(db.Model):
     dui = db.Column(db.String(12), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     
-    telefono = db.Column(db.String(20), nullable=False)
-    direccion = db.Column(db.String(255), nullable=False)
+    telefono = db.Column(String(20), nullable=False)
+    direccion = db.Column(String(255), nullable=False)
     estado = db.Column(String(20), default='PENDIENTE', nullable=False)
     
     contrato_integracion_id = db.Column(db.String(50), db.ForeignKey('contrato_integracion.contrato_id'))
@@ -618,6 +618,66 @@ class SalesOrderItem(db.Model):
 
     def __repr__(self):
         return f'<SalesOrderItem {self.quantity} x Product {self.product_id}>'
+
+
+# --- MODELOS PARA COMPRAS (LAN-CO1M) ---
+
+class Supplier(db.Model):
+    """Proveedores de la empresa"""
+    __tablename__ = 'purchasing_supplier'
+
+    id = db.Column(Integer, primary_key=True)
+    name = db.Column(String(150), nullable=False, index=True)
+    contact_person = db.Column(String(150))
+    email = db.Column(String(120), index=True)
+    phone = db.Column(String(50))
+    address = db.Column(Text)
+
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    is_active = db.Column(Boolean, default=True)
+
+    def __repr__(self):
+        return f'<Supplier {self.name}>'
+
+class PurchaseOrder(db.Model):
+    """Órdenes de Compra"""
+    __tablename__ = 'purchasing_order'
+
+    id = db.Column(Integer, primary_key=True)
+    supplier_id = db.Column(Integer, ForeignKey('purchasing_supplier.id'), nullable=False, index=True)
+
+    order_date = db.Column(Date, default=date.today)
+    expected_delivery_date = db.Column(Date)
+
+    status = db.Column(String(50), default='Borrador', index=True) # Borrador, Enviada, Recibida, Cancelada
+    total_amount = db.Column(Float)
+
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    created_by_id = db.Column(Integer, ForeignKey('user.id'))
+
+    items = db.relationship('PurchaseOrderItem', backref='purchase_order', lazy='dynamic', cascade="all, delete-orphan")
+    supplier = db.relationship('Supplier')
+
+    def __repr__(self):
+        return f'<PurchaseOrder {self.id}>'
+
+class PurchaseOrderItem(db.Model):
+    """Líneas de una Orden de Compra"""
+    __tablename__ = 'purchasing_order_item'
+
+    id = db.Column(Integer, primary_key=True)
+    purchase_order_id = db.Column(Integer, ForeignKey('purchasing_order.id'), nullable=False, index=True)
+    product_id = db.Column(Integer, ForeignKey('inventory_product.id'), nullable=False, index=True)
+
+    quantity = db.Column(Integer, nullable=False)
+    price_per_unit = db.Column(Float, nullable=False)
+
+    total_price = db.Column(Float, nullable=False)
+
+    product = db.relationship('Product')
+
+    def __repr__(self):
+        return f'<PurchaseOrderItem {self.quantity} x Product {self.product_id}>'
 
 
 # --- MODELOS DE MÓDULOS EXTENDIDOS (MailingList, AuditLog, NotificationTemplate) ---
