@@ -104,15 +104,32 @@ def create_app(config_object=None, testing_config=None):
         # Intenta cargar modelos (simulando la lógica de .models)
         try:
             from .models import (
-                Role, User, LoanProduct, LoanApplication, Account, Transaction, 
-                JournalEntry, Cliente, ContratoIntegracion, ProductoCredito, 
+                Role, User, LoanProduct, LoanApplication, Account, Transaction,
+                JournalEntry, Cliente, ContratoIntegracion, ProductoCredito,
                 Empleado, Planilla, ClientProfile, Tenant, AuditLog, Payment,
-                NotificationTemplate, Employee
+                NotificationTemplate, Employee, ContractTemplate, GeneratedContract,
+                Contact, Interaction, Opportunity, Product, StockMovement,
+                Quote, SalesOrder, SalesOrderItem, Supplier, PurchaseOrder, PurchaseOrderItem,
+                EmailLog
             )
             # Simular carga de servicios (asumiendo que fueron importados arriba)
-            from . import audit_service 
-            app.services = {'audit_service': audit_service}
-            
+            from . import audit_service
+            from . import contract_service
+            from . import crm_service
+            from . import inventory_service
+            from . import sales_service
+            from . import purchasing_service
+            from . import email_service
+            app.services = {
+                'audit_service': audit_service,
+                'contract_service': contract_service,
+                'crm_service': crm_service,
+                'inventory_service': inventory_service,
+                'sales_service': sales_service,
+                'purchasing_service': purchasing_service,
+                'email_service': email_service
+            }
+
         except ImportError as e:
             app.logger.error(f"❌ Error al importar modelos: {e}. Se usarán Mocks.")
             # Definición de MockModel si falla la importación
@@ -124,16 +141,30 @@ def create_app(config_object=None, testing_config=None):
                 def all(self): return []
                 def get(self, id): return None
                 def get_or_404(self, id): return None
-            
-            Role = User = LoanProduct = LoanApplication = Account = Transaction = JournalEntry = Cliente = ContratoIntegracion = ProductoCredito = Empleado = Planilla = ClientProfile = Tenant = AuditLog = Payment = NotificationTemplate = Employee = MockModel
-            app.services = {'audit_service': lambda: None}
-            
+
+            Role = User = LoanProduct = LoanApplication = Account = Transaction = JournalEntry = Cliente = ContratoIntegracion = ProductoCredito = Empleado = Planilla = ClientProfile = Tenant = AuditLog = Payment = NotificationTemplate = Employee = ContractTemplate = GeneratedContract = Contact = Interaction = Opportunity = Product = StockMovement = Quote = SalesOrder = SalesOrderItem = Supplier = PurchaseOrder = PurchaseOrderItem = EmailLog = MockModel
+            app.services = {
+                'audit_service': lambda: None,
+                'contract_service': lambda: None,
+                'crm_service': lambda: None,
+                'inventory_service': lambda: None,
+                'sales_service': lambda: None,
+                'purchasing_service': lambda: None,
+                'email_service': lambda: None
+            }
+
         # Asignar modelos al contexto de la app
         app.models = {
-            'Role': Role, 'User': User, 'LoanProduct': LoanProduct, 'LoanApplication': LoanApplication, 
+            'Role': Role, 'User': User, 'LoanProduct': LoanProduct, 'LoanApplication': LoanApplication,
             'Account': Account, 'Transaction': Transaction, 'JournalEntry': JournalEntry, 'Cliente': Cliente,
             'ContratoIntegracion': ContratoIntegracion, 'ProductoCredito': ProductoCredito, 'Empleado': Empleado,
-            'Planilla': Planilla, 'Employee': Employee, 'AuditLog': AuditLog
+            'Planilla': Planilla, 'Employee': Employee, 'AuditLog': AuditLog,
+            'ContractTemplate': ContractTemplate, 'GeneratedContract': GeneratedContract,
+            'Contact': Contact, 'Interaction': Interaction, 'Opportunity': Opportunity,
+            'Product': Product, 'StockMovement': StockMovement,
+            'Quote': Quote, 'SalesOrder': SalesOrder, 'SalesOrderItem': SalesOrderItem,
+            'Supplier': Supplier, 'PurchaseOrder': PurchaseOrder, 'PurchaseOrderItem': PurchaseOrderItem,
+            'EmailLog': EmailLog
         }
 
     # --- DECORADORES DE AUTORIZACIÓN (Unificado) ---
@@ -408,6 +439,258 @@ def create_app(config_object=None, testing_config=None):
     def submit_loan_application():
         # Lógica de solicitud de préstamo aquí...
         return jsonify({"message": "Ruta de solicitud de préstamo implementada."}), 501
+
+    @app.route('/api/applications/<int:app_id>/send-reminder', methods=['POST'])
+    @jwt_required()
+    @role_required(['Administrador General'])
+    def send_payment_reminder(app_id):
+        LoanApplication = app.models.get('LoanApplication')
+        application = LoanApplication.query.get_or_404(app_id)
+
+        # Lógica para enviar un recordatorio de pago
+        recipient = application.applicant.email
+        subject = f"Recordatorio de Pago para su Préstamo #{application.id}"
+        body = f"Hola {application.applicant.full_name},\n\nEste es un recordatorio de que su próximo pago para el préstamo #{application.id} está por vencer."
+
+        app.services['email_service'].send_email(
+            recipient,
+            subject,
+            body,
+            g.current_user.tenant
+        )
+
+        return jsonify({"message": f"Recordatorio de pago enviado para la solicitud {app_id}."}), 200
+
+    @app.route('/api/applications/<int:app_id>/status', methods=['PUT'])
+    @jwt_required()
+    @role_required(['Ejecutivo de Crédito', 'Administrador General'])
+    def update_application_status(app_id):
+        LoanApplication = app.models.get('LoanApplication')
+        application = LoanApplication.query.get_or_404(app_id)
+
+        data = request.get_json()
+        new_status = data.get('status')
+
+        if not new_status:
+            return jsonify({"error": "El campo 'status' es requerido."}), 400
+
+        application.status = new_status
+
+        # Si el estado es "Aprobado", se podría generar el contrato aquí
+        if new_status == 'Aprobado':
+            # Suponiendo que existe una plantilla de contrato para préstamos
+            # Aquí se llamaría al contract_service para generar el contrato
+            pass
+
+        db.session.commit()
+        return jsonify({"message": f"Estado de la solicitud {app_id} actualizado a '{new_status}'."})
+
+    # --- RUTAS PARA GESTIÓN DE CONTRATOS (LAN-F2C) ---
+
+    @app.route('/api/contracts/templates', methods=['POST'])
+    @jwt_required()
+    @role_required(['Administrador General'])
+    def create_contract_template_route():
+        data = request.get_json()
+        # Aquí iría la llamada al contract_service
+        return jsonify({"message": "Ruta para crear plantilla de contrato implementada."}), 201
+
+    @app.route('/api/contracts/templates/<int:template_id>', methods=['GET'])
+    @jwt_required()
+    def get_contract_template_route(template_id):
+        # Lógica para obtener una plantilla
+        return jsonify({"message": f"Ruta para obtener plantilla {template_id}."}), 200
+
+    @app.route('/api/contracts/templates/<int:template_id>', methods=['PUT'])
+    @jwt_required()
+    @role_required(['Administrador General'])
+    def update_contract_template_route(template_id):
+        data = request.get_json()
+        # Lógica para actualizar una plantilla
+        return jsonify({"message": f"Ruta para actualizar plantilla {template_id}."}), 200
+
+    @app.route('/api/contracts/templates/<int:template_id>', methods=['DELETE'])
+    @jwt_required()
+    @role_required(['Administrador General'])
+    def delete_contract_template_route(template_id):
+        # Lógica para eliminar una plantilla
+        return jsonify({"message": f"Ruta para eliminar plantilla {template_id}."}), 200
+
+    @app.route('/api/contracts/generate', methods=['POST'])
+    @jwt_required()
+    @role_required(['Ejecutivo de Crédito', 'Administrador General'])
+    def generate_contract_route():
+        data = request.get_json()
+        # Lógica para generar un contrato desde una plantilla
+        return jsonify({"message": "Ruta para generar un contrato implementada."}), 201
+
+    # --- RUTAS PARA CRM (LAN-CRM3) ---
+
+    @app.route('/api/crm/contacts', methods=['POST'])
+    @jwt_required()
+    @role_required(['Ejecutivo de Crédito', 'Administrador General'])
+    def create_crm_contact():
+        data = request.get_json()
+        # Lógica para llamar a crm_service.create_contact
+        return jsonify({"message": "Ruta para crear contacto de CRM implementada."}), 201
+
+    @app.route('/api/crm/contacts', methods=['GET'])
+    @jwt_required()
+    def get_crm_contacts():
+        # Lógica para llamar a crm_service.get_contacts
+        return jsonify([]), 200
+
+    @app.route('/api/crm/contacts/<int:contact_id>', methods=['GET'])
+    @jwt_required()
+    def get_crm_contact_details(contact_id):
+        # Lógica para llamar a crm_service.get_contact_details
+        return jsonify({"message": f"Ruta para obtener detalles del contacto {contact_id}."}), 200
+
+    @app.route('/api/crm/contacts/<int:contact_id>/interactions', methods=['POST'])
+    @jwt_required()
+    def add_crm_interaction(contact_id):
+        data = request.get_json()
+        # Lógica para llamar a crm_service.create_interaction
+        return jsonify({"message": f"Ruta para añadir interacción al contacto {contact_id}."}), 201
+
+    @app.route('/api/crm/opportunities', methods=['POST'])
+    @jwt_required()
+    @role_required(['Ejecutivo de Crédito', 'Administrador General'])
+    def create_crm_opportunity():
+        data = request.get_json()
+        # Lógica para llamar a crm_service.create_opportunity
+        return jsonify({"message": "Ruta para crear oportunidad de CRM implementada."}), 201
+
+    @app.route('/api/crm/opportunities/<int:opp_id>/stage', methods=['PUT'])
+    @jwt_required()
+    @role_required(['Ejecutivo de Crédito', 'Administrador General'])
+    def update_crm_opportunity_stage(opp_id):
+        data = request.get_json()
+        # Lógica para llamar a crm_service.update_opportunity_stage
+        return jsonify({"message": f"Ruta para actualizar etapa de la oportunidad {opp_id}."}), 200
+
+    # --- RUTAS PARA INVENTARIO (LAN-INV9) ---
+
+    @app.route('/api/inventory/products', methods=['POST'])
+    @jwt_required()
+    @role_required(['Administrador General'])
+    def create_inventory_product():
+        data = request.get_json()
+        # Lógica para llamar a inventory_service.create_product
+        return jsonify({"message": "Ruta para crear producto de inventario implementada."}), 201
+
+    @app.route('/api/inventory/products', methods=['GET'])
+    @jwt_required()
+    def get_inventory_products():
+        # Lógica para llamar a inventory_service.get_products
+        return jsonify([]), 200
+
+    @app.route('/api/inventory/products/<int:product_id>/movements', methods=['POST'])
+    @jwt_required()
+    @role_required(['Administrador General'])
+    def record_inventory_movement(product_id):
+        data = request.get_json()
+        # Lógica para llamar a inventory_service.record_stock_movement
+        return jsonify({"message": f"Ruta para registrar movimiento de stock para el producto {product_id}."}), 201
+
+    # --- RUTAS PARA VENTAS (LAN-SLS2) ---
+
+    @app.route('/api/sales/quotes', methods=['POST'])
+    @jwt_required()
+    @role_required(['Ejecutivo de Crédito', 'Administrador General'])
+    def create_sales_quote():
+        data = request.get_json()
+        # Lógica para llamar a sales_service.create_quote
+        return jsonify({"message": "Ruta para crear cotización de venta implementada."}), 201
+
+    @app.route('/api/sales/orders', methods=['GET'])
+    @jwt_required()
+    def get_sales_orders():
+        # Lógica para llamar a sales_service.get_sales_orders
+        return jsonify([]), 200
+
+    @app.route('/api/sales/quotes/<int:quote_id>/convert', methods=['POST'])
+    @jwt_required()
+    @role_required(['Ejecutivo de Crédito', 'Administrador General'])
+    def convert_quote_to_order(quote_id):
+        # Lógica para llamar a sales_service.convert_quote_to_sales_order
+        return jsonify({"message": f"Ruta para convertir cotización {quote_id} a orden de venta."}), 201
+
+    @app.route('/api/sales/orders/<int:order_id>/confirm', methods=['POST'])
+    @jwt_required()
+    @role_required(['Administrador General'])
+    def confirm_sales_order(order_id):
+        # Lógica para llamar a sales_service.confirm_sales_order
+        return jsonify({"message": f"Ruta para confirmar la orden de venta {order_id} y ajustar stock."}), 200
+
+    # --- RUTAS PARA COMPRAS (LAN-CO1M) ---
+
+    @app.route('/api/purchasing/suppliers', methods=['POST'])
+    @jwt_required()
+    @role_required(['Administrador General'])
+    def create_supplier():
+        data = request.get_json()
+        # Lógica para llamar a purchasing_service.create_supplier
+        return jsonify({"message": "Ruta para crear proveedor implementada."}), 201
+
+    @app.route('/api/purchasing/orders', methods=['POST'])
+    @jwt_required()
+    @role_required(['Administrador General'])
+    def create_purchase_order():
+        data = request.get_json()
+        # Lógica para llamar a purchasing_service.create_purchase_order
+        return jsonify({"message": "Ruta para crear orden de compra implementada."}), 201
+
+    @app.route('/api/purchasing/orders/<int:order_id>/receive', methods=['POST'])
+    @jwt_required()
+    @role_required(['Administrador General'])
+    def receive_purchase_order(order_id):
+        # Lógica para llamar a purchasing_service.receive_purchase_order
+        return jsonify({"message": f"Ruta para registrar la recepción de la orden {order_id}."}), 200
+
+    # --- RUTAS PARA REPORTES CONTABLES (LAN-BKS1) ---
+
+    @app.route('/api/reports/balance-sheet', methods=['GET'])
+    @jwt_required()
+    @role_required(['Contador', 'Administrador General'])
+    def get_balance_sheet_report():
+        tenant_id = g.current_user.tenant_id
+        report_data = app.services['accounting_service'].get_balance_sheet(tenant_id)
+        return jsonify(report_data), 200
+
+    @app.route('/api/reports/income-statement', methods=['GET'])
+    @jwt_required()
+    @role_required(['Contador', 'Administrador General'])
+    def get_income_statement_report():
+        tenant_id = g.current_user.tenant_id
+        report_data = app.services['accounting_service'].get_income_statement(tenant_id)
+        return jsonify(report_data), 200
+
+    # --- RUTAS PARA CORREO (LAN-MAIL1) ---
+
+    @app.route('/api/email/test', methods=['POST'])
+    @jwt_required()
+    @role_required(['Administrador General'])
+    def test_email_sending():
+        data = request.get_json()
+        recipient = data.get('recipient')
+        subject = data.get('subject', 'Correo de Prueba')
+        body = data.get('body', 'Este es un correo de prueba desde el sistema LAZOARCE NEXUS.')
+
+        if not recipient:
+            return jsonify({"error": "El destinatario es requerido."}), 400
+
+        success, message = app.services['email_service'].send_email(
+            recipient,
+            subject,
+            body,
+            g.current_user.tenant
+        )
+
+        if success:
+            return jsonify({"message": message}), 200
+        else:
+            return jsonify({"error": message}), 500
     
     # --- REGISTRO DE COMANDOS CLI (Del HEAD) ---
     @app.cli.command("init-db")
