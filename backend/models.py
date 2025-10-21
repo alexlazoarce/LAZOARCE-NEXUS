@@ -380,6 +380,315 @@ class CertificadoValidacion(db.Model):
     valido_hasta = db.Column(db.DateTime)
 
 
+# --- MODELOS PARA FORMULACIÓN DE CONTRATOS (LAN-F2C) ---
+
+class ContractTemplate(db.Model):
+    """Plantillas de Contratos"""
+    __tablename__ = 'contract_template'
+
+    id = db.Column(Integer, primary_key=True)
+    name = db.Column(String(100), nullable=False, index=True)
+    description = db.Column(Text)
+    content = db.Column(Text, nullable=False)  # Contenido con placeholders como {{variable}}
+
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    created_by_id = db.Column(Integer, ForeignKey('user.id'))
+
+    created_at = db.Column(DateTime, default=func.current_timestamp())
+    updated_at = db.Column(DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp())
+
+    __table_args__ = (UniqueConstraint('name', 'tenant_id', name='_contract_template_tenant_uc'),)
+
+    def __repr__(self):
+        return f'<ContractTemplate {self.name}>'
+
+class GeneratedContract(db.Model):
+    """Contratos Generados a partir de plantillas"""
+    __tablename__ = 'generated_contract'
+
+    id = db.Column(Integer, primary_key=True)
+    template_id = db.Column(Integer, ForeignKey('contract_template.id'), nullable=False, index=True)
+
+    # Relacionado a qué entidad pertenece este contrato (ej. una solicitud de préstamo)
+    related_entity = db.Column(String(50), index=True) # E.g., 'LoanApplication'
+    related_entity_id = db.Column(Integer, index=True)
+
+    content_final = db.Column(Text, nullable=False) # Contenido con los placeholders reemplazados
+
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    generated_by_id = db.Column(Integer, ForeignKey('user.id'))
+
+    status = db.Column(String(50), default='Generado', nullable=False) # Generado, Firmado, Archivado
+
+    created_at = db.Column(DateTime, default=func.current_timestamp())
+
+    template = db.relationship('ContractTemplate')
+    generated_by = db.relationship('User')
+
+    def __repr__(self):
+        return f'<GeneratedContract {self.id} for {self.related_entity}:{self.related_entity_id}>'
+
+
+# --- MODELOS PARA CRM (LAN-CRM3) ---
+
+class Contact(db.Model):
+    """Contactos del CRM (Prospectos y Clientes)"""
+    __tablename__ = 'crm_contact'
+
+    id = db.Column(Integer, primary_key=True)
+    full_name = db.Column(String(120), nullable=False, index=True)
+    email = db.Column(String(120), index=True)
+    phone = db.Column(String(50))
+
+    # Puede estar vinculado a un usuario del sistema o ser un contacto externo
+    user_id = db.Column(Integer, ForeignKey('user.id'), nullable=True)
+
+    contact_type = db.Column(String(50), default='Prospecto', index=True) # Prospecto, Cliente
+    status = db.Column(String(50), default='Nuevo', index=True) # Nuevo, Contactado, Calificado, etc.
+
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    assigned_to_id = db.Column(Integer, ForeignKey('user.id'))
+
+    created_at = db.Column(DateTime, default=func.current_timestamp())
+    updated_at = db.Column(DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp())
+
+    interactions = db.relationship('Interaction', backref='contact', lazy='dynamic')
+    opportunities = db.relationship('Opportunity', backref='contact', lazy='dynamic')
+
+    def __repr__(self):
+        return f'<Contact {self.full_name}>'
+
+class Interaction(db.Model):
+    """Interacciones con los contactos"""
+    __tablename__ = 'crm_interaction'
+
+    id = db.Column(Integer, primary_key=True)
+    contact_id = db.Column(Integer, ForeignKey('crm_contact.id'), nullable=False, index=True)
+
+    interaction_type = db.Column(String(50), nullable=False) # Llamada, Correo, Reunión
+    notes = db.Column(Text)
+
+    interaction_date = db.Column(DateTime, default=func.current_timestamp())
+
+    user_id = db.Column(Integer, ForeignKey('user.id')) # Usuario que registró la interacción
+
+    def __repr__(self):
+        return f'<Interaction {self.interaction_type} with Contact {self.contact_id}>'
+
+class Opportunity(db.Model):
+    """Oportunidades de Venta"""
+    __tablename__ = 'crm_opportunity'
+
+    id = db.Column(Integer, primary_key=True)
+    contact_id = db.Column(Integer, ForeignKey('crm_contact.id'), nullable=False, index=True)
+
+    name = db.Column(String(200), nullable=False)
+    stage = db.Column(String(50), default='Calificación', index=True) # Calificación, Propuesta, Negociación, Cerrada Ganada, Cerrada Perdida
+    amount = db.Column(Float)
+
+    # Podría estar vinculada a un producto de préstamo específico
+    loan_product_id = db.Column(Integer, ForeignKey('loan_product.id'), nullable=True)
+
+    assigned_to_id = db.Column(Integer, ForeignKey('user.id'))
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+    close_date = db.Column(Date)
+    created_at = db.Column(DateTime, default=func.current_timestamp())
+
+    def __repr__(self):
+        return f'<Opportunity {self.name}>'
+
+
+# --- MODELOS PARA INVENTARIO (LAN-INV9) ---
+
+class Product(db.Model):
+    """Productos del Inventario"""
+    __tablename__ = 'inventory_product'
+
+    id = db.Column(Integer, primary_key=True)
+    sku = db.Column(String(100), unique=True, nullable=False, index=True)
+    name = db.Column(String(200), nullable=False, index=True)
+    description = db.Column(Text)
+
+    price = db.Column(Float, nullable=False)
+    stock = db.Column(Integer, default=0)
+
+    min_stock_level = db.Column(Integer, default=0) # Para alertas
+
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    is_active = db.Column(Boolean, default=True)
+
+    movements = db.relationship('StockMovement', backref='product', lazy='dynamic')
+
+    __table_args__ = (UniqueConstraint('sku', 'tenant_id', name='_product_sku_tenant_uc'),)
+
+    def __repr__(self):
+        return f'<Product {self.name}>'
+
+class StockMovement(db.Model):
+    """Movimientos de Stock (Entradas y Salidas)"""
+    __tablename__ = 'inventory_stock_movement'
+
+    id = db.Column(Integer, primary_key=True)
+    product_id = db.Column(Integer, ForeignKey('inventory_product.id'), nullable=False, index=True)
+
+    movement_type = db.Column(String(50), nullable=False, index=True) # Entrada, Salida, Ajuste
+    quantity = db.Column(Integer, nullable=False)
+
+    notes = db.Column(Text)
+
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    user_id = db.Column(Integer, ForeignKey('user.id')) # Usuario que registró el movimiento
+
+    created_at = db.Column(DateTime, default=func.current_timestamp())
+
+    def __repr__(self):
+        return f'<StockMovement {self.movement_type} of {self.quantity} for Product {self.product_id}>'
+
+
+# --- MODELOS PARA VENTAS (LAN-SLS2) ---
+
+class Quote(db.Model):
+    """Cotizaciones de Venta"""
+    __tablename__ = 'sales_quote'
+
+    id = db.Column(Integer, primary_key=True)
+    contact_id = db.Column(Integer, ForeignKey('crm_contact.id'), nullable=False, index=True)
+    opportunity_id = db.Column(Integer, ForeignKey('crm_opportunity.id'), nullable=True, index=True)
+
+    status = db.Column(String(50), default='Borrador', index=True) # Borrador, Enviada, Aceptada, Rechazada
+    total_amount = db.Column(Float)
+
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    created_by_id = db.Column(Integer, ForeignKey('user.id'))
+
+    valid_until = db.Column(Date)
+    created_at = db.Column(DateTime, default=func.current_timestamp())
+
+    def __repr__(self):
+        return f'<Quote {self.id}>'
+
+class SalesOrder(db.Model):
+    """Órdenes de Venta"""
+    __tablename__ = 'sales_order'
+
+    id = db.Column(Integer, primary_key=True)
+    contact_id = db.Column(Integer, ForeignKey('crm_contact.id'), nullable=False, index=True)
+    quote_id = db.Column(Integer, ForeignKey('sales_quote.id'), nullable=True, index=True)
+
+    status = db.Column(String(50), default='Pendiente', index=True) # Pendiente, Confirmada, Enviada, Completada, Cancelada
+    total_amount = db.Column(Float)
+
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    created_by_id = db.Column(Integer, ForeignKey('user.id'))
+
+    order_date = db.Column(Date, default=date.today)
+
+    items = db.relationship('SalesOrderItem', backref='sales_order', lazy='dynamic', cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f'<SalesOrder {self.id}>'
+
+class SalesOrderItem(db.Model):
+    """Líneas de una Orden de Venta"""
+    __tablename__ = 'sales_order_item'
+
+    id = db.Column(Integer, primary_key=True)
+    sales_order_id = db.Column(Integer, ForeignKey('sales_order.id'), nullable=False, index=True)
+    product_id = db.Column(Integer, ForeignKey('inventory_product.id'), nullable=False, index=True)
+
+    quantity = db.Column(Integer, nullable=False)
+    price_per_unit = db.Column(Float, nullable=False)
+
+    total_price = db.Column(Float, nullable=False)
+
+    def __repr__(self):
+        return f'<SalesOrderItem {self.quantity} x Product {self.product_id}>'
+
+
+# --- MODELOS PARA COMPRAS (LAN-CO1M) ---
+
+class Supplier(db.Model):
+    """Proveedores de la empresa"""
+    __tablename__ = 'purchasing_supplier'
+
+    id = db.Column(Integer, primary_key=True)
+    name = db.Column(String(150), nullable=False, index=True)
+    contact_person = db.Column(String(150))
+    email = db.Column(String(120), index=True)
+    phone = db.Column(String(50))
+    address = db.Column(Text)
+
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    is_active = db.Column(Boolean, default=True)
+
+    def __repr__(self):
+        return f'<Supplier {self.name}>'
+
+class PurchaseOrder(db.Model):
+    """Órdenes de Compra"""
+    __tablename__ = 'purchasing_order'
+
+    id = db.Column(Integer, primary_key=True)
+    supplier_id = db.Column(Integer, ForeignKey('purchasing_supplier.id'), nullable=False, index=True)
+
+    order_date = db.Column(Date, default=date.today)
+    expected_delivery_date = db.Column(Date)
+
+    status = db.Column(String(50), default='Borrador', index=True) # Borrador, Enviada, Recibida, Cancelada
+    total_amount = db.Column(Float)
+
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    created_by_id = db.Column(Integer, ForeignKey('user.id'))
+
+    items = db.relationship('PurchaseOrderItem', backref='purchase_order', lazy='dynamic', cascade="all, delete-orphan")
+    supplier = db.relationship('Supplier')
+
+    def __repr__(self):
+        return f'<PurchaseOrder {self.id}>'
+
+class PurchaseOrderItem(db.Model):
+    """Líneas de una Orden de Compra"""
+    __tablename__ = 'purchasing_order_item'
+
+    id = db.Column(Integer, primary_key=True)
+    purchase_order_id = db.Column(Integer, ForeignKey('purchasing_order.id'), nullable=False, index=True)
+    product_id = db.Column(Integer, ForeignKey('inventory_product.id'), nullable=False, index=True)
+
+    quantity = db.Column(Integer, nullable=False)
+    price_per_unit = db.Column(Float, nullable=False)
+
+    total_price = db.Column(Float, nullable=False)
+
+    product = db.relationship('Product')
+
+    def __repr__(self):
+        return f'<PurchaseOrderItem {self.quantity} x Product {self.product_id}>'
+
+
+# --- MODELOS PARA CORREO (LAN-MAIL1) ---
+
+class EmailLog(db.Model):
+    """Registro de correos electrónicos enviados"""
+    __tablename__ = 'email_log'
+
+    id = db.Column(Integer, primary_key=True)
+    recipient = db.Column(String(120), nullable=False, index=True)
+    subject = db.Column(String(255), nullable=False)
+    body = db.Column(Text)
+
+    status = db.Column(String(50), default='Enviado', index=True) # Enviado, Fallido
+    error_message = db.Column(Text)
+
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    sent_by_id = db.Column(Integer, ForeignKey('user.id'))
+
+    sent_at = db.Column(DateTime, default=func.current_timestamp())
+
+    def __repr__(self):
+        return f'<EmailLog {self.id} to {self.recipient}>'
+
+
 # --- MODELOS DE MÓDULOS EXTENDIDOS (MailingList, Recruitment, Gym, Automation, Docs) ---
 # Se asume que estos modelos se definirán y usarán fuera del scope de este archivo,
 # pero se necesita un placeholder para que las tablas intermedias y las relaciones funcionen.
@@ -392,6 +701,199 @@ class MailingList(db.Model):
     # ... otros campos (tenant_id, etc.)
 
 # Se asume la existencia de los modelos de Recruitment, Gym, Automation, Docs, etc. aquí...
+
+
+# --- MODELOS PARA GESTOR DE DOCUMENTOS (LAN-GD2) ---
+
+class Document(db.Model):
+    """Representa un documento lógico que puede tener múltiples versiones."""
+    __tablename__ = 'document'
+
+    id = db.Column(Integer, primary_key=True)
+    filename = db.Column(String(255), nullable=False)
+    description = db.Column(Text)
+
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    created_by_id = db.Column(Integer, ForeignKey('user.id'), nullable=False)
+
+    # Referencia a la versión más reciente para un acceso rápido
+    latest_version_id = db.Column(Integer, nullable=True)
+
+    created_at = db.Column(DateTime, default=func.current_timestamp())
+    updated_at = db.Column(DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp())
+
+    versions = db.relationship('DocumentVersion', backref='document', lazy='dynamic', cascade="all, delete-orphan")
+    created_by = db.relationship('User')
+
+    def __repr__(self):
+        return f'<Document {self.id}: {self.filename}>'
+
+# --- MODELOS PARA MENSAJERÍA CORPORATIVA (LAN-C8T) ---
+
+channel_members = db.Table('messaging_channel_members',
+    db.Column('channel_id', Integer, ForeignKey('messaging_channel.id'), primary_key=True),
+    db.Column('user_id', Integer, ForeignKey('user.id'), primary_key=True),
+    schema='public'
+)
+
+class Channel(db.Model):
+    """Canales de comunicación para la mensajería interna"""
+    __tablename__ = 'messaging_channel'
+
+    id = db.Column(Integer, primary_key=True)
+    name = db.Column(String(150), nullable=False)
+    description = db.Column(Text)
+
+    channel_type = db.Column(String(50), default='public', index=True) # public, private
+
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    created_by_id = db.Column(Integer, ForeignKey('user.id'), nullable=False)
+
+    created_at = db.Column(DateTime, default=func.current_timestamp())
+
+    messages = db.relationship('Message', backref='channel', lazy='dynamic', cascade="all, delete-orphan")
+    members = db.relationship('User', secondary=channel_members, backref='messaging_channels', lazy='dynamic')
+
+    __table_args__ = (UniqueConstraint('name', 'tenant_id', name='_channel_name_tenant_uc'),)
+
+    def __repr__(self):
+        return f'<Channel {self.name}>'
+
+class Message(db.Model):
+    """Mensajes individuales dentro de un canal"""
+    __tablename__ = 'messaging_message'
+
+    id = db.Column(Integer, primary_key=True)
+    channel_id = db.Column(Integer, ForeignKey('messaging_channel.id'), nullable=False, index=True)
+    user_id = db.Column(Integer, ForeignKey('user.id'), nullable=False, index=True) # Autor del mensaje
+
+    content = db.Column(Text, nullable=False)
+
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    created_at = db.Column(DateTime, default=func.current_timestamp(), index=True)
+
+    author = db.relationship('User')
+
+    def __repr__(self):
+        return f'<Message {self.id} in Channel {self.channel_id}>'
+
+
+# --- MODELOS PARA FIRMAR (LAN-SGN3) ---
+
+class SignableTemplate(db.Model):
+    """Plantillas de documentos comerciales para firma (propuestas, etc.)."""
+    __tablename__ = 'sign_template'
+
+    id = db.Column(Integer, primary_key=True)
+    name = db.Column(String(150), nullable=False, index=True)
+    description = db.Column(Text)
+    content = db.Column(Text, nullable=False)  # Contenido con placeholders como {{variable}}
+
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    created_by_id = db.Column(Integer, ForeignKey('user.id'))
+
+    created_at = db.Column(DateTime, default=func.current_timestamp())
+    __table_args__ = (UniqueConstraint('name', 'tenant_id', name='_sign_template_tenant_uc'),)
+
+    def __repr__(self):
+        return f'<SignableTemplate {self.name}>'
+
+class SignatureRequest(db.Model):
+    """Solicitudes de firma para documentos específicos."""
+    __tablename__ = 'sign_request'
+
+    id = db.Column(Integer, primary_key=True)
+    template_id = db.Column(Integer, ForeignKey('sign_template.id'), nullable=True)
+
+    signer_name = db.Column(String(150), nullable=False)
+    signer_email = db.Column(String(120), nullable=False, index=True)
+
+    status = db.Column(String(50), default='draft', nullable=False, index=True) # draft, sent, viewed, signed, declined
+
+    unique_token = db.Column(String(128), unique=True, nullable=False, index=True) # Para la URL pública
+
+    final_document_content = db.Column(Text) # El documento con los datos rellenados
+    signature_data = db.Column(Text) # Puede ser un data URL de la imagen de la firma
+
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    created_by_id = db.Column(Integer, ForeignKey('user.id'))
+
+    created_at = db.Column(DateTime, default=func.current_timestamp())
+    sent_at = db.Column(DateTime)
+    signed_at = db.Column(DateTime)
+
+    template = db.relationship('SignableTemplate')
+    created_by = db.relationship('User')
+
+    def __repr__(self):
+        return f'<SignatureRequest {self.id} for {self.signer_email}>'
+
+
+# --- MODELOS PARA FORMULARIOS (LAN-FRM5) ---
+
+class Form(db.Model):
+    """Define la estructura de un formulario web."""
+    __tablename__ = 'form'
+
+    id = db.Column(Integer, primary_key=True)
+    name = db.Column(String(150), nullable=False)
+    description = db.Column(Text)
+
+    # JSONB para almacenar la definición de los campos del formulario
+    # Ejemplo: [{"name": "email", "label": "Correo Electrónico", "type": "email", "required": true}]
+    fields = db.Column(JSONB, nullable=False, default=list)
+
+    # Token para acceso público y único
+    public_token = db.Column(String(128), unique=True, nullable=False, index=True)
+
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    created_by_id = db.Column(Integer, ForeignKey('user.id'))
+
+    created_at = db.Column(DateTime, default=func.current_timestamp())
+    submissions = db.relationship('FormSubmission', backref='form', lazy='dynamic', cascade="all, delete-orphan")
+
+    __table_args__ = (UniqueConstraint('name', 'tenant_id', name='_form_name_tenant_uc'),)
+
+    def __repr__(self):
+        return f'<Form {self.name}>'
+
+class FormSubmission(db.Model):
+    """Almacena un envío de datos de un formulario."""
+    __tablename__ = 'form_submission'
+
+    id = db.Column(Integer, primary_key=True)
+    form_id = db.Column(Integer, ForeignKey('form.id'), nullable=False, index=True)
+
+    # JSONB para almacenar los datos enviados
+    # Ejemplo: {"email": "test@example.com", "nombre": "Juan Pérez"}
+    data = db.Column(JSONB, nullable=False)
+
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    submitted_at = db.Column(DateTime, default=func.current_timestamp(), index=True)
+
+    def __repr__(self):
+        return f'<FormSubmission {self.id} for Form {self.form_id}>'
+
+
+class DocumentVersion(db.Model):
+    """Representa una versión específica de un archivo de un documento."""
+    __tablename__ = 'document_version'
+
+    id = db.Column(Integer, primary_key=True)
+    document_id = db.Column(Integer, ForeignKey('document.id'), nullable=False, index=True)
+
+    version_number = db.Column(Integer, nullable=False)
+    filepath = db.Column(String(500), nullable=False) # Ruta en el sistema de archivos o URL en S3
+    file_hash = db.Column(String(128)) # Para verificar integridad
+
+    uploaded_by_id = db.Column(Integer, ForeignKey('user.id'), nullable=False)
+    created_at = db.Column(DateTime, default=func.current_timestamp())
+
+    uploaded_by = db.relationship('User')
+
+    def __repr__(self):
+        return f'<DocumentVersion {self.id} (v{self.version_number}) for Document {self.document_id}>'
+
 
 class AuditLog(db.Model):
     """Registro de auditoría"""
