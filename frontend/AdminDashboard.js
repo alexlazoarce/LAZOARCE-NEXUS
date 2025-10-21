@@ -30,7 +30,7 @@ const AdminDashboard = ({ token, onManagePayments }) => {
 
     React.useEffect(() => {
         fetchApplications();
-    }, [token]);
+    }, [token, filterStatus, filterStartDate, filterEndDate]);
 
     const handleSourceChange = (appId, source) => {
         setDisbursementSources(prev => ({ ...prev, [appId]: source }));
@@ -102,7 +102,6 @@ const AdminDashboard = ({ token, onManagePayments }) => {
                 </select>
                 <input type="date" value={filterStartDate} onChange={e => setFilterStartDate(e.target.value)} />
                 <input type="date" value={filterEndDate} onChange={e => setFilterEndDate(e.target.value)} />
-                <button onClick={fetchApplications}>Filtrar</button>
                 <button onClick={() => {
                     setFilterStatus('');
                     setFilterStartDate('');
