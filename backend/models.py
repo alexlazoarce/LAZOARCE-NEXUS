@@ -62,7 +62,7 @@ class Role(db.Model):
     tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
     is_active = db.Column(Boolean, default=True)
     
-    users = db.relationship('User', secondary=user_roles, back_populates='roles')
+    users = db.relationship('User', secondary=user_roles, back_populates='users')
     __table_args__ = (UniqueConstraint('name', 'tenant_id', name='_role_name_tenant_uc'),)
 
     def __repr__(self):
@@ -247,7 +247,7 @@ class Transaction(db.Model):
     account_id = db.Column(Integer, ForeignKey('account.id'), nullable=False, index=True)
     
     type = db.Column(String(10), nullable=False)  # Debit, Credit
-    amount = db.Column(Float, nullable=False, default=0.0)
+    amount = db.Column(Float, default=0.0)
     
     account = db.relationship('Account')
     
@@ -315,9 +315,9 @@ class Cliente(db.Model):
     __tablename__ = 'cliente'
     
     id = db.Column(db.Integer, primary_key=True)
-    nombre_completo = db.Column(db.String(200), nullable=False)
-    dui = db.Column(db.String(12), unique=True, nullable=False)
-    email = db.Column(db.String(120), unique=True, nullable=False)
+    nombre_completo = db.Column(String(200), nullable=False)
+    dui = db.Column(String(12), unique=True, nullable=False)
+    email = db.Column(String(120), unique=True, nullable=False)
     
     telefono = db.Column(String(20), nullable=False)
     direccion = db.Column(String(255), nullable=False)
@@ -333,9 +333,9 @@ class ContratoIntegracion(db.Model):
     __tablename__ = 'contrato_integracion'
     
     id = db.Column(db.Integer, primary_key=True)
-    contrato_id = db.Column(db.String(50), unique=True, nullable=False)
-    cliente_dui = db.Column(db.String(12), nullable=False)
-    cliente_nombre = db.Column(db.String(200), nullable=False)
+    contrato_id = db.Column(String(50), unique=True, nullable=False)
+    cliente_dui = db.Column(String(12), nullable=False)
+    cliente_nombre = db.Column(String(200), nullable=False)
     contrato_html = db.Column(db.Text, nullable=False)
     
     estado = db.Column(String(50), default="PENDIENTE_FIRMA")
