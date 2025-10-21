@@ -397,6 +397,9 @@ class ContractTemplate(db.Model):
 
     created_at = db.Column(DateTime, default=func.current_timestamp())
     updated_at = db.Column(DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp())
+    
+    # CORRECCIÓN: Se añade la relación que faltaba en una rama
+    created_by = db.relationship('User', foreign_keys=[created_by_id], backref='created_contract_templates')
 
     __table_args__ = (UniqueConstraint('name', 'tenant_id', name='_contract_template_tenant_uc'),)
 
@@ -800,7 +803,7 @@ class Channel(db.Model):
     messages = db.relationship('Message', backref='channel', lazy='dynamic', cascade="all, delete-orphan")
     members = db.relationship('User', secondary=channel_members, backref='messaging_channels', lazy='dynamic')
     # 'created_by' se podría añadir con:
-    # created_by = db.relationship('User', foreign_keys=[created_by_id], backref='created_channels')
+    created_by = db.relationship('User', foreign_keys=[created_by_id], backref='created_channels')
 
     __table_args__ = (UniqueConstraint('name', 'tenant_id', name='_channel_name_tenant_uc'),)
 
@@ -820,7 +823,7 @@ class Message(db.Model):
     tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
     created_at = db.Column(DateTime, default=func.current_timestamp(), index=True)
 
-    author = db.relationship('User', foreign_keys=[user_id]) # 'backref' simple para evitar conflictos
+    author = db.relationship('User', foreign_keys=[user_id], backref='sent_messages') # 'backref' simple para evitar conflictos
 
     def __repr__(self):
         return f'<Message {self.id} in Channel {self.channel_id}>'
@@ -838,6 +841,60 @@ class MailingList(db.Model):
 
     def __repr__(self):
         return f'<MailingList {self.name}>'
+
+# --- MODELOS PARA FIRMAR (LAN-SGN3) ---
+# CORRECCIÓN: Se añaden estos modelos que solo existían en la rama 'feature-LAN-F2C...'
+
+class SignableTemplate(db.Model):
+    """Plantillas de documentos comerciales para firma (propuestas, etc.)."""
+    __tablename__ = 'sign_template'
+
+    id = db.Column(Integer, primary_key=True)
+    name = db.Column(String(150), nullable=False, index=True)
+    description = db.Column(Text)
+    content = db.Column(Text, nullable=False)  # Contenido con placeholders como {{variable}}
+
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    created_by_id = db.Column(Integer, ForeignKey('user.id'))
+
+    created_at = db.Column(DateTime, default=func.current_timestamp())
+    created_by = db.relationship('User', foreign_keys=[created_by_id], backref='created_signable_templates')
+    
+    __table_args__ = (UniqueConstraint('name', 'tenant_id', name='_sign_template_tenant_uc'),)
+
+    def __repr__(self):
+        return f'<SignableTemplate {self.name}>'
+
+class SignatureRequest(db.Model):
+    """Solicitudes de firma para documentos específicos."""
+    __tablename__ = 'sign_request'
+
+    id = db.Column(Integer, primary_key=True)
+    template_id = db.Column(Integer, ForeignKey('sign_template.id'), nullable=True)
+
+    signer_name = db.Column(String(150), nullable=False)
+    signer_email = db.Column(String(120), nullable=False, index=True)
+
+    status = db.Column(String(50), default='draft', nullable=False, index=True) # draft, sent, viewed, signed, declined
+
+    unique_token = db.Column(String(128), unique=True, nullable=False, index=True) # Para la URL pública
+
+    final_document_content = db.Column(Text) # El documento con los datos rellenados
+    signature_data = db.Column(Text) # Puede ser un data URL de la imagen de la firma
+
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    created_by_id = db.Column(Integer, ForeignKey('user.id'))
+
+    created_at = db.Column(DateTime, default=func.current_timestamp())
+    sent_at = db.Column(DateTime)
+    signed_at = db.Column(DateTime)
+
+    template = db.relationship('SignableTemplate')
+    created_by = db.relationship('User', foreign_keys=[created_by_id], backref='created_signature_requests')
+
+    def __repr__(self):
+        return f'<SignatureRequest {self.id} for {self.signer_email}>'
+
 
 class AuditLog(db.Model):
     """Registro de auditoría"""
