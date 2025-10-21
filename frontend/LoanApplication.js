@@ -157,6 +157,7 @@ const LoanApplication = ({ token, onNavigate }) => {
                 )}
 
                 <button type="submit" disabled={!selectedProduct}>Enviar Solicitud</button>
+                <button type="button" disabled>Generar Contrato (sólo para solicitudes aprobadas)</button>
             </form>
             {error && <p className="error" style={{color: 'red'}}>{error}</p>}
             {message && <p className="message" style={{color: 'green'}}>{message}</p>}
