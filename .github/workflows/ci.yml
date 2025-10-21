@@ -1,0 +1,266 @@
+name: Python CI/CD Pipeline
+on:
+  push:
+    branches: [ Business-Management-System-Connection, main, develop ]
+  pull_request:
+    branches: [ Business-Management-System-Connection, main, develop ]
+  workflow_dispatch: # Permite ejecución manual
+
+env:
+  PYTHON_VERSION: '3.10'
+  POETRY_VERSION: '1.5.1'
+
+jobs:
+  # 1. LINTING Y FORMATEO
+  lint:
+    name: Lint & Format
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0 # Para análisis de cambios
+        
+    - name: 🐍 Setup Python ${{ env.PYTHON_VERSION }}
+      uses: actions/setup-python@v5
+      id: python-setup
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+        cache-dependency-path: |
+          **/requirements*.txt
+          **/pyproject.toml
+          **/poetry.lock
+        
+    - name: 📦 Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install --upgrade poetry==${{ env.POETRY_VERSION }}
+        # Instalar herramientas de linting y testing
+        pip install flake8 black isort mypy bandit safety pytest pytest-cov
+        # Dependencias del proyecto
+        pip install -r requirements.txt || pip install -r requirements-dev.txt || echo "No requirements file found"
+        
+    - name: 🔍 Lint with flake8
+      run: |
+        # Errores críticos que detienen el build
+        flake8 backend --count --select=E9,F63,F7,F82 --show-source --statistics
+        # Análisis completo con advertencias
+        flake8 backend --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+        
+    - name: 🎨 Format with Black
+      run: |
+        black --check --diff backend
+        echo "✅ Code formatting check passed"
+        
+    - name: 📋 Sort imports with isort
+      run: |
+        isort --check-only --diff backend
+        echo "✅ Import sorting check passed"
+        
+    - name: 🐞 Static type checking with mypy
+      run: |
+        mypy backend --install-types --non-interactive
+        echo "✅ Type checking passed"
+
+  # 2. SEGURIDAD
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      
+    - name: 🐍 Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: 🔒 Security scan with Bandit
+      uses: pre-commit/action-bandit@v1.0
+      with:
+        path: backend
+        
+    - name: 🛡️ Dependency vulnerability scan with Safety
+      run: |
+        pip install safety
+        safety check --full-report --file requirements.txt || safety check --full-report --file requirements-dev.txt || echo "No requirements file for safety check"
+
+  # 3. TESTING
+  test:
+    name: Unit & Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [lint, security] # Solo ejecuta si lint y security pasan
+    
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+        
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      
+    - name: 🐍 Setup Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+        
+    - name: 📦 Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-cov pytest-asyncio pytest-mock
+        pip install -r requirements.txt || pip install -r requirements-dev.txt
+        
+    - name: 🧪 Run tests with coverage
+      env:
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+        REDIS_URL: redis://localhost:6379
+      run: |
+        pytest backend/tests/ -v --cov=backend --cov-report=xml --cov-report=term-missing
+        coverage xml  # Genera reporte para Codecov
+        
+    - name: 📊 Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        files: ./coverage.xml
+        fail_ci_if_error: true
+
+  # 4. BUILD & PACKAGE
+  build:
+    name: Build & Package
+    runs-on: ubuntu-latest
+    needs: [test]
+    if: github.event_name == 'push' || github.event.pull_request.merged == true
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      
+    - name: 🐍 Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        
+    - name: 📦 Install dependencies
+      run: |
+        pip install build twine
+        pip install -r requirements.txt
+        
+    - name: 🏗️ Build package
+      run: |
+        python -m build
+        twine check dist/*
+        
+    - name: 📁 Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: python-package-dist
+        path: dist/*
+        retention-days: 7
+
+  # 5. DEPLOY (Opcional - Staging/Production)
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: |
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/Business-Management-System-Connection'
+    
+    environment: 
+      name: staging
+      url: https://staging.lazoarce.com
+      
+    steps:
+    - name: 📥 Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: python-package-dist
+        path: dist/
+        
+    - name: 🚀 Deploy to staging
+      run: |
+        # Aquí iría tu lógica de deploy (Docker, Heroku, Railway, etc.)
+        echo "🚀 Deploying to staging environment..."
+        # Ejemplo con Railway:
+        # railway deploy
+        
+    - name: 📝 Notify deployment
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        channel: '#deployments'
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      if: always()
+
+  # 6. SUCCESS SUMMARY
+  summary:
+    name: 📊 Build Summary
+    runs-on: ubuntu-latest
+    needs: [lint, security, test, build, deploy-staging]
+    if: always()
+    
+    steps:
+    - name: 📋 Summary
+      run: |
+        echo "🎉 PIPELINE COMPLETADO"
+        echo "| Job | Status |"
+        echo "|-----|--------|"
+        echo "| Lint | ${{ needs.lint.result }} |"
+        echo "| Security | ${{ needs.security.result }} |"
+        echo "| Tests | ${{ needs.test.result }} |"
+        echo "| Build | ${{ needs.build.result }} |"
+        echo "| Deploy | ${{ needs.deploy-staging.result }} |"
+        
+    - name: 📧 Notify team
+      if: failure()
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        fields: repo,message,commit,author,action,eventName,ref,workflow
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+# Configuración global del workflow
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+  statuses: write
+  deployments: write
+
+# Concurrencia para evitar builds simultáneos
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
