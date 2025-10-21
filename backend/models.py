@@ -1,253 +1,181 @@
 [Contenido truncado por brevedad]
 
-rue)
+late_id = db.Column(db.Integer, db.ForeignKey('onboarding_template.id'), nullable=False)
+    template = db.relationship('OnboardingTemplate')
+    status = db.Column(db.String(50), default='Pendiente', nullable=False) # Pendiente, En Progreso, Completado
+    completed_steps = db.Column(db.JSON, default=[]) # List of completed step IDs
 
-    notes = db.Column(db.Text, nullable=True)
+# --- Recruitment Models (LAN-REC7) ---
 
+class JobVacancy(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    title = db.Column(db.String(200), nullable=False)
+    description = db.Column(db.Text, nullable=False)
+    status = db.Column(db.String(50), default='Abierta', nullable=False) # Abierta, Cerrada
+    created_by_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    created_by = db.relationship('User')
+    applications = db.relationship('Application', backref='job_vacancy', lazy='dynamic')
+
+class Candidate(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    full_name = db.Column(db.String(200), nullable=False)
+    email = db.Column(db.String(120), nullable=False)
+    phone = db.Column(db.String(50), nullable=True)
+    resume_url = db.Column(db.String(255), nullable=True)
+    applications = db.relationship('Application', backref='candidate', lazy='dynamic')
+    __table_args__ = (db.UniqueConstraint('email', 'tenant_id'),)
+
+class Application(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    candidate_id = db.Column(db.Integer, db.ForeignKey('candidate.id'), nullable=False)
+    job_vacancy_id = db.Column(db.Integer, db.ForeignKey('job_vacancy.id'), nullable=False)
+    application_date = db.Column(db.DateTime, default=db.func.current_timestamp())
+    status = db.Column(db.String(50), default='Nuevo', nullable=False) # Nuevo, Revisión, Entrevista, Oferta, Contratado, Rechazado
+
+# --- Subscription Management Models (LAN-SUB1) ---
+
+class SystemModule(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    module_code = db.Column(db.String(20), unique=True, nullable=False) # e.g., 'LAN-GP1', 'LAN-REC7'
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+
+class TenantSubscription(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    module_id = db.Column(db.Integer, db.ForeignKey('system_module.id'), nullable=False)
+    start_date = db.Column(db.DateTime, default=db.func.current_timestamp())
+    end_date = db.Column(db.DateTime, nullable=True) # Null for perpetual or manually managed subscriptions
+    status = db.Column(db.String(50), default='active', nullable=False) # active, expired, cancelled
+
+    tenant = db.relationship('Tenant')
+    module = db.relationship('SystemModule')
+    __table_args__ = (db.UniqueConstraint('tenant_id', 'module_id'),)
+
+# --- Gym Management Models (LAN-GYM1) ---
+
+class GymMembershipPlan(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    price = db.Column(db.Float, nullable=False)
+    duration_days = db.Column(db.Integer, nullable=False) # e.g., 30 for monthly, 90 for quarterly, 365 for annual
+    description = db.Column(db.Text, nullable=True)
+    members = db.relationship('GymMember', backref='membership_plan', lazy='dynamic')
+    __table_args__ = (db.UniqueConstraint('name', 'tenant_id'),)
+
+class GymMember(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    full_name = db.Column(db.String(200), nullable=False)
+    email = db.Column(db.String(120), nullable=True)
+    phone = db.Column(db.String(50), nullable=True)
+    join_date = db.Column(db.Date, nullable=False, default=db.func.current_date())
+    membership_plan_id = db.Column(db.Integer, db.ForeignKey('gym_membership_plan.id'), nullable=True)
+    membership_start_date = db.Column(db.Date, nullable=True)
+    membership_end_date = db.Column(db.Date, nullable=True)
+    status = db.Column(db.String(50), default='active', nullable=False) # active, inactive, frozen
+    attendance = db.relationship('ClassAttendance', backref='member', lazy='dynamic', cascade="all, delete-orphan")
+    __table_args__ = (db.UniqueConstraint('email', 'tenant_id'),)
+
+class GymClass(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    instructor = db.Column(db.String(100), nullable=True)
+    schedule = db.Column(db.String(255), nullable=True) # e.g., "Lunes, Miércoles 18:00 - 19:00"
+    capacity = db.Column(db.Integer, nullable=True)
+    attendees = db.relationship('ClassAttendance', backref='gym_class', lazy='dynamic', cascade="all, delete-orphan")
+    __table_args__ = (db.UniqueConstraint('name', 'schedule', 'tenant_id'),)
+
+class ClassAttendance(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    class_id = db.Column(db.Integer, db.ForeignKey('gym_class.id'), nullable=False)
+    member_id = db.Column(db.Integer, db.ForeignKey('gym_member.id'), nullable=False)
+    attendance_date = db.Column(db.DateTime, nullable=False, default=db.func.current_timestamp())
+
+# --- Barbershop Management Models (LAN-BAR1) ---
+
+class Stylist(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    specialty = db.Column(db.String(100), nullable=True)
+    is_active = db.Column(db.Boolean, default=True)
+    appointments = db.relationship('Appointment', backref='stylist', lazy='dynamic')
+    __table_args__ = (db.UniqueConstraint('name', 'tenant_id'),)
+
+class Appointment(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    stylist_id = db.Column(db.Integer, db.ForeignKey('stylist.id'), nullable=False)
+    client_name = db.Column(db.String(200), nullable=False)
+    client_phone = db.Column(db.String(50), nullable=False)
+    client_email = db.Column(db.String(120), nullable=True)
+    appointment_time = db.Column(db.DateTime, nullable=False)
+    status = db.Column(db.String(50), default='scheduled', nullable=False) # scheduled, completed, cancelled, no-show
+    booking_fee = db.Column(db.Float, default=0.0)
+    fee_paid = db.Column(db.Boolean, default=False)
+
+# --- Automation Models (LAN-AGT5 & LAN-N8N1) ---
+
+class N8nCredential(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    # Encrypted value for the credential. The encryption key should be managed securely.
+    encrypted_value = db.Column(db.Text, nullable=False)
+    __table_args__ = (db.UniqueConstraint('name', 'tenant_id'),)
+
+class N8nWorkflow(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    trigger_event = db.Column(db.String(100), nullable=False, index=True) # e.g., 'whatsapp_message_received'
+    workflow_json = db.Column(db.JSON, nullable=False)
+    is_active = db.Column(db.Boolean, default=True)
+    __table_args__ = (db.UniqueConstraint('name', 'tenant_id'),)
+
+# --- Make.com Integration Models (LAN-MKE1) ---
+
+class MakeConnection(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    # As with n8n, this would be encrypted in a real implementation.
+    encrypted_credentials = db.Column(db.Text, nullable=False)
+    __table_args__ = (db.UniqueConstraint('name', 'tenant_id'),)
+
+class MakeScenario(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    # The 'blueprint' of the scenario in JSON format.
+    scenario_blueprint = db.Column(db.JSON, nullable=False)
+    is_active = db.Column(db.Boolean, default=True)
+    __table_args__ = (db.UniqueConstraint('name', 'tenant_id'),)
+
+# --- Document Management Models (LAN-GD2) ---
+
+class Document(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey('tenant.id'), nullable=False)
+    filename = db.Column(db.String(255), nullable=False)
+    description = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
-    updated_at = db.Column(db.DateTime, default=db.func.current_timestamp(), onupdate=db.func.current_timestamp())
+    latest_version_id = db.Column(db.Integer, nullable=True) # Set after first version is created
+    versions = db.relationship('DocumentVersion', backref='document', lazy='dynamic', cascade="all, delete-orphan")
+    __table_args__ = (db.UniqueConstraint('filename', 'tenant_id'),)
 
-    # Optional: Assign a lead to a specific employee
-    # assigned_to_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=True)
-    # assigned_to = db.relationship('Employee')
-    communication_logs = db.relationship('CommunicationLog', backref='lead', lazy='dynamic')
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'full_name': self.full_name,
-            'email': self.email,
-            'phone': self.phone,
-            'status': self.status,
-            'source': self.source,
-            'notes': self.notes,
-            'created_at': self.created_at.isoformat(),
-            'updated_at': self.updated_at.isoformat(),
-        }
-
-class CommunicationLog(db.Model):
-    """Represents a single interaction with a lead or client."""
+class DocumentVersion(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-
-    # Can be linked to a lead, a user, or both if the lead was converted
-    lead_id = db.Column(db.Integer, db.ForeignKey('lead.id'), nullable=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
-
-    # The employee who logged the communication
-    employee_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
-    employee = db.relationship('Employee')
-
-    # e.g., 'Llamada', 'Email', 'Reunión'
-    type = db.Column(db.String(50), nullable=False)
-    notes = db.Column(db.Text, nullable=False)
-
-    timestamp = db.Column(db.DateTime, default=db.func.current_timestamp())
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'employee_name': self.employee.full_name,
-            'type': self.type,
-            'notes': self.notes,
-            'timestamp': self.timestamp.isoformat(),
-        }
-
-# --- Collections Models ---
-
-class Payment(db.Model):
-    """Represents a payment made towards a loan."""
-    id = db.Column(db.Integer, primary_key=True)
-    application_id = db.Column(db.Integer, db.ForeignKey('loan_application.id'), nullable=False)
-    amount_paid = db.Column(db.Float, nullable=False)
-    payment_date = db.Column(db.Date, nullable=False)
-
-    # e.g., 'Cuota', 'Abono a Capital', 'Cancelación'
-    type = db.Column(db.String(50), nullable=False, default='Cuota')
-
-    # The employee who registered the payment
-    registered_by_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=False)
-    registered_by = db.relationship('Employee')
-
-    # Link to the accounting entry for this payment
-    journal_entry_id = db.Column(db.Integer, db.ForeignKey('journal_entry.id'), nullable=True)
-    journal_entry = db.relationship('JournalEntry')
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'application_id': self.application_id,
-            'amount_paid': self.amount_paid,
-            'payment_date': self.payment_date.isoformat(),
-            'type': self.type,
-            'registered_by': self.registered_by.full_name,
-        }
-
-# --- Notifications Models ---
-
-class NotificationTemplate(db.Model):
-    """Stores templates for emails or other notifications."""
-    id = db.Column(db.Integer, primary_key=True)
-    # A unique, code-friendly identifier, e.g., 'loan-approved'
-    slug = db.Column(db.String(50), unique=True, nullable=False)
-    subject = db.Column(db.String(255), nullable=False)
-    body = db.Column(db.Text, nullable=False) # Can contain placeholders like {customer_name}
-    type = db.Column(db.String(20), nullable=False, default='Email') # 'Email', 'SMS', etc.
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'slug': self.slug,
-            'subject': self.subject,
-            'body': self.body,
-            'type': self.type,
-        }
-
-# --- Auditing Models ---
-
-class AuditLog(db.Model):
-    """Logs critical actions performed in the system."""
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    action = db.Column(db.String(100), nullable=False) # e.g., 'LOAN_STATUS_CHANGED'
-    details = db.Column(db.Text, nullable=True) # e.g., 'Loan 123 status changed from Pending to Approved'
-    timestamp = db.Column(db.DateTime, default=db.func.current_timestamp())
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'user_email': self.user.email,
-            'action': self.action,
-            'details': self.details,
-            'timestamp': self.timestamp.isoformat(),
-        }
-
-class Opportunity(db.Model):
-    """Represents a sales opportunity or a deal."""
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(255), nullable=False)
-
-    # The value of the potential deal
-    amount = db.Column(db.Float, nullable=True)
-
-    # e.g., 'Calificación', 'Propuesta', 'Negociación', 'Ganada', 'Perdida'
-    stage = db.Column(db.String(50), nullable=False, default='Calificación')
-
-    close_date = db.Column(db.Date, nullable=True)
-
-    # Link to the original lead and the converted user/client
-    lead_id = db.Column(db.Integer, db.ForeignKey('lead.id'), nullable=True)
-    lead = db.relationship('Lead')
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
-    client = db.relationship('User')
-
-    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
-    updated_at = db.Column(db.DateTime, default=db.func.current_timestamp(), onupdate=db.func.current_timestamp())
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'name': self.name,
-            'amount': self.amount,
-            'stage': self.stage,
-            'close_date': self.close_date.isoformat() if self.close_date else None,
-            'client_name': self.client.full_name if self.client else (self.lead.full_name if self.lead else None)
-        }
-
-# --- Marketing Models ---
-
-mailing_list_members = db.Table('mailing_list_members',
-    db.Column('mailing_list_id', db.Integer, db.ForeignKey('mailing_list.id'), primary_key=True),
-    db.Column('user_id', db.Integer, db.ForeignKey('user.id'), primary_key=True)
-)
-
-class MailingList(db.Model):
-    """Represents a list of users for marketing campaigns."""
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), unique=True, nullable=False)
-    description = db.Column(db.String(255), nullable=True)
-
-    members = db.relationship('User', secondary=mailing_list_members, lazy='dynamic',
-                              backref=db.backref('mailing_lists', lazy=True))
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'name': self.name,
-            'description': self.description,
-            'member_count': self.members.count()
-        }
-
-class Campaign(db.Model):
-    """Represents a marketing email campaign."""
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(150), nullable=False)
-    subject = db.Column(db.String(255), nullable=False)
-
-    # e.g., 'Draft', 'Scheduled', 'Sent'
-    status = db.Column(db.String(50), nullable=False, default='Draft')
-
-    mailing_list_id = db.Column(db.Integer, db.ForeignKey('mailing_list.id'), nullable=False)
-    mailing_list = db.relationship('MailingList')
-
-    template_id = db.Column(db.Integer, db.ForeignKey('notification_template.id'), nullable=False)
-    template = db.relationship('NotificationTemplate')
-
-    sent_at = db.Column(db.DateTime, nullable=True)
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'name': self.name,
-            'subject': self.subject,
-            'status': self.status,
-            'mailing_list_name': self.mailing_list.name,
-            'template_slug': self.template.slug,
-            'sent_at': self.sent_at.isoformat() if self.sent_at else None,
-        }
-
-# --- Helpdesk / Ticketing Models ---
-
-class Ticket(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    subject = db.Column(db.String(255), nullable=False)
-
-    # e.g., 'Abierto', 'En Progreso', 'Cerrado'
-    status = db.Column(db.String(50), nullable=False, default='Abierto')
-    # e.g., 'Baja', 'Normal', 'Alta'
-    priority = db.Column(db.String(50), nullable=False, default='Normal')
-
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    assigned_to_id = db.Column(db.Integer, db.ForeignKey('employee.id'), nullable=True)
-
-    comments = db.relationship('TicketComment', backref='ticket', lazy='dynamic', cascade="all, delete-orphan")
-
-    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
-    updated_at = db.Column(db.DateTime, default=db.func.current_timestamp(), onupdate=db.func.current_timestamp())
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'subject': self.subject,
-            'status': self.status,
-            'priority': self.priority,
-            'created_by': self.created_by_user.full_name,
-            'assigned_to': self.assigned_employee.full_name if self.assigned_employee else 'Sin asignar',
-            'created_at': self.created_at.isoformat(),
-            'updated_at': self.updated_at.isoformat(),
-        }
-
-class TicketComment(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    ticket_id = db.Column(db.Integer, db.ForeignKey('ticket.id'), nullable=False)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False) # User who made the comment
-    comment_text = db.Column(db.Text, nullable=False)
-    timestamp = db.Column(db.DateTime, default=db.func.current_timestamp())
-
-    def to_dict(self):
-        commenter = User.query.get(self.user_id)
-        return {
-            'id': self.id,
-            'commenter_name': commenter.full_name,
-            'comment_text': self.comment_text,
-            'timestamp': self.timestamp.isoformat()
-        }
+    document_id = db.Column(db.Integer, db.ForeignKey('document.id'), nullable=False)
+    version_number = db.Column(db.Integer, nullable=False)
+    filepath = db.Column(db.String(512), nullable=False) # Path in the file storage
+    uploaded_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+    uploaded_by_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    uploaded_by = db.relationship('User')

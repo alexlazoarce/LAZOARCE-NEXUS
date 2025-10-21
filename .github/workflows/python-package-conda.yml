@@ -148,7 +148,7 @@ jobs:
 
       run: |
 
-        mypy . --non-interactive || true
+        mypy . --non-interactive
 
     - name: Test with pytest
 
@@ -164,7 +164,9 @@ jobs:
 
       run: |
 
-        pytest -v --cov=backend --cov-report=term-missing
+        # Generate coverage report
+
+        pytest -v --cov=app --cov-report=xml --cov-report=term-missing --cov-fail-under=70
 
     - name: Security audit with bandit
 
@@ -172,7 +174,35 @@ jobs:
 
       run: |
 
-        bandit -r backend/ -f json -o bandit-report.json || true
+        bandit -r . -f json -o bandit-report.json || true
+
+    - name: Upload coverage reports
+
+      uses: codecov/codecov-action@v4
+
+      with:
+
+        file: ./coverage.xml
+
+        fail_ci_if_error: false
+
+    - name: Upload test artifacts
+
+      if: always()
+
+      uses: actions/upload-artifact@v4
+
+      with:
+
+        name: test-results
+
+        path: |
+
+          coverage.xml
+
+          bandit-report.json
+
+          .coverage
 
   build-docker:
 
@@ -214,6 +244,8 @@ jobs:
 
         context: .
 
+        file: ./Dockerfile
+
         push: true
 
         tags: |
@@ -222,9 +254,19 @@ jobs:
 
           ${{ secrets.DOCKERHUB_USERNAME }}/prestamos-backend:${{ github.sha }}
 
+          ${{ secrets.DOCKERHUB_USERNAME }}/prestamos-backend:${{ github.ref_name }}
+
         cache-from: type=gha
 
         cache-to: type=gha,mode=max
+
+    - name: Inspect Docker image
+
+      run: |
+
+        docker run --rm ${{ secrets.DOCKERHUB_USERNAME }}/prestamos-backend:${{ github.sha }} \
+
+          curl -f http://localhost:5000/api/health || exit 1
 
   deploy-staging:
 
@@ -239,6 +281,10 @@ jobs:
 
 
     steps:
+
+    - name: Checkout code
+
+      uses: actions/checkout@v4
 
     - name: Deploy to staging server
 
@@ -260,15 +306,123 @@ jobs:
 
         ssh -i deploy_key -o StrictHostKeyChecking=no $DEPLOY_USER@$DEPLOY_SERVER << 'EOF'
 
-          cd /opt/prestamos-backend
+          set -e  # Exit on any error
+
+
+
+          # Ensure directory exists
+
+          cd /opt/prestamos-backend || { mkdir -p /opt/prestamos-backend && cd /opt/prestamos-backend; }
+
+
+
+          # Backup current deployment
+
+          if [ -f "docker-compose.yml" ]; then
+
+            cp docker-compose.yml docker-compose.yml.backup.$(date +%Y%m%d_%H%M%S)
+
+          fi
+
+
+
+          # Pull latest code
+
+          git fetch origin
+
+          git checkout develop
 
           git pull origin develop
+
+
+
+          # Run database migrations
+
+          docker-compose run --rm backend flask db upgrade
+
+
+
+          # Pull and restart services
 
           docker-compose pull
 
           docker-compose up -d
 
+
+
+          # Cleanup
+
           docker system prune -f
+
+          docker image prune -f
+
+
+
+          # Health check
+
+          sleep 10
+
+          if ! docker-compose ps | grep -q "Up"; then
+
+            echo "❌ Services failed to start"
+
+            docker-compose logs backend
+
+            exit 1
+
+          fi
+
+
+
+          echo "✅ Staging deployment successful"
+
+        EOF
+
+    - name: Post-deployment health check
+
+      env:
+
+        DEPLOY_SERVER: ${{ secrets.STAGING_SERVER }}
+
+        DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+
+        DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+
+      run: |
+
+        echo "$DEPLOY_KEY" > deploy_key
+
+        chmod 600 deploy_key
+
+
+
+        ssh -i deploy_key -o StrictHostKeyChecking=no $DEPLOY_USER@$DEPLOY_SERVER << 'EOF'
+
+          cd /opt/prestamos-backend
+
+          # Wait for services to be ready
+
+          for i in {1..30}; do
+
+            if curl -f http://localhost:5000/api/health >/dev/null 2>&1; then
+
+              echo "✅ Health check passed"
+
+              exit 0
+
+            fi
+
+            echo "Waiting for service... ($i/30)"
+
+            sleep 2
+
+          done
+
+          echo "❌ Health check failed after 60 seconds"
+
+          docker-compose logs backend
+
+          exit 1
 
         EOF
 
@@ -285,6 +439,10 @@ jobs:
 
 
     steps:
+
+    - name: Checkout code
+
+      uses: actions/checkout@v4
 
     - name: Deploy to production server
 
@@ -306,15 +464,123 @@ jobs:
 
         ssh -i deploy_key -o StrictHostKeyChecking=no $DEPLOY_USER@$DEPLOY_SERVER << 'EOF'
 
-          cd /opt/prestamos-backend
+          set -e  # Exit on any error
+
+
+
+          # Ensure directory exists
+
+          cd /opt/prestamos-backend || { mkdir -p /opt/prestamos-backend && cd /opt/prestamos-backend; }
+
+
+
+          # Backup current deployment
+
+          if [ -f "docker-compose.yml" ]; then
+
+            cp docker-compose.yml docker-compose.yml.backup.$(date +%Y%m%d_%H%M%S)
+
+          fi
+
+
+
+          # Pull latest code
+
+          git fetch origin
+
+          git checkout main
 
           git pull origin main
+
+
+
+          # Run database migrations
+
+          docker-compose run --rm backend flask db upgrade
+
+
+
+          # Pull latest images and restart
 
           docker-compose pull
 
           docker-compose up -d
 
+
+
+          # Cleanup old images
+
           docker system prune -f
+
+          docker image prune -f
+
+
+
+          # Health check
+
+          sleep 15
+
+          if ! docker-compose ps | grep -q "Up"; then
+
+            echo "❌ Services failed to start"
+
+            docker-compose logs backend
+
+            exit 1
+
+          fi
+
+
+
+          echo "✅ Production deployment successful"
+
+        EOF
+
+    - name: Post-deployment health check
+
+      env:
+
+        DEPLOY_SERVER: ${{ secrets.PRODUCTION_SERVER }}
+
+        DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+
+        DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+
+      run: |
+
+        echo "$DEPLOY_KEY" > deploy_key
+
+        chmod 600 deploy_key
+
+
+
+        ssh -i deploy_key -o StrictHostKeyChecking=no $DEPLOY_USER@$DEPLOY_SERVER << 'EOF'
+
+          cd /opt/prestamos-backend
+
+          # Wait for services to be ready
+
+          for i in {1..30}; do
+
+            if curl -f http://localhost:5000/api/health >/dev/null 2>&1; then
+
+              echo "✅ Health check passed"
+
+              exit 0
+
+            fi
+
+            echo "Waiting for service... ($i/30)"
+
+            sleep 2
+
+          done
+
+          echo "❌ Health check failed after 60 seconds"
+
+          docker-compose logs backend
+
+          exit 1
 
         EOF
 
@@ -345,3 +611,51 @@ jobs:
         fi
 
         echo "✅ All checks passed - Quality gate passed"
+
+  notify:
+
+    name: Notify Results
+
+    runs-on: ubuntu-latest
+
+    needs: [quality-gate, deploy-staging, deploy-production, build-docker]
+
+    if: always()
+
+
+
+    steps:
+
+    - name: Send notification
+
+      uses: 8398a7/action-slack@v3
+
+      with:
+
+        status: ${{ job.status }}
+
+        webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+        channel: '#deployments'
+
+        text: |
+
+          🚀 **Prestamos Backend CI/CD**
+
+          **Status**: ${{ job.status }}
+
+          **Branch**: ${{ github.ref_name }}
+
+          **Commit**: ${{ github.sha }}
+
+          **Event**: ${{ github.event_name }}
+
+        fields: |
+
+          {title}Job{value}${{ job.status }}{short}true
+
+          {title}Branch{value}${{ github.ref_name }}{short}true
+
+          {title}Repository{value}${{ github.repository }}{short}true
+
+          {title}Commit{value}${{ github.sha }}{short}false
