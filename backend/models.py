@@ -245,13 +245,10 @@ class Transaction(db.Model):
     journal_entry_id = db.Column(Integer, ForeignKey('journal_entry.id'), nullable=False, index=True)
     account_id = db.Column(Integer, ForeignKey('account.id'), nullable=False, index=True)
 
-    # 'type' es una palabra reservada de Python, pero SQLAlchemy la maneja.
-    # Considera renombrarla a 'transaction_type' en el futuro.
     type = db.Column(String(10), nullable=False) # Debit, Credit
     amount = db.Column(Float, nullable=False, default=0.0)
 
-    # La relación 'account' se define en el modelo Account con el backref 'transactions'
-    # account = db.relationship('Account') # Esta línea es redundante si se usa backref='account' en Account
+    account = db.relationship('Account') # Added for easier access from a transaction instance
 
     def __repr__(self):
         return f'<Transaction {self.id} - {self.type} {self.amount}>'
@@ -397,8 +394,7 @@ class ContractTemplate(db.Model):
 
     created_at = db.Column(DateTime, default=func.current_timestamp())
     updated_at = db.Column(DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp())
-
-    # CORRECCIÓN: Se añade la relación que faltaba en una rama
+    
     created_by = db.relationship('User', foreign_keys=[created_by_id], backref='created_contract_templates')
 
     __table_args__ = (UniqueConstraint('name', 'tenant_id', name='_contract_template_tenant_uc'),)
@@ -426,7 +422,6 @@ class GeneratedContract(db.Model):
     created_at = db.Column(DateTime, default=func.current_timestamp())
 
     template = db.relationship('ContractTemplate')
-    # CORRECCIÓN (Fusión): Se usa la versión con foreign_keys y backref explícito
     generated_by = db.relationship('User', foreign_keys=[generated_by_id], backref='generated_contracts_as_generator')
 
     def __repr__(self):
@@ -444,7 +439,6 @@ class Contact(db.Model):
     email = db.Column(String(120), index=True)
     phone = db.Column(String(50))
 
-    # CORRECCIÓN (Fusión): Se mantienen los comentarios
     user_id = db.Column(Integer, ForeignKey('user.id'), nullable=True)
     contact_type = db.Column(String(50), default='Prospecto', index=True) # Prospecto, Cliente
     status = db.Column(String(50), default='Nuevo', index=True) # Nuevo, Contactado, Calificado, etc.
@@ -455,7 +449,6 @@ class Contact(db.Model):
     created_at = db.Column(DateTime, default=func.current_timestamp())
     updated_at = db.Column(DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp())
 
-    # CORRECCIÓN (Fusión): Se añade cascade y la relación 'assigned_to'
     interactions = db.relationship('Interaction', backref='contact', lazy='dynamic', cascade="all, delete-orphan")
     opportunities = db.relationship('Opportunity', backref='contact', lazy='dynamic', cascade="all, delete-orphan")
     assigned_to = db.relationship('User', foreign_keys=[assigned_to_id], backref='assigned_crm_contacts')
@@ -476,7 +469,6 @@ class Interaction(db.Model):
     interaction_date = db.Column(DateTime, default=func.current_timestamp())
 
     user_id = db.Column(Integer, ForeignKey('user.id')) # Usuario que registró la interacción
-    # CORRECCIÓN (Fusión): Se añade la relación 'user'
     user = db.relationship('User', foreign_keys=[user_id], backref='created_interactions')
 
     def __repr__(self):
@@ -490,11 +482,9 @@ class Opportunity(db.Model):
     contact_id = db.Column(Integer, ForeignKey('crm_contact.id'), nullable=False, index=True)
 
     name = db.Column(String(200), nullable=False)
-    # CORRECCIÓN (Fusión): Se mantienen los comentarios
     stage = db.Column(String(50), default='Calificación', index=True) # Calificación, Propuesta, Negociación, Cerrada Ganada, Cerrada Perdida
     amount = db.Column(Float)
 
-    # Podría estar vinculada a un producto de préstamo específico
     loan_product_id = db.Column(Integer, ForeignKey('loan_product.id'), nullable=True)
 
     assigned_to_id = db.Column(Integer, ForeignKey('user.id'))
@@ -503,7 +493,6 @@ class Opportunity(db.Model):
     close_date = db.Column(Date)
     created_at = db.Column(DateTime, default=func.current_timestamp())
 
-    # CORRECCIÓN (Fusión): Se añade la relación 'assigned_to'
     assigned_to = db.relationship('User', foreign_keys=[assigned_to_id], backref='assigned_opportunities')
 
     def __repr__(self):
@@ -517,7 +506,6 @@ class Product(db.Model):
     __tablename__ = 'inventory_product'
 
     id = db.Column(Integer, primary_key=True)
-    # CORRECCIÓN (Fusión): Se quita 'unique=True' de la columna, ya que se maneja por tenant en __table_args__
     sku = db.Column(String(100), nullable=False, index=True) # Se mantiene UniqueConstraint por tenant
     name = db.Column(String(200), nullable=False, index=True)
     description = db.Column(Text)
@@ -525,13 +513,11 @@ class Product(db.Model):
     price = db.Column(Float, nullable=False)
     stock = db.Column(Integer, default=0)
 
-    # CORRECCIÓN (Fusión): Se mantiene el comentario
     min_stock_level = db.Column(Integer, default=0) # Para alertas
 
     tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
     is_active = db.Column(Boolean, default=True)
 
-    # CORRECCIÓN (Fusión): Se añade 'cascade'
     movements = db.relationship('StockMovement', backref='product', lazy='dynamic', cascade="all, delete-orphan")
 
     __table_args__ = (UniqueConstraint('sku', 'tenant_id', name='_product_sku_tenant_uc'),)
@@ -552,11 +538,9 @@ class StockMovement(db.Model):
     notes = db.Column(Text)
 
     tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
-    # CORRECCIÓN (Fusión): Se mantiene el comentario
     user_id = db.Column(Integer, ForeignKey('user.id')) # Usuario que registró el movimiento
 
     created_at = db.Column(DateTime, default=func.current_timestamp())
-    # CORRECCIÓN (Fusión): Se añade la relación 'user'
     user = db.relationship('User', foreign_keys=[user_id], backref='stock_movements')
 
     def __repr__(self):
@@ -573,7 +557,6 @@ class Quote(db.Model):
     contact_id = db.Column(Integer, ForeignKey('crm_contact.id'), nullable=False, index=True)
     opportunity_id = db.Column(Integer, ForeignKey('crm_opportunity.id'), nullable=True, index=True)
 
-    # CORRECCIÓN (Fusión): Se mantiene el comentario
     status = db.Column(String(50), default='Borrador', index=True) # Borrador, Enviada, Aceptada, Rechazada
     total_amount = db.Column(Float)
 
@@ -583,7 +566,6 @@ class Quote(db.Model):
     valid_until = db.Column(Date)
     created_at = db.Column(DateTime, default=func.current_timestamp())
 
-    # CORRECCIÓN (Fusión): Se añaden las relaciones 'items' y 'created_by'
     items = db.relationship('SalesOrderItem', backref='quote', lazy='dynamic', cascade="all, delete-orphan")
     created_by = db.relationship('User', foreign_keys=[created_by_id], backref='created_quotes')
 
@@ -598,7 +580,6 @@ class SalesOrder(db.Model):
     contact_id = db.Column(Integer, ForeignKey('crm_contact.id'), nullable=False, index=True)
     quote_id = db.Column(Integer, ForeignKey('sales_quote.id'), nullable=True, index=True)
 
-    # CORRECCIÓN (Fusión): Se mantiene el comentario
     status = db.Column(String(50), default='Pendiente', index=True) # Pendiente, Confirmada, Enviada, Completada, Cancelada
     total_amount = db.Column(Float)
 
@@ -607,7 +588,6 @@ class SalesOrder(db.Model):
 
     order_date = db.Column(Date, default=date.today)
 
-    # CORRECCIÓN (Fusión): Se añade la relación 'created_by'
     items = db.relationship('SalesOrderItem', backref='sales_order', lazy='dynamic', cascade="all, delete-orphan")
     created_by = db.relationship('User', foreign_keys=[created_by_id], backref='created_sales_orders')
 
@@ -620,7 +600,6 @@ class SalesOrderItem(db.Model):
 
     id = db.Column(Integer, primary_key=True)
 
-    # CORRECCIÓN (Fusión): Se unifica el modelo para que sirva a Quote y SalesOrder
     sales_order_id = db.Column(Integer, ForeignKey('sales_order.id'), nullable=True, index=True)
     quote_id = db.Column(Integer, ForeignKey('sales_quote.id'), nullable=True, index=True)
 
@@ -633,7 +612,6 @@ class SalesOrderItem(db.Model):
 
     product = db.relationship('Product')
 
-    # Validación para asegurar que es item de Quote O SalesOrder, pero no ambos
     __table_args__ = (
         CheckConstraint('(sales_order_id IS NOT NULL AND quote_id IS NULL) OR (sales_order_id IS NULL AND quote_id IS NOT NULL)',
                         name='_sales_item_one_parent_check'),
@@ -672,7 +650,6 @@ class PurchaseOrder(db.Model):
     order_date = db.Column(Date, default=date.today)
     expected_delivery_date = db.Column(Date)
 
-    # CORRECCIÓN (Fusión): Se mantiene el comentario
     status = db.Column(String(50), default='Borrador', index=True) # Borrador, Enviada, Recibida, Cancelada
     total_amount = db.Column(Float)
 
@@ -681,7 +658,6 @@ class PurchaseOrder(db.Model):
 
     items = db.relationship('PurchaseOrderItem', backref='purchase_order', lazy='dynamic', cascade="all, delete-orphan")
     supplier = db.relationship('Supplier')
-    # CORRECCIÓN (Fusión): Se añade la relación 'created_by'
     created_by = db.relationship('User', foreign_keys=[created_by_id], backref='created_purchase_orders')
 
     def __repr__(self):
@@ -690,7 +666,7 @@ class PurchaseOrder(db.Model):
 class PurchaseOrderItem(db.Model):
     """Líneas de una Orden de Compra"""
     __tablename__ = 'purchasing_order_item'
-
+    
     id = db.Column(Integer, primary_key=True)
     purchase_order_id = db.Column(Integer, ForeignKey('purchasing_order.id'), nullable=False, index=True)
     product_id = db.Column(Integer, ForeignKey('inventory_product.id'), nullable=False, index=True)
@@ -724,15 +700,12 @@ class EmailLog(db.Model):
     sent_by_id = db.Column(Integer, ForeignKey('user.id'))
 
     sent_at = db.Column(DateTime, default=func.current_timestamp())
-
-    # CORRECCIÓN (Fusión): Se añade la relación 'sent_by'
     sent_by = db.relationship('User', foreign_keys=[sent_by_id], backref='sent_emails')
 
     def __repr__(self):
         return f'<EmailLog {self.id} to {self.recipient}>'
 
 # --- MODELOS PARA GESTOR DE DOCUMENTOS (LAN-GD2) ---
-# CORRECCIÓN (Fusión): Se utiliza la versión con relaciones explícitas (foreign_keys y backrefs)
 
 class Document(db.Model):
     """Representa un documento lógico que puede tener múltiples versiones."""
@@ -745,7 +718,7 @@ class Document(db.Model):
     tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
     created_by_id = db.Column(Integer, ForeignKey('user.id'), nullable=False)
 
-    latest_version_id = db.Column(Integer, nullable=True) # Referencia a la versión más reciente
+    latest_version_id = db.Column(Integer, nullable=True)
 
     created_at = db.Column(DateTime, default=func.current_timestamp())
     updated_at = db.Column(DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp())
@@ -777,7 +750,6 @@ class DocumentVersion(db.Model):
 
 
 # --- MODELOS PARA MENSAJERÍA CORPORATIVA (LAN-C8T) ---
-# CORRECCIÓN (Fusión): Se añaden estos modelos que solo existían en una rama
 
 channel_members = db.Table('messaging_channel_members',
     db.Column('channel_id', Integer, ForeignKey('messaging_channel.id'), primary_key=True),
@@ -822,13 +794,13 @@ class Message(db.Model):
     tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
     created_at = db.Column(DateTime, default=func.current_timestamp(), index=True)
 
-    author = db.relationship('User', foreign_keys=[user_id], backref='sent_messages') # 'backref' simple para evitar conflictos
+    author = db.relationship('User', foreign_keys=[user_id], backref='sent_messages')
 
     def __repr__(self):
         return f'<Message {self.id} in Channel {self.channel_id}>'
 
 
-# --- MODELOS DE MÓDULOS EXTENDIDOS (MailingList, AuditLog, NotificationTemplate) ---
+# --- MODELOS DE MÓDULOS EXTENDIDOS (MailingList, AuditLog, etc.) ---
 
 class MailingList(db.Model):
     """Lista de correos para campañas de marketing"""
@@ -840,9 +812,6 @@ class MailingList(db.Model):
 
     def __repr__(self):
         return f'<MailingList {self.name}>'
-
-# --- MODELOS PARA FIRMAR (LAN-SGN3) ---
-# CORRECCIÓN: Se añaden estos modelos que solo existían en la rama 'feature-LAN-F2C...'
 
 class SignableTemplate(db.Model):
     """Plantillas de documentos comerciales para firma (propuestas, etc.)."""
@@ -888,14 +857,11 @@ class SignatureRequest(db.Model):
     sent_at = db.Column(DateTime)
     signed_at = db.Column(DateTime)
 
-    template = db.relationship('SignableTemplate', backref='signature_requests')
-    created_by = db.relationship('User', foreign_keys=[created_by_id], backref='created_signature_requests') # Corrected backref name
+    template = db.relationship('SignableTemplate')
+    created_by = db.relationship('User', foreign_keys=[created_by_id], backref='created_signature_requests')
 
     def __repr__(self):
         return f'<SignatureRequest {self.id} for {self.signer_email}>'
-
-# --- MODELOS PARA FORMULARIOS (LAN-FRM5) ---
-# Added from feature-LAN-F2C branch
 
 class Form(db.Model):
     """Define la estructura de un formulario web."""
@@ -904,12 +870,9 @@ class Form(db.Model):
     id = db.Column(Integer, primary_key=True)
     name = db.Column(String(150), nullable=False)
     description = db.Column(Text)
-
-    # JSONB para almacenar la definición de los campos del formulario
-    # Ejemplo: [{"name": "email", "label": "Correo Electrónico", "type": "email", "required": true}]
+    
     fields = db.Column(JSONB, nullable=False, default=list)
 
-    # Token para acceso público y único
     public_token = db.Column(String(128), unique=True, nullable=False, index=True)
 
     tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
@@ -917,7 +880,7 @@ class Form(db.Model):
 
     created_at = db.Column(DateTime, default=func.current_timestamp())
     submissions = db.relationship('FormSubmission', backref='form', lazy='dynamic', cascade="all, delete-orphan")
-    created_by = db.relationship('User', foreign_keys=[created_by_id], backref='created_forms') # Added relationship
+    created_by = db.relationship('User', foreign_keys=[created_by_id], backref='created_forms')
 
     __table_args__ = (UniqueConstraint('name', 'tenant_id', name='_form_name_tenant_uc'),)
 
@@ -931,8 +894,6 @@ class FormSubmission(db.Model):
     id = db.Column(Integer, primary_key=True)
     form_id = db.Column(Integer, ForeignKey('form.id'), nullable=False, index=True)
 
-    # JSONB para almacenar los datos enviados
-    # Ejemplo: {"email": "test@example.com", "nombre": "Juan Pérez"}
     data = db.Column(JSONB, nullable=False)
 
     tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
@@ -941,6 +902,55 @@ class FormSubmission(db.Model):
     def __repr__(self):
         return f'<FormSubmission {self.id} for Form {self.form_id}>'
 
+class Project(db.Model):
+    """Define un proyecto con presupuesto y cronograma."""
+    __tablename__ = 'project'
+
+    id = db.Column(Integer, primary_key=True)
+    name = db.Column(String(200), nullable=False, index=True)
+    description = db.Column(Text)
+
+    budget = db.Column(Float, default=0.0)
+    start_date = db.Column(Date)
+    end_date = db.Column(Date)
+
+    status = db.Column(String(50), default='Planificado', index=True) # Planificado, En Progreso, Completado, Cancelado
+
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    manager_id = db.Column(Integer, ForeignKey('user.id')) # Project Manager
+
+    created_at = db.Column(DateTime, default=func.current_timestamp())
+    tasks = db.relationship('Task', backref='project', lazy='dynamic', cascade="all, delete-orphan")
+    manager = db.relationship('User', foreign_keys=[manager_id], backref='managed_projects') # Added relationship
+
+    __table_args__ = (UniqueConstraint('name', 'tenant_id', name='_project_name_tenant_uc'),)
+
+    def __repr__(self):
+        return f'<Project {self.name}>'
+
+class Task(db.Model):
+    """Tareas individuales dentro de un proyecto."""
+    __tablename__ = 'project_task'
+
+    id = db.Column(Integer, primary_key=True)
+    project_id = db.Column(Integer, ForeignKey('project.id'), nullable=False, index=True)
+
+    title = db.Column(String(200), nullable=False)
+    description = db.Column(Text)
+
+    status = db.Column(String(50), default='Pendiente', index=True) # Pendiente, En Progreso, Completada
+    due_date = db.Column(Date)
+
+    priority = db.Column(String(50), default='Medium') # Low, Medium, High
+
+    assigned_to_id = db.Column(Integer, ForeignKey('user.id'), nullable=True)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+    created_at = db.Column(DateTime, default=func.current_timestamp())
+    assigned_to = db.relationship('User', foreign_keys=[assigned_to_id], backref='assigned_tasks') # Corrected relationship
+
+    def __repr__(self):
+        return f'<Task {self.title}>'
 
 class AuditLog(db.Model):
     """Registro de auditoría"""
