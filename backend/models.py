@@ -1,7 +1,3 @@
-"""
-MODELOS DE BASE DE DATOS - SISTEMA INTEGRADO LAZO ARCE (FUSIONADO FINAL)
-Versión: 2.1 | Multi-tenant | Integración de Firma Electrónica, Payroll y Módulos LAN
-"""
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, date
@@ -1126,6 +1122,55 @@ class Grade(db.Model):
     grade_name = db.Column(String(100))
     score = db.Column(Float, nullable=False)
     tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+class Vehicle(db.Model):
+    """Vehículos de la flota."""
+    __tablename__ = 'logistics_vehicle'
+    id = db.Column(Integer, primary_key=True)
+    plate = db.Column(String(20), unique=True, nullable=False)
+    brand = db.Column(String(50))
+    model = db.Column(String(50))
+    year = db.Column(Integer)
+    status = db.Column(String(50), default='Disponible')
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+class Driver(db.Model):
+    """Conductores."""
+    __tablename__ = 'logistics_driver'
+    id = db.Column(Integer, primary_key=True)
+    user_id = db.Column(Integer, ForeignKey('user.id'), unique=True, nullable=False)
+    license_number = db.Column(String(50), unique=True, nullable=False)
+    is_available = db.Column(Boolean, default=True)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    user = db.relationship('User')
+
+class Route(db.Model):
+    """Rutas de entrega."""
+    __tablename__ = 'logistics_route'
+    id = db.Column(Integer, primary_key=True)
+    name = db.Column(String(200), nullable=False)
+    driver_id = db.Column(Integer, ForeignKey('logistics_driver.id'))
+    vehicle_id = db.Column(Integer, ForeignKey('logistics_vehicle.id'))
+    start_time = db.Column(DateTime)
+    end_time = db.Column(DateTime)
+    status = db.Column(String(50), default='Planificada')
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    driver = db.relationship('Driver')
+    vehicle = db.relationship('Vehicle')
+    deliveries = db.relationship('Delivery', backref='route', lazy='dynamic')
+
+class Delivery(db.Model):
+    """Entregas individuales en una ruta."""
+    __tablename__ = 'logistics_delivery'
+    id = db.Column(Integer, primary_key=True)
+    route_id = db.Column(Integer, ForeignKey('logistics_route.id'), nullable=False)
+    sales_order_id = db.Column(Integer, ForeignKey('sales_order.id'))
+    address = db.Column(Text, nullable=False)
+    status = db.Column(String(50), default='Pendiente')
+    delivery_time = db.Column(DateTime)
+    signature_data = db.Column(Text)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    sales_order = db.relationship('SalesOrder')
 
 class AuditLog(db.Model):
     """Registro de auditoría"""

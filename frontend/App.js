@@ -1,3 +1,5 @@
+import React from 'react';
+
 function App() {
     const [token, setToken] = React.useState(localStorage.getItem('jwt_token'));
     const [userRoles, setUserRoles] = React.useState([]);
@@ -10,6 +12,8 @@ function App() {
     const [hrView, setHrView] = React.useState('employees');
     const [crmView, setCrmView] = React.useState('leads');
     const [marketingView, setMarketingView] = React.useState('campaigns');
+    const API_BASE_URL = 'http://localhost:5000'; // Adjust as needed
+
     const fetchProfile = async (currentToken) => {
         if (!currentToken) {
             setUserRoles([]);
@@ -35,6 +39,7 @@ function App() {
             setLoadingProfile(false);
         }
     };
+
     React.useEffect(() => {
         const currentToken = localStorage.getItem('jwt_token');
         if (currentToken) {
@@ -46,12 +51,14 @@ function App() {
             setLoadingProfile(false);
         }
     }, []);
+
     const handleLogin = (newToken) => {
         localStorage.setItem('jwt_token', newToken);
         setToken(newToken);
         fetchProfile(newToken);
         setView('dashboard');
     };
+
     const handleLogout = () => {
         localStorage.removeItem('jwt_token');
         setToken(null);
@@ -61,6 +68,7 @@ function App() {
         setViewingPaySlipsForLogId(null);
         setManagingPaymentsForApp(null);
     };
+
     const AccountingPortal = () => (
         <div>
             <nav>
@@ -78,6 +86,7 @@ function App() {
             {accountingView === 'income_statement' && <IncomeStatementView token={token} />}
         </div>
     );
+
     const HRPortal = () => {
         if (viewingPaySlipsForLogId) return <PaySlipsView token={token} payrollLogId={viewingPaySlipsForLogId} onBack={() => setViewingPaySlipsForLogId(null)} />;
         return (
@@ -92,6 +101,7 @@ function App() {
             </div>
         );
     };
+
     const CRMPortal = () => (
         <div>
             <nav>
@@ -103,6 +113,7 @@ function App() {
             {crmView === 'opportunities' && <OpportunityPipelineView token={token} />}
         </div>
     );
+
     const MarketingPortal = () => (
         <div>
             <nav>
@@ -114,6 +125,7 @@ function App() {
             {marketingView === 'campaigns' && <CampaignView token={token} />}
         </div>
     );
+
     const renderView = () => {
         if (loadingProfile) return <p>Cargando...</p>;
         if (!token || view === 'auth') return <Auth onLogin={handleLogin} />;
@@ -132,6 +144,11 @@ function App() {
             case 'accounting': return (isAdmin || isContador) ? <AccountingPortal /> : <p>Acceso no autorizado.</p>;
             case 'cash_and_banks': return (isAdmin || isContador) ? <CashAndBanksView token={token} /> : <p>Acceso no autorizado.</p>;
             case 'tax': return (isAdmin || isContador) ? <TaxView token={token} /> : <p>Acceso no autorizado.</p>;
+            case 'materials': return isAdmin ? <MaterialManagementView token={token} /> : <p>Acceso no autorizado.</p>;
+            case 'construction': return isAdmin ? <ConstructionView token={token} /> : <p>Acceso no autorizado.</p>;
+            case 'health': return isAdmin ? <HealthView token={token} /> : <p>Acceso no autorizado.</p>;
+            case 'education': return isAdmin ? <EducationView token={token} /> : <p>Acceso no autorizado.</p>;
+            case 'logistics': return isAdmin ? <LogisticsView token={token} /> : <p>Acceso no autorizado.</p>;
             case 'hr': return isAdmin ? <HRPortal /> : <p>Acceso no autorizado.</p>;
             case 'crm': return (isAdmin || isEjecutivo) ? <CRMPortal /> : <p>Acceso no autorizado.</p>;
             case 'collections': return (isAdmin || isCobrador) ? <PortfolioView token={token} /> : <p>Acceso no autorizado.</p>;
@@ -144,6 +161,7 @@ function App() {
             default: return isAdmin ? <AdminDashboard token={token} onManagePayments={setManagingPaymentsForApp} /> : <MyApplications token={token} onViewContract={setViewingContractId} />;
         }
     };
+
     const NavigationView = () => {
         if (loadingProfile || !token || viewingContractId || viewingPaySlipsForLogId || managingPaymentsForApp) return null;
         const isAdmin = userRoles.includes('Admin') || userRoles.includes('Administrador General');
@@ -164,6 +182,11 @@ function App() {
                 {(isAdmin || isContador) && <button onClick={() => setView('accounting')}>Contabilidad</button>}
                 {(isAdmin || isContador) && <button onClick={() => setView('cash_and_banks')}>Caja y Bancos</button>}
                 {(isAdmin || isContador) && <button onClick={() => setView('tax')}>Impuestos</button>}
+                {isAdmin && <button onClick={() => setView('materials')}>Recursos Materiales</button>}
+                {isAdmin && <button onClick={() => setView('construction')}>Obras y Construcción</button>}
+                {isAdmin && <button onClick={() => setView('health')}>Salud</button>}
+                {isAdmin && <button onClick={() => setView('education')}>Educación</button>}
+                {isAdmin && <button onClick={() => setView('logistics')}>Logística</button>}
                 {isAdmin && <button onClick={() => setView('hr')}>RRHH</button>}
                 {isAdmin && (
                     <div style={{ border: '1px solid grey', padding: '5px', marginTop: '5px' }}>
@@ -178,6 +201,7 @@ function App() {
             </nav>
         );
     };
+
     return (
         <div>
             <h1>LAZOARCE UBMS | Universal Business Management System</h1>
@@ -187,3 +211,5 @@ function App() {
         </div>
     );
 }
+
+export default App;
