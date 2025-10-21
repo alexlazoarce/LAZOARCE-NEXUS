@@ -3,16 +3,13 @@ function App() {
     const [userRoles, setUserRoles] = React.useState([]);
     const [view, setView] = React.useState('auth');
     const [loadingProfile, setLoadingProfile] = React.useState(true);
-
     const [viewingContractId, setViewingContractId] = React.useState(null);
     const [viewingPaySlipsForLogId, setViewingPaySlipsForLogId] = React.useState(null);
     const [managingPaymentsForApp, setManagingPaymentsForApp] = React.useState(null);
-
     const [accountingView, setAccountingView] = React.useState('journal');
     const [hrView, setHrView] = React.useState('employees');
     const [crmView, setCrmView] = React.useState('leads');
     const [marketingView, setMarketingView] = React.useState('campaigns');
-
     const fetchProfile = async (currentToken) => {
         if (!currentToken) {
             setUserRoles([]);
@@ -24,14 +21,20 @@ function App() {
             const response = await fetch(`${API_BASE_URL}/api/profile`, {
                 headers: { 'Authorization': `Bearer ${currentToken}` }
             });
-            if (response.status === 401) { handleLogout(); return; }
+            if (response.status === 401) {
+                handleLogout();
+                return;
+            }
             if (!response.ok) throw new Error('Error al cargar perfil de usuario.');
             const data = await response.json();
             setUserRoles(data.roles || []);
-        } catch (error) { console.error(error.message); setUserRoles([]); }
-        finally { setLoadingProfile(false); }
+        } catch (error) {
+            console.error(error.message);
+            setUserRoles([]);
+        } finally {
+            setLoadingProfile(false);
+        }
     };
-
     React.useEffect(() => {
         const currentToken = localStorage.getItem('jwt_token');
         if (currentToken) {
@@ -43,14 +46,12 @@ function App() {
             setLoadingProfile(false);
         }
     }, []);
-
     const handleLogin = (newToken) => {
         localStorage.setItem('jwt_token', newToken);
         setToken(newToken);
         fetchProfile(newToken);
         setView('dashboard');
     };
-
     const handleLogout = () => {
         localStorage.removeItem('jwt_token');
         setToken(null);
@@ -60,10 +61,16 @@ function App() {
         setViewingPaySlipsForLogId(null);
         setManagingPaymentsForApp(null);
     };
-
     const AccountingPortal = () => (
         <div>
-            <nav><button onClick={() => setAccountingView('journal')}>Libro Diario</button><button onClick={() => setAccountingView('ledger')}>Libro Mayor</button><button onClick={() => setAccountingView('trial_balance')}>Balanza</button><button onClick={() => setAccountingView('balance_sheet')}>Balance General</button><button onClick={() => setAccountingView('income_statement')}>Estado de Resultados</button></nav><hr />
+            <nav>
+                <button onClick={() => setAccountingView('journal')}>Libro Diario</button>
+                <button onClick={() => setAccountingView('ledger')}>Libro Mayor</button>
+                <button onClick={() => setAccountingView('trial_balance')}>Balanza</button>
+                <button onClick={() => setAccountingView('balance_sheet')}>Balance General</button>
+                <button onClick={() => setAccountingView('income_statement')}>Estado de Resultados</button>
+            </nav>
+            <hr />
             {accountingView === 'journal' && <JournalView token={token} />}
             {accountingView === 'ledger' && <GeneralLedgerView token={token} />}
             {accountingView === 'trial_balance' && <TrialBalanceView token={token} />}
@@ -71,47 +78,52 @@ function App() {
             {accountingView === 'income_statement' && <IncomeStatementView token={token} />}
         </div>
     );
-
     const HRPortal = () => {
         if (viewingPaySlipsForLogId) return <PaySlipsView token={token} payrollLogId={viewingPaySlipsForLogId} onBack={() => setViewingPaySlipsForLogId(null)} />;
         return (
             <div>
-                <nav><button onClick={() => setHrView('employees')}>Gestión de Empleados</button><button onClick={() => setHrView('payroll')}>Procesar Nómina</button></nav><hr/>
+                <nav>
+                    <button onClick={() => setHrView('employees')}>Gestión de Empleados</button>
+                    <button onClick={() => setHrView('payroll')}>Procesar Nómina</button>
+                </nav>
+                <hr />
                 {hrView === 'employees' && <EmployeeManagement token={token} />}
                 {hrView === 'payroll' && <PayrollView token={token} onViewPaySlips={setViewingPaySlipsForLogId} />}
             </div>
         );
     };
-
     const CRMPortal = () => (
         <div>
-            <nav><button onClick={() => setCrmView('leads')}>Leads</button><button onClick={() => setCrmView('opportunities')}>Oportunidades</button></nav><hr/>
+            <nav>
+                <button onClick={() => setCrmView('leads')}>Leads</button>
+                <button onClick={() => setCrmView('opportunities')}>Oportunidades</button>
+            </nav>
+            <hr />
             {crmView === 'leads' && <LeadManagementView token={token} />}
             {crmView === 'opportunities' && <OpportunityPipelineView token={token} />}
         </div>
     );
-
     const MarketingPortal = () => (
         <div>
-            <nav><button onClick={() => setMarketingView('lists')}>Listas de Correo</button><button onClick={() => setMarketingView('campaigns')}>Campañas</button></nav><hr/>
+            <nav>
+                <button onClick={() => setMarketingView('lists')}>Listas de Correo</button>
+                <button onClick={() => setMarketingView('campaigns')}>Campañas</button>
+            </nav>
+            <hr />
             {marketingView === 'lists' && <MailingListView token={token} />}
             {marketingView === 'campaigns' && <CampaignView token={token} />}
         </div>
     );
-
     const renderView = () => {
         if (loadingProfile) return <p>Cargando...</p>;
         if (!token || view === 'auth') return <Auth onLogin={handleLogin} />;
-
         if (viewingContractId) return <ContractView token={token} applicationId={viewingContractId} onBack={() => setViewingContractId(null)} />;
         if (managingPaymentsForApp) return <PaymentView token={token} application={managingPaymentsForApp} onBack={() => setManagingPaymentsForApp(null)} />;
-
-        const isAdmin = userRoles.includes('Admin');
+        const isAdmin = userRoles.includes('Admin') || userRoles.includes('Administrador General');
         const isContador = userRoles.includes('Contador');
         const isEjecutivo = userRoles.includes('Ejecutivo de Crédito');
         const isCobrador = userRoles.includes('Cobrador');
-        const isSupport = userRoles.includes('Soporte'); // Future role
-
+        const isSupport = userRoles.includes('Soporte');
         switch (view) {
             case 'dashboard': return isAdmin ? <AdminDashboard token={token} onManagePayments={setManagingPaymentsForApp} /> : <MyApplications token={token} onViewContract={setViewingContractId} />;
             case 'products': return <LoanProducts token={token} />;
@@ -120,10 +132,6 @@ function App() {
             case 'accounting': return (isAdmin || isContador) ? <AccountingPortal /> : <p>Acceso no autorizado.</p>;
             case 'cash_and_banks': return (isAdmin || isContador) ? <CashAndBanksView token={token} /> : <p>Acceso no autorizado.</p>;
             case 'tax': return (isAdmin || isContador) ? <TaxView token={token} /> : <p>Acceso no autorizado.</p>;
-            case 'materials': return isAdmin ? <MaterialManagementView token={token} /> : <p>Acceso no autorizado.</p>;
-            case 'construction': return isAdmin ? <ConstructionView token={token} /> : <p>Acceso no autorizado.</p>;
-            case 'health': return isAdmin ? <HealthView token={token} /> : <p>Acceso no autorizado.</p>;
-            case 'education': return isAdmin ? <EducationView token={token} /> : <p>Acceso no autorizado.</p>;
             case 'hr': return isAdmin ? <HRPortal /> : <p>Acceso no autorizado.</p>;
             case 'crm': return (isAdmin || isEjecutivo) ? <CRMPortal /> : <p>Acceso no autorizado.</p>;
             case 'collections': return (isAdmin || isCobrador) ? <PortfolioView token={token} /> : <p>Acceso no autorizado.</p>;
@@ -136,15 +144,13 @@ function App() {
             default: return isAdmin ? <AdminDashboard token={token} onManagePayments={setManagingPaymentsForApp} /> : <MyApplications token={token} onViewContract={setViewingContractId} />;
         }
     };
-
     const NavigationView = () => {
         if (loadingProfile || !token || viewingContractId || viewingPaySlipsForLogId || managingPaymentsForApp) return null;
-        const isAdmin = userRoles.includes('Admin');
+        const isAdmin = userRoles.includes('Admin') || userRoles.includes('Administrador General');
         const isContador = userRoles.includes('Contador');
         const isEjecutivo = userRoles.includes('Ejecutivo de Crédito');
         const isCobrador = userRoles.includes('Cobrador');
         const isSupport = userRoles.includes('Soporte');
-
         return (
             <nav>
                 <button onClick={() => setView('dashboard')}>{isAdmin ? 'Panel de Admin' : 'Mis Solicitudes'}</button>
@@ -158,13 +164,9 @@ function App() {
                 {(isAdmin || isContador) && <button onClick={() => setView('accounting')}>Contabilidad</button>}
                 {(isAdmin || isContador) && <button onClick={() => setView('cash_and_banks')}>Caja y Bancos</button>}
                 {(isAdmin || isContador) && <button onClick={() => setView('tax')}>Impuestos</button>}
-                {isAdmin && <button onClick={() => setView('materials')}>Recursos Materiales</button>}
-                {isAdmin && <button onClick={() => setView('construction')}>Obras y Construcción</button>}
-                {isAdmin && <button onClick={() => setView('health')}>Salud</button>}
-                {isAdmin && <button onClick={() => setView('education')}>Educación</button>}
                 {isAdmin && <button onClick={() => setView('hr')}>RRHH</button>}
                 {isAdmin && (
-                    <div style={{border: '1px solid grey', padding: '5px', marginTop: '5px'}}>
+                    <div style={{ border: '1px solid grey', padding: '5px', marginTop: '5px' }}>
                         <strong>Configuración:</strong>
                         <button onClick={() => setView('templates')}>Plantillas</button>
                         <button onClick={() => setView('audit')}>Auditoría</button>
@@ -176,7 +178,6 @@ function App() {
             </nav>
         );
     };
-
     return (
         <div>
             <h1>LAZOARCE UBMS | Universal Business Management System</h1>
