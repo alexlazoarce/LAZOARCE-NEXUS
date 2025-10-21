@@ -1,71 +1,57 @@
 name: prestamos-backend
 
 channels:
-
   - conda-forge
-
   - defaults
 
 dependencies:
-
   # === PYTHON CORE ===
-
   - python=3.10
-
   - pip
 
   # === WEB FRAMEWORK ===
-
   - flask=2.3.*
-
   - flask-cors=4.0.*
-
   - flask-jwt-extended=4.5.*
-
   - flask-migrate=4.0.*
-
   - flask-restful=0.3.*
-
   - flask-sqlalchemy=3.0.*
 
   # === DATABASE ===
-
   - sqlalchemy=2.0.*
-
   - alembic=1.12.*
-
   - psycopg2
-
   - pymysql
 
   # === DATA & UTILITIES ===
-
   - pandas=2.1.*
-
   - python-dateutil=2.8.*
-
   - python-dotenv=1.0.*
+  - werkzeug=2.3.* # Se mantiene la versión 2.3 de werkzeug del HEAD si el framework lo requiere
 
   # === PDF GENERATION ===
-
   - fpdf2=2.7.*
-
   - xhtml2pdf=0.15.*
 
   # === DEVELOPMENT & TESTING ===
-
   - pytest=7.4.*
-
   - pytest-cov=4.1.*
-
   - flake8=6.1.*
-
   - black=23.10.*
-
   - isort=5.12.*
-
   - mypy=1.6.*
 
   # === PRODUCTION ===
-
   - gunicorn=21.2.*
+  
+  # Dependencias específicas de pip (si aún se necesitan)
+  - pip:
+      # Se asume que las dependencias principales están cubiertas por Conda,
+      # pero si hay paquetes específicos del HEAD que no están en Conda, se añaden aquí:
+      # - flask==2.3.3 # Ya cubierto por flask=2.3.*
+      # - flask-sqlalchemy==3.0.5 # Ya cubierto por flask-sqlalchemy=3.0.*
+      # - flask-jwt-extended==4.5.3 # Ya cubierto por flask-jwt-extended=4.5.*
+      # - flask-cors==4.0.0 # Ya cubierto por flask-cors=4.0.*
+      # - python-dotenv==1.0.0 # Ya cubierto por python-dotenv=1.0.*
+      # - werkzeug==2.3.7 # Ya cubierto por werkzeug=2.3.*
+      - # Mantener vacío si no hay dependencias adicionales de pip

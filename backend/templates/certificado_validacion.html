@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Certificado de Validación - GRUPO LAZO ARCE</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 30px; }
+        .header { text-align: center; border-bottom: 3px solid #1a365d; padding-bottom: 20px; }
+        .empresa { color: #1a365d; font-size: 20px; font-weight: bold; }
+        .seccion { margin: 25px 0; padding: 15px; border: 1px solid #ddd; }
+        .datos-traza { background: #f9f9f9; padding: 15px; }
+        .sello { text-align: center; margin-top: 30px; color: #059669; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="empresa">GRUPO LAZO ARCE S.A.S. DE C.V.</div>
+        <div>NIT: 0524-150825-101-2 | NRC: 369047-1</div>
+        <h2>CERTIFICADO DE VALIDACIÓN DE FIRMA ELECTRÓNICA</h2>
+    </div>
+
+    <div class="seccion">
+        <h3>📄 INFORMACIÓN DEL DOCUMENTO</h3>
+        <p><strong>Certificado ID:</strong> {certificado_id}</p>
+        <p><strong>Documento ID:</strong> {documento_id}</p>
+        <p><strong>Hash del Documento:</strong> {hash_documento}</p>
+        <p><strong>Fecha de Firma:</strong> {fecha_firma}</p>
+    </div>
+
+    <div class="seccion">
+        <h3>👤 INFORMACIÓN DEL FIRMANTE</h3>
+        <p><strong>Nombre:</strong> {cliente_nombre}</p>
+        <p><strong>DUI:</strong> {cliente_dui}</p>
+        <p><strong>Email:</strong> {cliente_email}</p>
+    </div>
+
+    <div class="seccion datos-traza">
+        <h3>🔍 DATOS DE TRAZABILIDAD</h3>
+        <p><strong>Dirección IP:</strong> {ip_cliente}</p>
+        <p><strong>Ubicación Aproximada:</strong> {ubicacion_aprox}</p>
+        <p><strong>Dispositivo:</strong> {user_agent}</p>
+        <p><strong>Timestamp Servidor:</strong> {timestamp_servidor}</p>
+    </div>
+
+    <div class="seccion">
+        <h3>🔐 VALIDACIÓN BIOMÉTRICA</h3>
+        <p><strong>Tipo de Biometría:</strong> {tipo_biometria}</p>
+        <p><strong>Score de Confianza:</strong> {score_confianza}%</p>
+        <p><strong>Método de Validación:</strong> {metodo_validacion}</p>
+        <p><strong>Hash Biométrico:</strong> {hash_biometrico}</p>
+        <p><strong>ID Dispositivo:</strong> {dispositivo_id}</p>
+    </div>
+
+    <div class="seccion">
+        <h3>✅ RESULTADO DE VALIDACIÓN</h3>
+        <p><strong>Estado:</strong> <span style="color: green; font-weight: bold;">VÁLIDO</span></p>
+        <p><strong>Validez Legal:</strong> Conforme a la Ley de Firma Electrónica de El Salvador</p>
+        <p><strong>Integridad Documento:</strong> Verificada ✓</p>
+        <p><strong>Identidad Firmante:</strong> Confirmada ✓</p>
+    </div>
+
+    <div class="sello">
+        <p>_________________________</p>
+        <p><strong>SELLO ELECTRÓNICO</strong></p>
+        <p>GRUPO LAZO ARCE S.A.S. DE C.V.</p>
+        <p>Timestamp: {timestamp_sello}</p>
+    </div>
+</body>
+</html>

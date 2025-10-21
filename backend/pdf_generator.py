@@ -1,4 +1,24 @@
 from fpdf import FPDF
+from io import BytesIO
+from xhtml2pdf import pisa
+
+def convert_html_to_pdf(html_content):
+    """
+    Convierte un string de contenido HTML a un PDF en memoria.
+    """
+    pdf_buffer = BytesIO()
+    pisa_status = pisa.CreatePDF(
+        BytesIO(html_content.encode("UTF-8")), # El HTML de entrada
+        dest=pdf_buffer,                      # El buffer de salida
+        encoding='UTF-8'
+    )
+
+    if pisa_status.err:
+        print(f"Error al convertir HTML a PDF: {pisa_status.err}")
+        return None
+
+    pdf_buffer.seek(0)
+    return pdf_buffer.getvalue()
 
 class PDF(FPDF):
     def header(self):
