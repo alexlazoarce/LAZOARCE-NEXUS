@@ -353,7 +353,7 @@ class FirmaElectronica(db.Model):
     __tablename__ = 'firma_electronica'
     
     id = db.Column(db.Integer, primary_key=True)
-    firma_id = db.Column(db.String(50), unique=True, nullable=False)
+    firma_id = db.Column(String(50), unique=True, nullable=False)
     documento_id = db.Column(String(50), nullable=False)
     cliente_dui = db.Column(String(12), nullable=False)
     hash_documento = db.Column(String(64), nullable=False)

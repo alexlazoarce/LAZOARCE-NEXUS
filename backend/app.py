@@ -31,7 +31,7 @@ try:
     # Servicios base
     from .loan_calculator import calcular_prestamo_completo
     from .pdf_generator import create_contract_pdf, convert_html_to_pdf
-    from .accounting_service import create_journal_entry
+    from .accounting_service import create_journal_entry, get_balance_sheet, get_income_statement # Añadidos servicios de reportes
     from .firma_service import (
         validacion_identidad_estricta,
         capturar_datos_biometricos,
@@ -61,6 +61,9 @@ try:
         def create_supplier(*args, **kwargs): return {'id': 1}
         def create_purchase_order(*args, **kwargs): return {'id': 1}
         def receive_purchase_order(*args, **kwargs): return {'id': 1}
+        # Mocks para servicios de reportes contables
+        def get_balance_sheet(tenant_id): return {"assets": 10000.0, "liabilities": 5000.0} 
+        def get_income_statement(tenant_id): return {"revenues": 5000.0, "expenses": 2000.0}
     
     # Reasignación para los mocks si la importación inicial fue un placeholder
     audit_service = audit_service if isinstance(audit_service, object) and hasattr(audit_service, 'log_action') else MockService()
@@ -90,6 +93,8 @@ except ImportError as e:
         def create_supplier(*args, **kwargs): return {'id': 1}
         def create_purchase_order(*args, **kwargs): return {'id': 1}
         def receive_purchase_order(*args, **kwargs): return {'id': 1}
+        def get_balance_sheet(tenant_id): return {"assets": 10000.0, "liabilities": 5000.0}
+        def get_income_statement(tenant_id): return {"revenues": 5000.0, "expenses": 2000.0}
     
     calcular_prestamo_completo = create_journal_entry = validacion_identidad_estricta = capturar_datos_biometricos = mock_func
     generar_contrato_integracion = lambda data: 'CONTRATO-MOCK-123'
@@ -154,7 +159,9 @@ def create_app(config_object=None, testing_config=None):
                 'crm_service': crm_service,
                 'inventory_service': inventory_service,
                 'sales_service': sales_service,
-                'purchasing_service': purchasing_service
+                'purchasing_service': purchasing_service,
+                # Servicios de contabilidad deben usar la función importada directamente
+                'accounting_service': MockService() 
             }
             
         except ImportError as e:
@@ -169,7 +176,7 @@ def create_app(config_object=None, testing_config=None):
                 def get_or_404(self, id): return None
             
             Role = User = LoanProduct = LoanApplication = Account = Transaction = JournalEntry = Cliente = ContratoIntegracion = ProductoCredito = Empleado = Planilla = ClientProfile = Tenant = AuditLog = Payment = NotificationTemplate = Employee = ContractTemplate = GeneratedContract = Contact = Interaction = Opportunity = Product = StockMovement = Quote = SalesOrder = SalesOrderItem = Supplier = PurchaseOrder = PurchaseOrderItem = MockModel
-            app.services = {'audit_service': lambda: None, 'contract_service': lambda: None, 'crm_service': lambda: None, 'inventory_service': lambda: None, 'sales_service': lambda: None, 'purchasing_service': lambda: None}
+            app.services = {'audit_service': lambda: None, 'contract_service': lambda: None, 'crm_service': lambda: None, 'inventory_service': lambda: None, 'sales_service': lambda: None, 'purchasing_service': lambda: None, 'accounting_service': MockService()}
             
         app.models = {
             'Role': Role, 'User': User, 'LoanProduct': LoanProduct, 'LoanApplication': LoanApplication, 
@@ -491,6 +498,30 @@ def create_app(config_object=None, testing_config=None):
         data = request.get_json()
         app.services['purchasing_service'].receive_purchase_order(order_id, data, g.current_user.id)
         return jsonify({"message": f"Ruta para registrar la recepción de la orden {order_id}."}), 200
+        
+    ## RUTAS PARA REPORTES CONTABLES (LAN-BKS1)
+    @app.route('/api/reports/balance-sheet', methods=['GET'])
+    @jwt_required()
+    @role_required(['Contador', 'Administrador General'])
+    def get_balance_sheet_report():
+        # Asumimos que Tenant está cargado en g.current_user.tenant_id
+        tenant_id = g.current_user.tenant_id if hasattr(g.current_user, 'tenant_id') else None
+        if not tenant_id:
+            return jsonify({"msg": "No se puede determinar el ID del tenant"}), 400
+            
+        report_data = app.services['accounting_service'].get_balance_sheet(tenant_id)
+        return jsonify(report_data), 200
+
+    @app.route('/api/reports/income-statement', methods=['GET'])
+    @jwt_required()
+    @role_required(['Contador', 'Administrador General'])
+    def get_income_statement_report():
+        tenant_id = g.current_user.tenant_id if hasattr(g.current_user, 'tenant_id') else None
+        if not tenant_id:
+            return jsonify({"msg": "No se puede determinar el ID del tenant"}), 400
+            
+        report_data = app.services['accounting_service'].get_income_statement(tenant_id)
+        return jsonify(report_data), 200
         
     # --- REGISTRO DE COMANDOS CLI (Del HEAD) ---
     @app.cli.command("init-db")
