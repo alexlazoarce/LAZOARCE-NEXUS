@@ -380,6 +380,125 @@ class CertificadoValidacion(db.Model):
     valido_hasta = db.Column(db.DateTime)
 
 
+# --- MODELOS PARA FORMULACIÓN DE CONTRATOS (LAN-F2C) ---
+
+class ContractTemplate(db.Model):
+    """Plantillas de Contratos"""
+    __tablename__ = 'contract_template'
+
+    id = db.Column(Integer, primary_key=True)
+    name = db.Column(String(100), nullable=False, index=True)
+    description = db.Column(Text)
+    content = db.Column(Text, nullable=False)  # Contenido con placeholders como {{variable}}
+
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    created_by_id = db.Column(Integer, ForeignKey('user.id'))
+
+    created_at = db.Column(DateTime, default=func.current_timestamp())
+    updated_at = db.Column(DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp())
+
+    __table_args__ = (UniqueConstraint('name', 'tenant_id', name='_contract_template_tenant_uc'),)
+
+    def __repr__(self):
+        return f'<ContractTemplate {self.name}>'
+
+class GeneratedContract(db.Model):
+    """Contratos Generados a partir de plantillas"""
+    __tablename__ = 'generated_contract'
+
+    id = db.Column(Integer, primary_key=True)
+    template_id = db.Column(Integer, ForeignKey('contract_template.id'), nullable=False, index=True)
+
+    # Relacionado a qué entidad pertenece este contrato (ej. una solicitud de préstamo)
+    related_entity = db.Column(String(50), index=True) # E.g., 'LoanApplication'
+    related_entity_id = db.Column(Integer, index=True)
+
+    content_final = db.Column(Text, nullable=False) # Contenido con los placeholders reemplazados
+
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    generated_by_id = db.Column(Integer, ForeignKey('user.id'))
+
+    status = db.Column(String(50), default='Generado', nullable=False) # Generado, Firmado, Archivado
+
+    created_at = db.Column(DateTime, default=func.current_timestamp())
+
+    template = db.relationship('ContractTemplate')
+    generated_by = db.relationship('User')
+
+    def __repr__(self):
+        return f'<GeneratedContract {self.id} for {self.related_entity}:{self.related_entity_id}>'
+
+
+# --- MODELOS PARA CRM (LAN-CRM3) ---
+
+class Contact(db.Model):
+    """Contactos del CRM (Prospectos y Clientes)"""
+    __tablename__ = 'crm_contact'
+
+    id = db.Column(Integer, primary_key=True)
+    full_name = db.Column(String(120), nullable=False, index=True)
+    email = db.Column(String(120), index=True)
+    phone = db.Column(String(50))
+
+    # Puede estar vinculado a un usuario del sistema o ser un contacto externo
+    user_id = db.Column(Integer, ForeignKey('user.id'), nullable=True)
+
+    contact_type = db.Column(String(50), default='Prospecto', index=True) # Prospecto, Cliente
+    status = db.Column(String(50), default='Nuevo', index=True) # Nuevo, Contactado, Calificado, etc.
+
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    assigned_to_id = db.Column(Integer, ForeignKey('user.id'))
+
+    created_at = db.Column(DateTime, default=func.current_timestamp())
+    updated_at = db.Column(DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp())
+
+    interactions = db.relationship('Interaction', backref='contact', lazy='dynamic')
+    opportunities = db.relationship('Opportunity', backref='contact', lazy='dynamic')
+
+    def __repr__(self):
+        return f'<Contact {self.full_name}>'
+
+class Interaction(db.Model):
+    """Interacciones con los contactos"""
+    __tablename__ = 'crm_interaction'
+
+    id = db.Column(Integer, primary_key=True)
+    contact_id = db.Column(Integer, ForeignKey('crm_contact.id'), nullable=False, index=True)
+
+    interaction_type = db.Column(String(50), nullable=False) # Llamada, Correo, Reunión
+    notes = db.Column(Text)
+
+    interaction_date = db.Column(DateTime, default=func.current_timestamp())
+
+    user_id = db.Column(Integer, ForeignKey('user.id')) # Usuario que registró la interacción
+
+    def __repr__(self):
+        return f'<Interaction {self.interaction_type} with Contact {self.contact_id}>'
+
+class Opportunity(db.Model):
+    """Oportunidades de Venta"""
+    __tablename__ = 'crm_opportunity'
+
+    id = db.Column(Integer, primary_key=True)
+    contact_id = db.Column(Integer, ForeignKey('crm_contact.id'), nullable=False, index=True)
+
+    name = db.Column(String(200), nullable=False)
+    stage = db.Column(String(50), default='Calificación', index=True) # Calificación, Propuesta, Negociación, Cerrada Ganada, Cerrada Perdida
+    amount = db.Column(Float)
+
+    # Podría estar vinculada a un producto de préstamo específico
+    loan_product_id = db.Column(Integer, ForeignKey('loan_product.id'), nullable=True)
+
+    assigned_to_id = db.Column(Integer, ForeignKey('user.id'))
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+    close_date = db.Column(Date)
+    created_at = db.Column(DateTime, default=func.current_timestamp())
+
+    def __repr__(self):
+        return f'<Opportunity {self.name}>'
+
+
 # --- MODELOS DE MÓDULOS EXTENDIDOS (MailingList, Recruitment, Gym, Automation, Docs) ---
 # Se asume que estos modelos se definirán y usarán fuera del scope de este archivo,
 # pero se necesita un placeholder para que las tablas intermedias y las relaciones funcionen.
