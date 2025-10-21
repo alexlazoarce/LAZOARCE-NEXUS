@@ -132,6 +132,7 @@ def create_app(config_object=None, testing_config=None):
             from . import tax_service
             from . import material_service
             from . import construction_service
+            from . import health_service
             app.services = {
                 'audit_service': audit_service,
                 'contract_service': contract_service,
@@ -149,7 +150,8 @@ def create_app(config_object=None, testing_config=None):
                 'asset_service': asset_service,
                 'tax_service': tax_service,
                 'material_service': material_service,
-                'construction_service': construction_service
+                'construction_service': construction_service,
+                'health_service': health_service
             }
 
         except ImportError as e:
@@ -193,7 +195,8 @@ def create_app(config_object=None, testing_config=None):
             'BankAccount': BankAccount, 'BankTransaction': BankTransaction, 'CashBox': CashBox, 'CashTransaction': CashTransaction,
             'TaxType': TaxType, 'TaxDeclaration': TaxDeclaration,
             'Material': Material, 'MaterialRequest': MaterialRequest,
-            'ConstructionProject': ConstructionProject, 'BudgetItem': BudgetItem, 'ProgressReport': ProgressReport, 'Certification': Certification
+            'ConstructionProject': ConstructionProject, 'BudgetItem': BudgetItem, 'ProgressReport': ProgressReport, 'Certification': Certification,
+            'PatientRecord': PatientRecord, 'MedicalAppointment': MedicalAppointment, 'Prescription': Prescription, 'LabOrder': LabOrder
         }
 
     # --- DECORADORES DE AUTORIZACIÓN (Unificado) ---
@@ -1225,6 +1228,10 @@ def create_app(config_object=None, testing_config=None):
     # --- RUTAS PARA OBRAS Y CONSTRUCCIÓN (LAN-OBR5) ---
     from backend.routes.construction_routes import construction_bp
     app.register_blueprint(construction_bp)
+
+    # --- RUTAS PARA SALUD (LAN-H7S) ---
+    from backend.routes.health_routes import health_bp
+    app.register_blueprint(health_bp)
     
     # --- REGISTRO DE COMANDOS CLI (Del HEAD) ---
     @app.cli.command("init-db")

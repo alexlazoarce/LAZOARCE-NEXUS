@@ -1342,6 +1342,93 @@ class Certification(db.Model):
         return f'<Certification {self.id} for Project {self.project_id}>'
 
 
+# --- MODELOS PARA SALUD (LAN-H7S) ---
+
+class PatientRecord(db.Model):
+    """Ficha de paciente o historial clínico."""
+    __tablename__ = 'health_patient_record'
+
+    id = db.Column(Integer, primary_key=True)
+    # Un paciente puede ser un usuario existente o un contacto del CRM
+    user_id = db.Column(Integer, ForeignKey('user.id'), nullable=True, index=True)
+    contact_id = db.Column(Integer, ForeignKey('crm_contact.id'), nullable=True, index=True)
+
+    full_name = db.Column(String(200), nullable=False) # Se copia por si no es usuario/contacto
+    birth_date = db.Column(Date)
+    medical_history_summary = db.Column(Text) # Antecedentes, alergias, etc.
+
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    created_at = db.Column(DateTime, default=func.current_timestamp())
+
+    appointments = db.relationship('MedicalAppointment', backref='patient', lazy='dynamic')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'contact_id': self.contact_id,
+            'full_name': self.full_name,
+            'birth_date': self.birth_date.isoformat() if self.birth_date else None,
+            'medical_history_summary': self.medical_history_summary
+        }
+
+class MedicalAppointment(db.Model):
+    """Citas médicas."""
+    __tablename__ = 'health_appointment'
+
+    id = db.Column(Integer, primary_key=True)
+    patient_id = db.Column(Integer, ForeignKey('health_patient_record.id'), nullable=False, index=True)
+    doctor_id = db.Column(Integer, ForeignKey('user.id'), nullable=False, index=True) # El doctor es un usuario
+
+    appointment_time = db.Column(DateTime, nullable=False, index=True)
+    status = db.Column(String(50), default='Programada', index=True) # Programada, Completada, Cancelada
+    reason = db.Column(Text) # Motivo de la consulta
+    notes = db.Column(Text) # Notas del doctor durante la consulta
+
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+    doctor = db.relationship('User', foreign_keys=[doctor_id])
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'patient_id': self.patient_id,
+            'patient_name': self.patient.full_name,
+            'doctor_name': self.doctor.full_name,
+            'appointment_time': self.appointment_time.isoformat(),
+            'status': self.status,
+            'reason': self.reason
+        }
+
+class Prescription(db.Model):
+    """Recetas médicas generadas en una cita."""
+    __tablename__ = 'health_prescription'
+
+    id = db.Column(Integer, primary_key=True)
+    appointment_id = db.Column(Integer, ForeignKey('health_appointment.id'), nullable=False, index=True)
+    medication_details = db.Column(Text, nullable=False) # Nombre, dosis, frecuencia, etc.
+
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    issued_at = db.Column(DateTime, default=func.current_timestamp())
+
+    appointment = db.relationship('MedicalAppointment')
+
+class LabOrder(db.Model):
+    """Órdenes de laboratorio."""
+    __tablename__ = 'health_lab_order'
+
+    id = db.Column(Integer, primary_key=True)
+    appointment_id = db.Column(Integer, ForeignKey('health_appointment.id'), nullable=False, index=True)
+    test_details = db.Column(Text, nullable=False) # Qué exámenes solicitar
+    status = db.Column(String(50), default='Solicitado', index=True) # Solicitado, Resultados Recibidos
+
+    results = db.Column(Text) # Campo para los resultados
+
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+    appointment = db.relationship('MedicalAppointment')
+
+
 class DocumentVersion(db.Model):
     """Representa una versión específica de un archivo de un documento."""
     __tablename__ = 'document_version'
