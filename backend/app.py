@@ -131,6 +131,7 @@ def create_app(config_object=None, testing_config=None):
             from . import asset_service
             from . import tax_service
             from . import material_service
+            from . import construction_service
             app.services = {
                 'audit_service': audit_service,
                 'contract_service': contract_service,
@@ -147,7 +148,8 @@ def create_app(config_object=None, testing_config=None):
                 'support_service': support_service,
                 'asset_service': asset_service,
                 'tax_service': tax_service,
-                'material_service': material_service
+                'material_service': material_service,
+                'construction_service': construction_service
             }
 
         except ImportError as e:
@@ -190,7 +192,8 @@ def create_app(config_object=None, testing_config=None):
             'Ticket': Ticket, 'TicketUpdate': TicketUpdate, 'FixedAsset': FixedAsset, 'DepreciationEntry': DepreciationEntry,
             'BankAccount': BankAccount, 'BankTransaction': BankTransaction, 'CashBox': CashBox, 'CashTransaction': CashTransaction,
             'TaxType': TaxType, 'TaxDeclaration': TaxDeclaration,
-            'Material': Material, 'MaterialRequest': MaterialRequest
+            'Material': Material, 'MaterialRequest': MaterialRequest,
+            'ConstructionProject': ConstructionProject, 'BudgetItem': BudgetItem, 'ProgressReport': ProgressReport, 'Certification': Certification
         }
 
     # --- DECORADORES DE AUTORIZACIÓN (Unificado) ---
@@ -1218,6 +1221,10 @@ def create_app(config_object=None, testing_config=None):
     # --- RUTAS PARA RECURSOS MATERIALES (LAN-RM1) ---
     from backend.routes.material_routes import material_bp
     app.register_blueprint(material_bp)
+
+    # --- RUTAS PARA OBRAS Y CONSTRUCCIÓN (LAN-OBR5) ---
+    from backend.routes.construction_routes import construction_bp
+    app.register_blueprint(construction_bp)
     
     # --- REGISTRO DE COMANDOS CLI (Del HEAD) ---
     @app.cli.command("init-db")

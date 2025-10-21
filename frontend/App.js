@@ -121,6 +121,7 @@ function App() {
             case 'cash_and_banks': return (isAdmin || isContador) ? <CashAndBanksView token={token} /> : <p>Acceso no autorizado.</p>;
             case 'tax': return (isAdmin || isContador) ? <TaxView token={token} /> : <p>Acceso no autorizado.</p>;
             case 'materials': return isAdmin ? <MaterialManagementView token={token} /> : <p>Acceso no autorizado.</p>;
+            case 'construction': return isAdmin ? <ConstructionView token={token} /> : <p>Acceso no autorizado.</p>;
             case 'hr': return isAdmin ? <HRPortal /> : <p>Acceso no autorizado.</p>;
             case 'crm': return (isAdmin || isEjecutivo) ? <CRMPortal /> : <p>Acceso no autorizado.</p>;
             case 'collections': return (isAdmin || isCobrador) ? <PortfolioView token={token} /> : <p>Acceso no autorizado.</p>;
@@ -156,6 +157,7 @@ function App() {
                 {(isAdmin || isContador) && <button onClick={() => setView('cash_and_banks')}>Caja y Bancos</button>}
                 {(isAdmin || isContador) && <button onClick={() => setView('tax')}>Impuestos</button>}
                 {isAdmin && <button onClick={() => setView('materials')}>Recursos Materiales</button>}
+                {isAdmin && <button onClick={() => setView('construction')}>Obras y Construcción</button>}
                 {isAdmin && <button onClick={() => setView('hr')}>RRHH</button>}
                 {isAdmin && (
                     <div style={{border: '1px solid grey', padding: '5px', marginTop: '5px'}}>

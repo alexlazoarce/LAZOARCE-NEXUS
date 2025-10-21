@@ -1232,6 +1232,116 @@ class MaterialRequest(db.Model):
         return f'<MaterialRequest {self.id} for {self.quantity} of Material {self.material_id}>'
 
 
+# --- MODELOS PARA OBRAS Y CONSTRUCCIÓN (LAN-OBR5) ---
+
+class ConstructionProject(db.Model):
+    """Proyectos de construcción."""
+    __tablename__ = 'construction_project'
+
+    id = db.Column(Integer, primary_key=True)
+    name = db.Column(String(200), nullable=False, index=True)
+    location = db.Column(String(255))
+    start_date = db.Column(Date)
+    end_date = db.Column(Date)
+    budget = db.Column(Float, default=0.0)
+    status = db.Column(String(50), default='Planificado', index=True) # Planificado, En Progreso, Completado, Cancelado
+
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    manager_id = db.Column(Integer, ForeignKey('user.id'))
+
+    budget_items = db.relationship('BudgetItem', backref='project', lazy='dynamic', cascade="all, delete-orphan")
+    progress_reports = db.relationship('ProgressReport', backref='project', lazy='dynamic', cascade="all, delete-orphan")
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'location': self.location,
+            'start_date': self.start_date.isoformat() if self.start_date else None,
+            'end_date': self.end_date.isoformat() if self.end_date else None,
+            'budget': self.budget,
+            'status': self.status
+        }
+
+    def __repr__(self):
+        return f'<ConstructionProject {self.name}>'
+
+class BudgetItem(db.Model):
+    """Partidas del presupuesto de una obra."""
+    __tablename__ = 'construction_budget_item'
+
+    id = db.Column(Integer, primary_key=True)
+    project_id = db.Column(Integer, ForeignKey('construction_project.id'), nullable=False, index=True)
+    name = db.Column(String(200), nullable=False)
+    description = db.Column(Text)
+    code = db.Column(String(50)) # Código de la partida
+    amount = db.Column(Float, nullable=False)
+
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'project_id': self.project_id,
+            'name': self.name,
+            'code': self.code,
+            'amount': self.amount
+        }
+
+    def __repr__(self):
+        return f'<BudgetItem {self.name}>'
+
+class ProgressReport(db.Model):
+    """Reportes de avance físico de la obra."""
+    __tablename__ = 'construction_progress_report'
+
+    id = db.Column(Integer, primary_key=True)
+    project_id = db.Column(Integer, ForeignKey('construction_project.id'), nullable=False, index=True)
+    report_date = db.Column(Date, nullable=False)
+    percentage_complete = db.Column(Float, nullable=False) # Avance físico en %
+    notes = db.Column(Text)
+
+    reported_by_id = db.Column(Integer, ForeignKey('user.id'))
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'report_date': self.report_date.isoformat(),
+            'percentage_complete': self.percentage_complete,
+            'notes': self.notes
+        }
+
+    def __repr__(self):
+        return f'<ProgressReport {self.id} for Project {self.project_id}>'
+
+class Certification(db.Model):
+    """Certificaciones de pago a contratistas."""
+    __tablename__ = 'construction_certification'
+
+    id = db.Column(Integer, primary_key=True)
+    project_id = db.Column(Integer, ForeignKey('construction_project.id'), nullable=False, index=True)
+    certification_date = db.Column(Date, nullable=False)
+    amount = db.Column(Float, nullable=False)
+    description = db.Column(Text)
+    status = db.Column(String(50), default='Pendiente', index=True) # Pendiente, Aprobada, Pagada
+
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    approved_by_id = db.Column(Integer, ForeignKey('user.id'))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'certification_date': self.certification_date.isoformat(),
+            'amount': self.amount,
+            'description': self.description,
+            'status': self.status
+        }
+
+    def __repr__(self):
+        return f'<Certification {self.id} for Project {self.project_id}>'
+
+
 class DocumentVersion(db.Model):
     """Representa una versión específica de un archivo de un documento."""
     __tablename__ = 'document_version'
