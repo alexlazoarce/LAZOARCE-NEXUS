@@ -11,10 +11,13 @@ from functools import wraps
 from datetime import datetime, date, timedelta
 from werkzeug.security import generate_password_hash, check_password_hash
 
-# Inicializar extensiones globales
-db = None
-jwt = None
-migrate = None
+# Inicializar extensiones globales (se inicializarán realmente en create_app)
+db = SQLAlchemy() # Inicialización para evitar problemas de importación circular
+jwt = JWTManager()
+migrate = Migrate()
+
+# Se importa la configuración aquí o se espera que exista un archivo config.py
+# from config import DevelopmentConfig, TestingConfig, ProductionConfig 
 
 def create_app(testing=False, testing_config=None):
     """Application factory function - patrón moderno Flask."""
@@ -27,48 +30,59 @@ def create_app(testing=False, testing_config=None):
     if testing_config:
         app.config.from_object(testing_config)
     else:
-        app.config.from_object('config.DevelopmentConfig')
-    
+        # Asume que tienes un archivo config.py o una clase DevelopmentConfig
+        # Si no tienes config.py, puedes usar un diccionario
+        app.config.from_mapping(
+            SECRET_KEY='dev-secret-key-change-me',
+            JWT_SECRET_KEY='jwt-secret-key-change-me',
+            SQLALCHEMY_DATABASE_URI='sqlite:///lazoarce.db', # Fallback local
+            SQLALCHEMY_TRACK_MODIFICATIONS=False,
+            JWT_ACCESS_TOKEN_EXPIRES=timedelta(hours=8),
+            JWT_REFRESH_TOKEN_EXPIRES=timedelta(days=30),
+            ENVIRONMENT='development',
+            DEBUG=True,
+            # Otros ajustes
+        )
+
     # Variables de entorno críticas (con fallback)
-    app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', app.config.get('SECRET_KEY', 'dev-secret-key-change-me'))
-    app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', app.config.get('JWT_SECRET_KEY', 'jwt-secret-key-change-me'))
-    app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', app.config.get('SQLALCHEMY_DATABASE_URI', 'sqlite:///lazoarce.db'))
-    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-    
-    # JWT configuración
-    app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=8)
-    app.config['JWT_REFRESH_TOKEN_EXPIRES'] = timedelta(days=30)
+    app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', app.config.get('SECRET_KEY'))
+    app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', app.config.get('JWT_SECRET_KEY'))
+    # El URI de la base de datos de Supabase del código de la izquierda se puede incluir aquí si es necesario.
+    # Usando el de la versión 2.0 que prioriza variables de entorno o la configuración interna:
+    app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', app.config.get('SQLALCHEMY_DATABASE_URI'))
     
     # Inicializar extensiones
-    global db, jwt, migrate
-    db = SQLAlchemy()
-    jwt = JWTManager()
-    migrate = Migrate()
-    
     db.init_app(app)
     jwt.init_app(app)
     migrate.init_app(app, db)
     
     # IMPORTAR MODELOS DESPUÉS DE db.init_app()
     with app.app_context():
-        from .models import (
-            User, Role, ClientProfile, LoanProduct, Account,
-            NotificationTemplate, Tenant, LoanApplication, Payment,
-            AuditLog, Employee, CommunicationLog, Ticket, TicketComment
-        )
-        
-        # Registrar modelos globalmente
-        app.models = {
-            'User': User, 'Role': Role, 'ClientProfile': ClientProfile,
-            'LoanProduct': LoanProduct, 'Account': Account,
-            'NotificationTemplate': NotificationTemplate, 'Tenant': Tenant,
-            'LoanApplication': LoanApplication, 'Payment': Payment,
-            'AuditLog': AuditLog, 'Employee': Employee,
-            'CommunicationLog': CommunicationLog, 'Ticket': Ticket,
-            'TicketComment': TicketComment
-        }
+        # Importar modelos dentro del contexto para evitar importaciones circulares en proyectos grandes
+        try:
+            from .models import (
+                User, Role, ClientProfile, LoanProduct, Account,
+                NotificationTemplate, Tenant, LoanApplication, Payment,
+                AuditLog, Employee, CommunicationLog, Ticket, TicketComment,
+                JournalEntry, Transaction # Agregados de la versión anterior
+            )
+            
+            # Registrar modelos en el objeto app
+            app.models = {
+                'User': User, 'Role': Role, 'ClientProfile': ClientProfile,
+                'LoanProduct': LoanProduct, 'Account': Account,
+                'NotificationTemplate': NotificationTemplate, 'Tenant': Tenant,
+                'LoanApplication': LoanApplication, 'Payment': Payment,
+                'AuditLog': AuditLog, 'Employee': Employee,
+                'CommunicationLog': CommunicationLog, 'Ticket': Ticket,
+                'TicketComment': TicketComment,
+                'JournalEntry': JournalEntry, 'Transaction': Transaction
+            }
+        except ImportError as e:
+            app.logger.error(f"❌ Error al importar modelos: {e}. Asegúrate de que .models esté definido.")
     
     # === REGISTRO DE BLUEPRINTS ===
+    # El código asume que tienes un paquete llamado 'blueprints' con tus rutas.
     try:
         from .blueprints import (
             auth_bp, loan_management_bp, hr_bp, ett_bp,
@@ -95,7 +109,7 @@ def create_app(testing=False, testing_config=None):
             
     except ImportError as e:
         app.logger.warning(f"⚠️ Algunos blueprints no se pudieron importar: {e}")
-        # Blueprints opcionales, continuar sin ellos
+        # Continuar sin blueprints si no son críticos
     
     # === DECORADORES DE SEGURIDAD ===
     
@@ -107,7 +121,8 @@ def create_app(testing=False, testing_config=None):
             def wrapper(*args, **kwargs):
                 try:
                     claims = get_jwt()
-                    user_id = get_jwt_identity()
+                    # El JWT ID en esta versión se asume que es el user.id, no el email
+                    user_id = claims.get('user_id') # Usar user_id en lugar de email
                     user_roles = claims.get('roles', [])
                     
                     if not any(role in user_roles for role in required_roles):
@@ -118,6 +133,7 @@ def create_app(testing=False, testing_config=None):
                         }), 403
                     
                     # Agregar usuario actual al contexto
+                    User = app.models.get('User')
                     g.current_user = User.query.get(user_id)
                     if not g.current_user:
                         return jsonify({"message": "Usuario no encontrado"}), 404
@@ -148,7 +164,9 @@ def create_app(testing=False, testing_config=None):
     @app.after_request
     def audit_response(response):
         """Log de auditoría automático."""
-        if hasattr(g, 'audit_action') and hasattr(g, 'current_user'):
+        AuditLog = app.models.get('AuditLog')
+        
+        if hasattr(g, 'audit_action') and hasattr(g, 'current_user') and AuditLog:
             try:
                 audit_log = AuditLog(
                     user_id=g.current_user.id,
@@ -168,9 +186,13 @@ def create_app(testing=False, testing_config=None):
     @app.route('/api/health')
     def health_check():
         """Health check endpoint."""
+        db_connected = False
         try:
-            db_connected = db.engine.has_table("user")
-        except:
+            # Una verificación simple a la base de datos
+            db.session.execute(db.select(1)).one()
+            db_connected = True
+        except Exception as e:
+            app.logger.error(f"Error de conexión DB en health check: {str(e)}")
             db_connected = False
             
         return jsonify({
@@ -182,37 +204,7 @@ def create_app(testing=False, testing_config=None):
             "blueprints": list(app.blueprints.keys())
         })
     
-    @app.route('/api/metrics')
-    @jwt_required()
-    @require_roles('Administrador General', 'Super Administrador')
-    def metrics():
-        """Métricas básicas del sistema."""
-        try:
-            from sqlalchemy import func
-            
-            stats = {
-                "users_total": User.query.count(),
-                "applications_pending": LoanApplication.query.filter(
-                    LoanApplication.status == 'Pendiente'
-                ).count(),
-                "active_employees": Employee.query.filter(
-                    Employee.is_active == True
-                ).count(),
-                "accounts_total": Account.query.count()
-            }
-            
-            # Contar pagos de hoy si Payment existe
-            try:
-                stats["payments_today"] = Payment.query.filter(
-                    Payment.payment_date == date.today()
-                ).count()
-            except:
-                stats["payments_today"] = 0
-                
-            return jsonify(stats)
-        except Exception as e:
-            app.logger.error(f"Error en métricas: {str(e)}")
-            return jsonify({"error": "Error al obtener métricas"}), 500
+    # La ruta /api/metrics y otras se asume que se manejan en los Blueprints
     
     @app.route('/')
     def index():
@@ -228,116 +220,6 @@ def create_app(testing=False, testing_config=None):
             "docs": "/api/docs/swagger",
             "blueprints": list(app.blueprints.keys())
         })
-    
-    # === RUTAS LEGACY (Compatibilidad) ===
-    
-    @app.route('/api/auth/register', methods=['POST'])
-    def legacy_register():
-        """Registro legacy para compatibilidad."""
-        try:
-            data = request.get_json()
-            if not data or not data.get('email') or not data.get('password'):
-                return jsonify({"message": "Email y contraseña requeridos"}), 400
-            
-            # Verificar si ya existe
-            existing_user = User.query.filter_by(email=data['email']).first()
-            if existing_user:
-                return jsonify({"message": "El correo ya está registrado"}), 409
-            
-            # Obtener rol de cliente por defecto
-            client_role = Role.query.filter_by(name='Cliente').first()
-            if not client_role:
-                # Crear rol cliente si no existe
-                client_role = Role(name='Cliente')
-                db.session.add(client_role)
-                db.session.commit()
-            
-            # Crear usuario
-            user = User(
-                email=data['email'],
-                password_hash='',  # Se establece después
-                role_id=client_role.id
-            )
-            user.set_password(data['password'])
-            
-            # Crear perfil automáticamente
-            profile = ClientProfile(
-                user_id=user.id,
-                full_name=data.get('full_name', data['email'])
-            )
-            
-            db.session.add_all([user, profile])
-            db.session.commit()
-            
-            # Log de auditoría
-            audit_log = AuditLog(
-                action='USER_REGISTER',
-                details=f"Nuevo cliente registrado: {user.email}"
-            )
-            db.session.add(audit_log)
-            db.session.commit()
-            
-            return jsonify({
-                "message": "Usuario creado exitosamente",
-                "user_id": user.id,
-                "email": user.email
-            }), 201
-            
-        except Exception as e:
-            db.session.rollback()
-            app.logger.error(f"Error en registro: {str(e)}")
-            return jsonify({"message": "Error al crear usuario"}), 500
-    
-    @app.route('/api/loans/calculate', methods=['POST'])
-    @jwt_required()
-    @require_roles('Cliente', 'Ejecutivo de Crédito', 'Administrador General')
-    def calculate_loan():
-        """Cálculo de préstamos mejorado."""
-        try:
-            data = request.get_json()
-            
-            # Validación de entrada
-            required_fields = ['monto', 'producto_id', 'plazo_meses']
-            for field in required_fields:
-                if not data.get(field):
-                    return jsonify({"error": f"El campo {field} es requerido"}), 400
-            
-            monto = float(data['monto'])
-            producto_id = int(data['producto_id'])
-            plazo = int(data['plazo_meses'])
-            
-            if monto <= 0 or plazo <= 0:
-                return jsonify({"error": "Monto y plazo deben ser mayores a 0"}), 400
-            
-            # Obtener producto
-            product = LoanProduct.query.get_or_404(producto_id)
-            
-            # Cálculo simple si no hay servicio externo
-            monthly_rate = product.interest_rate / 100 / 12
-            n = plazo
-            
-            if monthly_rate == 0:
-                monthly_payment = monto / n
-            else:
-                monthly_payment = monto * (monthly_rate * (1 + monthly_rate)**n) / ((1 + monthly_rate)**n - 1)
-            
-            total_payment = monthly_payment * n
-            
-            return jsonify({
-                "success": True,
-                "calculation": {
-                    "monthly_payment": round(monthly_payment, 2),
-                    "total_payment": round(total_payment, 2),
-                    "total_interest": round(total_payment - monto, 2),
-                    "product_name": product.name
-                }
-            })
-            
-        except ValueError as e:
-            return jsonify({"error": "Datos inválidos en la solicitud"}), 400
-        except Exception as e:
-            app.logger.error(f"Error en cálculo de préstamo: {str(e)}")
-            return jsonify({"error": "Error interno en el cálculo"}), 500
     
     # === ERROR HANDLERS ===
     
@@ -381,15 +263,24 @@ def create_app(testing=False, testing_config=None):
     return app
 
 def setup_database(app):
-    """Inicializa base de datos con datos base esenciales."""
+    """Inicializa base de datos con datos base esenciales (seeding)."""
     
     with app.app_context():
         try:
+            # Obtener modelos del contexto
+            Tenant = app.models.get('Tenant')
+            Role = app.models.get('Role')
+            User = app.models.get('User')
+            ClientProfile = app.models.get('ClientProfile')
+            LoanProduct = app.models.get('LoanProduct')
+            Account = app.models.get('Account')
+            Employee = app.models.get('Employee')
+            
             # Crear tablas si no existen
             db.create_all()
             
             # === TENANT POR DEFECTO ===
-            if not Tenant.query.first():
+            if Tenant.query.first() is None:
                 default_tenant = Tenant(company_name='LAZOARCE NEXUS', is_active=True)
                 db.session.add(default_tenant)
                 db.session.commit()
@@ -412,31 +303,36 @@ def setup_database(app):
             
             # === USUARIO SUPERADMIN ===
             admin_email = 'admin@lazoarce.com'
-            if not User.query.filter_by(email=admin_email).first():
+            if User.query.filter_by(email=admin_email).first() is None:
                 superadmin_role = Role.query.filter_by(name='Super Administrador').first()
                 if superadmin_role:
                     admin = User(
                         email=admin_email,
-                        password_hash='',  # Se establece después
                         role_id=superadmin_role.id
                     )
-                    admin.set_password('admin123')
+                    # La clase User debe tener un método set_password
+                    # Usando check_password_hash de werkzeug
+                    admin.password_hash = generate_password_hash('admin123') 
                     
                     profile = ClientProfile(
-                        user_id=admin.id,
+                        user_id=None, # El ID se asigna después del commit de User
                         full_name='Super Administrador LAZO ARCE'
                     )
                     
-                    db.session.add_all([admin, profile])
+                    db.session.add(admin)
+                    db.session.commit() # Commit para obtener el ID de usuario
+                    
+                    profile.user_id = admin.id
+                    db.session.add(profile)
                     db.session.commit()
                     
                     print("🔐 Usuario admin creado:")
-                    print(f"   Email: {admin_email}")
-                    print(f"   Password: admin123")
+                    print(f"    Email: {admin_email}")
+                    print(f"    Password: admin123")
                     print("⚠️  ¡CAMBIAR CONTRASEÑA EN PRODUCCIÓN INMEDIATAMENTE!")
             
             # === PRODUCTO POR DEFECTO ===
-            if not LoanProduct.query.filter_by(name='Préstamo Personal Clásico').first():
+            if LoanProduct.query.filter_by(name='Préstamo Personal Clásico').first() is None:
                 default_product = LoanProduct(
                     name="Préstamo Personal Clásico",
                     min_amount=1000.0,
@@ -450,7 +346,7 @@ def setup_database(app):
                 print("✅ Producto de préstamo por defecto creado")
             
             # === CUENTAS CONTABLES BÁSICAS ===
-            if not Account.query.first():
+            if Account.query.first() is None:
                 basic_accounts = [
                     # Activos
                     Account(name='Caja', category='Asset', normal_balance='Debit'),
@@ -474,7 +370,7 @@ def setup_database(app):
                 print(f"✅ {len(basic_accounts)} cuentas contables básicas creadas")
             
             # === EMPLEADO DE PRUEBA ===
-            if not Employee.query.first():
+            if Employee.query.first() is None:
                 test_employee = Employee(
                     full_name='Ana García López',
                     position='Ejecutivo de Crédito',
@@ -486,32 +382,46 @@ def setup_database(app):
                 print("✅ Empleado de prueba creado")
             
             print("✅ 🎉 Base de datos inicializada correctamente")
-            print(f"📊 Total usuarios: {User.query.count()}")
-            print(f"💰 Productos activos: {LoanProduct.query.filter_by(is_active=True).count()}")
-            print(f"🏦 Cuentas contables: {Account.query.count()}")
+            # Se asume que los modelos existen para estas consultas
+            if User and LoanProduct and Account:
+                print(f"📊 Total usuarios: {User.query.count()}")
+                print(f"💰 Productos activos: {LoanProduct.query.filter_by(is_active=True).count()}")
+                print(f"🏦 Cuentas contables: {Account.query.count()}")
             
         except Exception as e:
             db.session.rollback()
+            print(f"❌ Error en inicialización de base de datos: {str(e)}")
             app.logger.error(f"Error en setup_database: {str(e)}")
-            print(f"❌ Error en inicialización: {str(e)}")
+
 
 def initialize_database(app):
     """Alias para compatibilidad con código legacy."""
     setup_database(app)
 
-# Crear app global para desarrollo
+# Crear app global para desarrollo (solo si el módulo se ejecuta directamente)
 app = None
 
 if __name__ == '__main__':
-    app = create_app()
+    # Usar un patrón más seguro para la configuración de desarrollo
+    class DevelopmentConfig:
+        DEBUG = True
+        TESTING = False
+        SECRET_KEY = 'dev-secret-key-change-me'
+        JWT_SECRET_KEY = 'jwt-secret-key-change-me'
+        SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URL', 'sqlite:///lazoarce.db')
+        SQLALCHEMY_TRACK_MODIFICATIONS = False
+        # ... otras configuraciones
+
+    app = create_app(testing_config=DevelopmentConfig)
     
     # Inicializar base de datos (solo desarrollo/testing)
-    if os.environ.get('FLASK_ENV', 'development') in ['development', 'testing']:
+    if app.config.get('ENVIRONMENT') in ['development', 'testing'] or app.config.get('DEBUG'):
         setup_database(app)
     
     # Configuración de servidor
     port = int(os.environ.get('PORT', 5000))
     host = os.environ.get('HOST', '127.0.0.1')
-    debug = os.environ.get('FLASK_ENV') == 'development'
+    debug = app.config.get('DEBUG', False)
     
+    # app.run requiere que el objeto 'app' no sea None
     app.run(host=host, port=port, debug=debug)
