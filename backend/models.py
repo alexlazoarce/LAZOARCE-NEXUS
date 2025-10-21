@@ -380,6 +380,55 @@ class CertificadoValidacion(db.Model):
     valido_hasta = db.Column(db.DateTime)
 
 
+# --- MODELOS PARA FORMULACIÓN DE CONTRATOS (LAN-F2C) ---
+
+class ContractTemplate(db.Model):
+    """Plantillas de Contratos"""
+    __tablename__ = 'contract_template'
+
+    id = db.Column(Integer, primary_key=True)
+    name = db.Column(String(100), nullable=False, index=True)
+    description = db.Column(Text)
+    content = db.Column(Text, nullable=False)  # Contenido con placeholders como {{variable}}
+
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    created_by_id = db.Column(Integer, ForeignKey('user.id'))
+
+    created_at = db.Column(DateTime, default=func.current_timestamp())
+    updated_at = db.Column(DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp())
+
+    __table_args__ = (UniqueConstraint('name', 'tenant_id', name='_contract_template_tenant_uc'),)
+
+    def __repr__(self):
+        return f'<ContractTemplate {self.name}>'
+
+class GeneratedContract(db.Model):
+    """Contratos Generados a partir de plantillas"""
+    __tablename__ = 'generated_contract'
+
+    id = db.Column(Integer, primary_key=True)
+    template_id = db.Column(Integer, ForeignKey('contract_template.id'), nullable=False, index=True)
+
+    # Relacionado a qué entidad pertenece este contrato (ej. una solicitud de préstamo)
+    related_entity = db.Column(String(50), index=True) # E.g., 'LoanApplication'
+    related_entity_id = db.Column(Integer, index=True)
+
+    content_final = db.Column(Text, nullable=False) # Contenido con los placeholders reemplazados
+
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    generated_by_id = db.Column(Integer, ForeignKey('user.id'))
+
+    status = db.Column(String(50), default='Generado', nullable=False) # Generado, Firmado, Archivado
+
+    created_at = db.Column(DateTime, default=func.current_timestamp())
+
+    template = db.relationship('ContractTemplate')
+    generated_by = db.relationship('User')
+
+    def __repr__(self):
+        return f'<GeneratedContract {self.id} for {self.related_entity}:{self.related_entity_id}>'
+
+
 # --- MODELOS DE MÓDULOS EXTENDIDOS (MailingList, Recruitment, Gym, Automation, Docs) ---
 # Se asume que estos modelos se definirán y usarán fuera del scope de este archivo,
 # pero se necesita un placeholder para que las tablas intermedias y las relaciones funcionen.
