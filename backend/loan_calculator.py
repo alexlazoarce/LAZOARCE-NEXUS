@@ -10,13 +10,13 @@ logger = logging.getLogger(__name__)
 # --- CONSTANTES ---
 PRECISION_TIR = Decimal('0.0001')
 MAX_ITERACIONES_TIR = 100
-TOLERANCIA_SALDO = Decimal('0.01')
+TOLERANCIA_SALDO = Decimal('0.01') # Tolerancia para el ajuste final del saldo
 
 class CalculoPrestamoError(Exception):
     """Excepción personalizada para errores de cálculo de préstamos."""
     pass
 
-# --- FUNCIONES DE CÁLCULO DE COMISIONES (MEJORADAS) ---
+# --- FUNCIONES DE CÁLCULO DE COMISIONES ---
 
 def es_porcentaje(valor: float) -> bool:
     """Determina si un valor es un porcentaje (0 < valor <= 1)."""
@@ -24,7 +24,7 @@ def es_porcentaje(valor: float) -> bool:
 
 def calcular_comision(monto: float, tasa_comision: float) -> float:
     """
-    Calcula comisión ya sea como porcentaje o monto fijo.
+    Calcula comisión ya sea como porcentaje (si tasa <= 1) o monto fijo (si tasa > 1).
     """
     if es_porcentaje(tasa_comision):
         return monto * tasa_comision
@@ -33,10 +33,9 @@ def calcular_comision(monto: float, tasa_comision: float) -> float:
 def calcular_comision_apertura(monto: float, producto) -> float:
     """Calcula comisión de apertura."""
     try:
-        return round(calcular_comision(monto, producto.comision_apertura), 2)
-    except AttributeError:
-        logger.warning("Producto sin comision_apertura definida, usando 0")
-        return 0.0
+        # Usa getattr para manejar productos antiguos sin el campo, y redondea a 2 decimales
+        tasa_o_monto = getattr(producto, 'comision_apertura', 0.0)
+        return round(calcular_comision(monto, tasa_o_monto), 2)
     except Exception as e:
         logger.error(f"Error calculando comisión apertura: {e}")
         return 0.0
@@ -44,7 +43,8 @@ def calcular_comision_apertura(monto: float, producto) -> float:
 def calcular_comision_administracion(monto: float, producto) -> float:
     """Calcula comisión de administración mensual."""
     try:
-        return round(calcular_comision(monto, getattr(producto, 'comision_administracion', 0)), 2)
+        tasa_o_monto = getattr(producto, 'comision_administracion', 0.0)
+        return round(calcular_comision(monto, tasa_o_monto), 2)
     except Exception as e:
         logger.error(f"Error calculando comisión administración: {e}")
         return 0.0
@@ -52,22 +52,23 @@ def calcular_comision_administracion(monto: float, producto) -> float:
 def calcular_seguro(monto: float, producto) -> float:
     """Calcula seguro mensual."""
     try:
-        return round(calcular_comision(monto, getattr(producto, 'seguro', 0)), 2)
+        tasa_o_monto = getattr(producto, 'seguro', 0.0)
+        return round(calcular_comision(monto, tasa_o_monto), 2)
     except Exception as e:
         logger.error(f"Error calculando seguro: {e}")
         return 0.0
 
-# --- CÁLCULO DE TIR MEJORADO ---
+# --- CÁLCULO DE TIR MEJORADO (Basado en Newton-Raphson con Fallback) ---
 
 def calcular_tir(flujo_caja: list, precision: float = 0.0001, max_iteraciones: int = 100) -> float | None:
     """
-    Calcula TIR usando Newton-Raphson con mayor robustez.
+    Calcula TIR (Tasa Interna de Retorno) usando Newton-Raphson.
     """
     try:
         if not flujo_caja or flujo_caja[0] >= 0:
             return None
         
-        # Método de bisección como fallback si Newton falla
+        # Función Valor Actual Neto (VAN)
         def van(tasa: float) -> float:
             return sum(flujo / ((1 + tasa) ** i) for i, flujo in enumerate(flujo_caja))
         
@@ -90,7 +91,7 @@ def calcular_tir(flujo_caja: list, precision: float = 0.0001, max_iteraciones: i
             
             nueva_tasa = tasa - van_val / van_derivada
             if nueva_tasa < 0:
-                nueva_tasa = tasa * 0.9  # Evitar tasas negativas
+                nueva_tasa = tasa * 0.9 # Evitar tasas negativas y oscilaciones
             
             if abs(nueva_tasa - tasa) < precision:
                 return round(nueva_tasa, 6)
@@ -98,41 +99,54 @@ def calcular_tir(flujo_caja: list, precision: float = 0.0001, max_iteraciones: i
             tasa = nueva_tasa
         
         # Fallback: método de bisección
-        left, right = 0.0, 1.0
-        while right - left > precision:
+        left, right = 0.0, 1.0 # Rango de búsqueda razonable
+        for i in range(max_iteraciones):
             mid = (left + right) / 2
-            if van(mid) * van(right) > 0:
-                left = mid
-            else:
+            if abs(van(mid)) < precision:
+                return round(mid, 6)
+            if van(left) * van(mid) < 0:
                 right = mid
+            else:
+                left = mid
         return round((left + right) / 2, 6)
         
     except Exception as e:
         logger.error(f"Error calculando TIR: {e}")
         return None
 
-# --- CÁLCULO DE TEA MEJORADO ---
+# --- CÁLCULO DE TEA ---
 
 def calcular_tea(tasa_mensual_nominal: float, plazo_meses: int, 
-                comision_apertura: float, capital_desembolsado: float) -> float:
-    """Calcula TEA usando TIR con validaciones mejoradas."""
+                 comision_apertura: float, capital_desembolsado: float) -> float:
+    """Calcula TEA (Tasa Efectiva Anual) usando TIR sobre el flujo de caja real."""
     try:
         if capital_desembolsado <= 0 or plazo_meses <= 0:
             return 0.0
 
-        # Construir flujo de caja
-        flujo_caja = [Decimal('-' + str(capital_desembolsado))]
-        capital_a_financiar = capital_desembolsado + comision_apertura
-
+        # 1. Determinar el capital a amortizar
+        # Para el cálculo de TEA se asume que la comisión de apertura se financia
+        capital_a_financiar = capital_desembolsado + comision_apertura 
+        
+        # 2. Calcular la cuota base (sin comisiones mensuales/seguros)
         if tasa_mensual_nominal == 0:
             cuota = capital_a_financiar / plazo_meses
         else:
-            factor = (1 + tasa_mensual_nominal) ** plazo_meses
-            cuota = capital_a_financiar * tasa_mensual_nominal * factor / (factor - 1)
+            tasa_dec = Decimal(str(tasa_mensual_nominal))
+            capital_dec = Decimal(str(capital_a_financiar))
+            plazo_dec = Decimal(str(plazo_meses))
+            factor = (Decimal(1) + tasa_dec) ** plazo_dec
+            cuota_dec = capital_dec * tasa_dec * factor / (factor - 1)
+            cuota = float(cuota_dec.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
 
+
+        # 3. Construir flujo de caja (inversión inicial y pagos iguales)
+        # El flujo inicial es el efectivo REAL recibido (Capital Desembolsado)
+        flujo_caja = [Decimal('-' + str(capital_desembolsado))]
+        
+        # El flujo de salida es la cuota BASE mensual
         flujo_caja.extend([Decimal(str(cuota))] * plazo_meses)
         
-        # Convertir a float para TIR
+        # 4. Calcular TIR mensual y luego TEA
         flujo_float = [float(f) for f in flujo_caja]
         tir_mensual = calcular_tir(flujo_float)
         
@@ -146,7 +160,7 @@ def calcular_tea(tasa_mensual_nominal: float, plazo_meses: int,
         logger.error(f"Error calculando TEA: {e}")
         return 0.0
 
-# --- TABLA DE AMORTIZACIÓN MEJORADA ---
+# --- TABLA DE AMORTIZACIÓN ---
 
 def calcular_fecha_vencimiento(fecha_inicio: datetime, mes: int) -> str:
     """Calcula fecha de vencimiento con precisión."""
@@ -154,7 +168,7 @@ def calcular_fecha_vencimiento(fecha_inicio: datetime, mes: int) -> str:
     return fecha_venc.strftime('%Y-%m-%d')
 
 def calcular_cuota_frances(capital: float, tasa_mensual: float, plazo_meses: int) -> float:
-    """Calcula cuota francesa con precisión decimal."""
+    """Calcula cuota francesa (Amortización + Interés) con precisión decimal."""
     if tasa_mensual == 0:
         return capital / plazo_meses
     
@@ -191,15 +205,19 @@ def generar_tabla_amortizacion(
         interes_dec = saldo * Decimal(str(tasa_mensual))
         amortizacion_dec = cuota_base_dec - interes_dec
         
-        # Ajuste final
+        # Ajuste final para asegurar saldo cero
         if mes == plazo_meses or saldo < amortizacion_dec + TOLERANCIA_SALDO:
-            amortizacion_dec = saldo
-            cuota_base_dec = interes_dec + amortizacion_dec
+            amortizacion_dec = saldo # La amortización toma el saldo restante
+            cuota_base_dec = interes_dec + amortizacion_dec # La cuota base se ajusta
         
         saldo_anterior = saldo
         saldo = (saldo - amortizacion_dec).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
         
-        # Convertir a float para la tabla
+        # Conversión y consolidación de la fila
+        comision_admin_dec = Decimal(str(comision_administracion)).quantize(Decimal('0.01'))
+        seguro_dec = Decimal(str(seguro)).quantize(Decimal('0.01'))
+        cuota_total_dec = cuota_base_dec + comision_admin_dec + seguro_dec
+
         fila = {
             "mes": mes,
             "fecha_vencimiento": calcular_fecha_vencimiento(fecha_inicio, mes),
@@ -207,13 +225,9 @@ def generar_tabla_amortizacion(
             "cuota_base": float(cuota_base_dec.quantize(Decimal('0.01'))),
             "interes": float(interes_dec.quantize(Decimal('0.01'))),
             "amortizacion": float(amortizacion_dec.quantize(Decimal('0.01'))),
-            "comision_administracion": float(Decimal(str(comision_administracion)).quantize(Decimal('0.01'))),
-            "seguro": float(Decimal(str(seguro)).quantize(Decimal('0.01'))),
-            "cuota_total": float((
-                cuota_base_dec + 
-                Decimal(str(comision_administracion)) + 
-                Decimal(str(seguro))
-            ).quantize(Decimal('0.01'))),
+            "comision_administracion": float(comision_admin_dec),
+            "seguro": float(seguro_dec),
+            "cuota_total": float(cuota_total_dec.quantize(Decimal('0.01'))),
             "saldo_final": max(float(saldo), 0)
         }
         
@@ -224,7 +238,7 @@ def generar_tabla_amortizacion(
     
     return tabla
 
-# --- FUNCIÓN PRINCIPAL MEJORADA ---
+# --- FUNCIÓN PRINCIPAL ---
 
 def calcular_prestamo_completo(
     monto_solicitado: float, 
@@ -233,7 +247,7 @@ def calcular_prestamo_completo(
     fecha_aprobacion: datetime = None
 ) -> dict:
     """
-    Función principal mejorada con validaciones completas.
+    Función principal para calcular todos los detalles de un préstamo.
     """
     if fecha_aprobacion is None:
         fecha_aprobacion = datetime.now()
@@ -247,39 +261,43 @@ def calcular_prestamo_completo(
         if not hasattr(producto, 'tasa_interes_anual'):
             raise CalculoPrestamoError("Producto debe tener tasa_interes_anual definida")
         
-        # 1. Calcular comisiones
+        # 1. Calcular comisiones (siempre sobre el monto solicitado)
         comision_apertura = calcular_comision_apertura(monto_solicitado, producto)
         comision_admin_mensual = calcular_comision_administracion(monto_solicitado, producto)
         seguro_mensual = calcular_seguro(monto_solicitado, producto)
 
-        # 2. Determinar capital base y desembolso
-        capital_base = monto_solicitado
-        capital_desembolsar = monto_solicitado
+        # 2. Determinar capital base (para cálculo de cuota) y desembolso (efectivo al cliente)
+        capital_base = Decimal(str(monto_solicitado))
+        capital_desembolsar = Decimal(str(monto_solicitado))
         
         if getattr(producto, 'comisiones_se_descuentan_capital', False):
-            capital_desembolsar = max(0, monto_solicitado - comision_apertura)
+            # Comisión de apertura se resta del desembolso
+            capital_desembolsar = max(Decimal(0), capital_desembolsar - Decimal(str(comision_apertura)))
         elif getattr(producto, 'comisiones_se_agregan_capital', False):
-            capital_base = monto_solicitado + comision_apertura
+            # Comisión de apertura se agrega al capital a amortizar (se financia)
+            capital_base = capital_base + Decimal(str(comision_apertura))
 
         # 3. Calcular tasas
         tasa_mensual = producto.tasa_interes_anual / 12 / 100
+        
+        # 4. Calcular cuota base de amortización
+        cuota_base = calcular_cuota_frances(float(capital_base), tasa_mensual, plazo_meses)
+        
+        # 5. Calcular TEA
         tea = calcular_tea(
             tasa_mensual, 
             plazo_meses, 
             comision_apertura, 
-            capital_desembolsar
+            float(capital_desembolsar)
         ) if getattr(producto, 'aplicar_tea', True) else 0
 
-        # 4. Calcular cuota base
-        cuota_base = calcular_cuota_frances(capital_base, tasa_mensual, plazo_meses)
-
-        # 5. Generar tabla de amortización
+        # 6. Generar tabla de amortización
         tabla_amortizacion = generar_tabla_amortizacion(
-            capital_base, plazo_meses, tasa_mensual, cuota_base,
+            float(capital_base), plazo_meses, tasa_mensual, cuota_base,
             comision_admin_mensual, seguro_mensual, fecha_aprobacion
         )
 
-        # 6. Calcular totales
+        # 7. Calcular totales
         total_intereses = sum(row['interes'] for row in tabla_amortizacion)
         total_com_admin = sum(row['comision_administracion'] for row in tabla_amortizacion)
         total_seguro = sum(row['seguro'] for row in tabla_amortizacion)
@@ -289,8 +307,8 @@ def calcular_prestamo_completo(
             "success": True,
             "parametros": {
                 "monto_solicitado": round(monto_solicitado, 2),
-                "capital_base_calculo": round(capital_base, 2),
-                "capital_a_desembolsar": round(capital_desembolsar, 2),
+                "capital_base_calculo": round(float(capital_base), 2),
+                "capital_a_desembolsar": round(float(capital_desembolsar), 2),
                 "plazo_meses": plazo_meses,
                 "tasa_interes_anual": round(producto.tasa_interes_anual, 2),
                 "tasa_mensual_efectiva": round(tasa_mensual * 100, 4),
@@ -304,7 +322,7 @@ def calcular_prestamo_completo(
                 "costo_total_credito": round(total_a_pagar, 2)
             },
             "cuota_detalle": {
-                "cuota_mensual_total_aprox": round(tabla_amortizacion[0]['cuota_total'], 2)
+                "cuota_mensual_total_aprox": round(tabla_amortizacion[0]['cuota_total'], 2) if tabla_amortizacion else 0.00
             },
             "tabla_amortizacion": tabla_amortizacion,
             "fecha_aprobacion": fecha_aprobacion.isoformat()
@@ -317,9 +335,9 @@ def calcular_prestamo_completo(
         logger.error(f"Error inesperado en cálculo: {e}", exc_info=True)
         return {"success": False, "error": f"Error interno: {str(e)}"}
 
-# --- FUNCIÓN DE PRUEBA ---
-def ejemplo_uso():
-    """Ejemplo de uso con datos de prueba."""
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    
     class ProductoTest:
         tasa_interes_anual = 12.0
         comision_apertura = 0.02  # 2%
@@ -327,17 +345,15 @@ def ejemplo_uso():
         seguro = 5.0  # Monto fijo
         comisiones_se_descuentan_capital = True
         aplicar_tea = True
-    
+        
     resultado = calcular_prestamo_completo(10000, ProductoTest(), 12)
     print("=== RESULTADO DEL CÁLCULO ===")
-    print(f"Éxito: {resultado['success']}")
-    if resultado['success']:
+    print(f"Éxito: {resultado.get('success')}")
+    if resultado.get('success'):
         print(f"Capital a desembolsar: ${resultado['parametros']['capital_a_desembolsar']:,}")
         print(f"Cuota mensual: ${resultado['cuota_detalle']['cuota_mensual_total_aprox']:,}")
-        print(f"TEA: {resultado['parametros']['tea_calculada']}%")
+        print(f"Tasa Mensual Efectiva: {resultado['parametros']['tasa_mensual_efectiva']}%")
+        print(f"TEA Calculada: {resultado['parametros']['tea_calculada']}%")
         print(f"Total a pagar: ${resultado['resumen_costos']['costo_total_credito']:,}")
     else:
-        print(f"Error: {resultado['error']}")
-
-if __name__ == "__main__":
-    ejemplo_uso()
+        print(f"Error: {resultado.get('error')}")

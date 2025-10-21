@@ -22,77 +22,82 @@ def convert_html_to_pdf(html_content):
 
 class PDF(FPDF):
     def header(self):
-        # Logo - Suponiendo que 'logo.png' existe en el directorio del frontend
-        # En una aplicación real, esto se manejaría de forma más robusta.
-        # self.image('frontend/logo.png', 10, 8, 33)
-        self.set_font('Arial', 'B', 15)
-        self.cell(80)
-        self.cell(30, 10, 'Contrato de Prestamo', 0, 0, 'C')
-        self.ln(20)
+        self.set_font('Arial', 'B', 12)
+        self.cell(0, 10, 'Contrato de Préstamo - GRUPO LAZO ARCE S.A.S. DE C.V.', 0, 1, 'C')
+        self.ln(10)
 
     def footer(self):
         self.set_y(-15)
         self.set_font('Arial', 'I', 8)
-        self.cell(0, 10, f'Pagina {self.page_no()}', 0, 0, 'C')
+        self.cell(0, 10, f'Página {self.page_no()}', 0, 0, 'C')
 
-def create_contract_pdf(contract_data):
-    """
-    Genera un contrato de préstamo en formato PDF.
+    def chapter_title(self, title):
+        self.set_font('Arial', 'B', 12)
+        self.cell(0, 10, title, 0, 1, 'L')
+        self.ln(5)
 
-    Args:
-        contract_data (dict): Un diccionario con los datos del contrato.
+    def chapter_body(self, body):
+        self.set_font('Arial', '', 12)
+        self.multi_cell(0, 10, body)
+        self.ln()
 
-    Returns:
-        bytes: El contenido del PDF generado.
-    """
+    def add_amortization_table(self, table_data):
+        self.set_font('Arial', 'B', 10)
+        col_widths = [15, 30, 25, 25, 25, 30, 30]
+        headers = ['Mes', 'Saldo Inicial', 'Cuota', 'Interés', 'Comisión', 'Amortización', 'Saldo Final']
+
+        for header, width in zip(headers, col_widths):
+            self.cell(width, 10, header, 1, 0, 'C')
+        self.ln()
+
+        self.set_font('Arial', '', 9)
+        for row in table_data:
+            self.cell(col_widths[0], 10, str(row['month']), 1)
+            self.cell(col_widths[1], 10, f"${row['initial_balance']:.2f}", 1)
+            self.cell(col_widths[2], 10, f"${row['payment']:.2f}", 1)
+            self.cell(col_widths[3], 10, f"${row['interest']:.2f}", 1)
+            self.cell(col_widths[4], 10, f"${row['commission']:.2f}", 1)
+            self.cell(col_widths[5], 10, f"${row['principal']:.2f}", 1)
+            self.cell(col_widths[6], 10, f"${row['final_balance']:.2f}", 1)
+            self.ln()
+        self.ln(10)
+
+
+def generate_contract_pdf(contract_data):
     pdf = PDF()
     pdf.add_page()
 
-    # --- Información de la Empresa ---
-    pdf.set_font('Arial', 'B', 12)
-    pdf.cell(0, 10, contract_data['company']['name'], 0, 1)
-    pdf.set_font('Arial', '', 10)
-    pdf.cell(0, 5, f"NIT: {contract_data['company']['nit']}", 0, 1)
-    pdf.ln(10)
+    client = contract_data['client']
+    company = contract_data['company']
+    app = contract_data['application']
 
-    # --- Partes del Contrato ---
-    pdf.set_font('Arial', 'B', 11)
-    pdf.cell(0, 10, 'PARTES DEL CONTRATO', 0, 1)
-    pdf.set_font('Arial', '', 10)
-    pdf.multi_cell(0, 5, f"DEUDOR: {contract_data['client']['full_name']}, con DUI: {contract_data['client']['dui']} y NIT: {contract_data['client']['nit']}.")
-    pdf.multi_cell(0, 5, f"ACREEDOR: {contract_data['company']['name']}.")
-    pdf.ln(10)
+    pdf.chapter_title('Partes Involucradas')
+    body = (
+        f"PRESTAMISTA: {company['name']} (NIT: {company['nit']})\n"
+        f"PRESTATARIO: {client['full_name']} (DUI: {client['dui']}, NIT: {client['nit']})"
+    )
+    pdf.chapter_body(body)
 
-    # --- Detalles del Préstamo ---
-    pdf.set_font('Arial', 'B', 11)
-    pdf.cell(0, 10, 'DETALLES DEL PRESTAMO', 0, 1)
-    pdf.set_font('Arial', '', 10)
-    loan = contract_data['loan']
-    pdf.cell(0, 5, f"Monto del Prestamo: ${loan['requested_amount']:.2f}", 0, 1)
-    pdf.cell(0, 5, f"Plazo: {loan['requested_term']} meses", 0, 1)
-    pdf.cell(0, 5, f"Tasa de Interes Mensual: {loan['interest_rate']}%", 0, 1)
-    pdf.ln(10)
+    pdf.chapter_title('Términos del Préstamo')
+    # The TEA is now expected in the contract_data
+    tea_percentage = (contract_data.get('tea_annual', 0.0) * 100)
+    body = (
+        f"Monto del Préstamo: ${app['amount_requested']:.2f}\n"
+        f"Tasa de Interés Anual Nominal: {(app['product']['interest_rate'] * 100):.2f}%\n"
+        f"Tasa Efectiva Anual (TEA): {tea_percentage:.2f}%\n"
+        f"Plazo del Préstamo: {app['term_months']} meses\n"
+        f"Cuota Mensual Fija: ${app['monthly_payment']:.2f}\n"
+        f"Fecha de Aprobación: {app['decision_date']}"
+    )
+    pdf.chapter_body(body)
 
-    # --- Tabla de Amortización ---
-    pdf.set_font('Arial', 'B', 11)
-    pdf.cell(0, 10, 'PLAN DE PAGOS', 0, 1)
+    pdf.chapter_title('Tabla de Amortización')
+    pdf.add_amortization_table(contract_data['amortization_table'])
 
-    pdf.set_font('Arial', 'B', 8)
-    col_widths = [15, 30, 30, 25, 25, 30, 30]
-    headers = ['Mes', 'Vencimiento', 'Saldo Inicial', 'Interes', 'Com. Adm.', 'Amortizacion', 'Cuota']
-    for i, header in enumerate(headers):
-        pdf.cell(col_widths[i], 8, header, 1, 0, 'C')
-    pdf.ln()
-
-    pdf.set_font('Arial', '', 8)
-    for row in contract_data['amortization']['amortization_table']:
-        pdf.cell(col_widths[0], 8, str(row['Mes']), 1, 0, 'C')
-        pdf.cell(col_widths[1], 8, row['Fecha Vencimiento'], 1, 0, 'C')
-        pdf.cell(col_widths[2], 8, f"${row['Saldo Inicial']:.2f}", 1, 0, 'R')
-        pdf.cell(col_widths[3], 8, f"${row['Interes']:.2f}", 1, 0, 'R')
-        pdf.cell(col_widths[4], 8, f"${row['Com. Adm']:.2f}", 1, 0, 'R')
-        pdf.cell(col_widths[5], 8, f"${row['Amortizacion']:.2f}", 1, 0, 'R')
-        pdf.cell(col_widths[6], 8, f"${row['Cuota']:.2f}", 1, 0, 'R')
-        pdf.ln()
+    pdf.chapter_title('Firmas')
+    pdf.ln(20)
+    pdf.cell(0, 10, '_________________________         _________________________')
+    pdf.ln(5)
+    pdf.cell(0, 10, f"{company['name']}                  {client['full_name']}")
 
     return pdf.output(dest='S').encode('latin-1')

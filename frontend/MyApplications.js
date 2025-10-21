@@ -1,23 +1,21 @@
-const API_BASE_URL = 'http://127.0.0.1:5000';
-
-function MyApplications({ token, onViewContract }) { // Añadir prop onViewContract
+const MyApplications = ({ token, onViewContract }) => {
     const [applications, setApplications] = React.useState([]);
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState('');
+    const [selectedAppId, setSelectedAppId] = React.useState(null);
 
     React.useEffect(() => {
         const fetchApplications = async () => {
             try {
-                setError('');
-                const res = await fetch(`${API_BASE_URL}/api/applications`, {
-                    headers: {
-                        'Authorization': `Bearer ${token}`
-                    }
+                setLoading(true);
+                const response = await fetch(`${API_BASE_URL}/api/applications`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
                 });
-                const data = await res.json();
-                if (!res.ok) {
-                    throw new Error(data.msg || 'No se pudieron cargar las solicitudes.');
+                if (!response.ok) {
+                    const errData = await response.json();
+                    throw new Error(errData.message || 'No se pudieron cargar las solicitudes.');
                 }
+                const data = await response.json();
                 setApplications(data);
             } catch (err) {
                 setError(err.message);
@@ -26,49 +24,52 @@ function MyApplications({ token, onViewContract }) { // Añadir prop onViewContr
             }
         };
 
-        fetchApplications();
-    }, [token]); // El efecto se ejecuta cada vez que el token cambia
+        if (token && !selectedAppId) { // Only fetch list if no detail is being viewed
+            fetchApplications();
+        }
+    }, [token, selectedAppId]);
 
-    if (loading) {
-        return <p>Cargando solicitudes...</p>;
+    if (selectedAppId) {
+        return <LoanStatementView token={token} applicationId={selectedAppId} onBack={() => setSelectedAppId(null)} />;
     }
 
-    if (error) {
-        return <p style={{ color: 'red' }}>Error: {error}</p>;
-    }
+    if (loading) return <p>Cargando solicitudes...</p>;
+    if (error) return <p className="error" style={{color: 'red'}}>{error}</p>;
 
     return (
-        <div className="applications-container">
-            <h3>Historial de Solicitudes de Préstamo</h3>
+        <div>
+            <h3>Mis Solicitudes de Préstamo</h3>
             {applications.length === 0 ? (
-                <p>No has realizado ninguna solicitud de préstamo todavía.</p>
+                <p>No tienes solicitudes de préstamo todavía.</p>
             ) : (
                 <table>
                     <thead>
                         <tr>
-                            <th>ID Solicitud</th>
+                            <th>ID</th>
                             <th>Producto</th>
                             <th>Monto Solicitado</th>
-                            <th>Plazo (Meses)</th>
-                            <th>Fecha</th>
                             <th>Estado</th>
+                            <th>Acciones</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {applications.map((app) => (
+                        {applications.map(app => (
                             <tr key={app.id}>
-                                <td>{app.id}</td>
-                                <td>{app.product_name}</td>
-                                <td>${app.requested_amount.toFixed(2)}</td>
-                                <td>{app.requested_term}</td>
-                                <td>{new Date(app.application_date).toLocaleDateString()}</td>
                                 <td>
-                                    {app.status}
-                                    {app.status === 'Aprobado' && (
-                                        <button
-                                            onClick={() => onViewContract(app.id)}
-                                            className="contract-button"
-                                        >
+                                    {app.status === 'Desembolsada' ? (
+                                        <button className="link-button" onClick={() => setSelectedAppId(app.id)}>
+                                            #{app.id} (Ver Estado de Cuenta)
+                                        </button>
+                                    ) : (
+                                        `#${app.id}`
+                                    )}
+                                </td>
+                                <td>{app.product_name}</td>
+                                <td>${app.amount_requested.toFixed(2)}</td>
+                                <td>{app.status}</td>
+                                <td>
+                                    {['Aprobada', 'Desembolsada'].includes(app.status) && (
+                                        <button onClick={() => onViewContract(app.id)}>
                                             Ver Contrato
                                         </button>
                                     )}
@@ -80,4 +81,4 @@ function MyApplications({ token, onViewContract }) { // Añadir prop onViewContr
             )}
         </div>
     );
-}
+};

@@ -1,129 +1,130 @@
-const API_BASE_URL = 'http://127.0.0.1:5000';
-
-function LoanSimulator({ token, product, onApplicationSuccess }) {
-    const [formData, setFormData] = React.useState({
-        capital_solicitado: product ? product.min_amount.toString() : '1000',
-        meses: '12',
-        tasa_interes_mensual: product ? product.default_interest_rate.toString() : '2.5',
-        comision_administracion: product ? product.default_admin_commission.toString() : '1',
-        comisiones_iniciales: '50',
-        commission_method: 'no_interest',
-    });
-    const [simulationResult, setSimulationResult] = React.useState(null);
-    const [loading, setLoading] = React.useState(false);
-    const [applying, setApplying] = React.useState(false);
+const LoanSimulator = () => {
+    const [products, setProducts] = React.useState([]);
+    const [selectedProduct, setSelectedProduct] = React.useState('');
+    const [amount, setAmount] = React.useState(1000);
+    const [term, setTerm] = React.useState(12);
+    const [commissionMethod, setCommissionMethod] = React.useState('A');
+    const [simulation, setSimulation] = React.useState(null);
     const [error, setError] = React.useState('');
-    const [success, setSuccess] = React.useState('');
 
     React.useEffect(() => {
-        // Pre-cargar datos cuando se selecciona un producto
-        if (product) {
-            setFormData(prev => ({
-                ...prev,
-                capital_solicitado: product.min_amount.toString(),
-                tasa_interes_mensual: product.default_interest_rate.toString(),
-                comision_administracion: product.default_admin_commission.toString(),
-            }));
-        }
-    }, [product]);
-
-    const handleFormChange = (e) => {
-        setFormData({ ...formData, [e.target.name]: e.target.value });
-        setSimulationResult(null); // Limpiar simulación anterior al cambiar datos
-        setSuccess('');
-    };
+        const fetchProducts = async () => {
+            try {
+                // Using a public endpoint for products if available, or the standard one
+                const response = await fetch(`${API_BASE_URL}/api/products`);
+                if (!response.ok) {
+                    throw new Error('No se pudieron cargar los productos');
+                }
+                const data = await response.json();
+                setProducts(data);
+                if (data.length > 0) {
+                    setSelectedProduct(data[0].id);
+                }
+            } catch (err) {
+                setError(err.message);
+            }
+        };
+        fetchProducts();
+    }, []);
 
     const handleSimulate = async (e) => {
         e.preventDefault();
-        setLoading(true);
         setError('');
-        setSuccess('');
-        setSimulationResult(null);
+        setSimulation(null);
+
+        if (!selectedProduct) {
+            setError('Por favor, selecciona un producto de préstamo.');
+            return;
+        }
 
         try {
-            const res = await fetch(`${API_BASE_URL}/api/loans/simulate`, {
+            // Using a new public-facing endpoint for simulation
+            const response = await fetch(`${API_BASE_URL}/api/public/simulate`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify(formData),
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    product_id: parseInt(selectedProduct),
+                    amount: parseFloat(amount),
+                    term: parseInt(term),
+                    commission_calculation_method: commissionMethod,
+                }),
             });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.msg);
-            setSimulationResult(data);
+
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.message || 'Error al simular el préstamo.');
+            }
+            setSimulation(data);
         } catch (err) {
             setError(err.message);
-        } finally {
-            setLoading(false);
         }
     };
-
-    const handleApply = async () => {
-        setApplying(true);
-        setError('');
-        setSuccess('');
-        try {
-            const applicationData = {
-                product_id: product.id,
-                requested_amount: parseFloat(formData.capital_solicitado),
-                requested_term: parseInt(formData.meses, 10),
-            };
-            const res = await fetch(`${API_BASE_URL}/api/applications`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify(applicationData),
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.msg);
-            setSuccess(data.msg);
-            // Notificar al padre para cambiar de vista
-            setTimeout(() => onApplicationSuccess(), 1500);
-        } catch (err) {
-            setError(err.message);
-        } finally {
-            setApplying(false);
-        }
-    };
-
-    if (!product) {
-        return <p>Por favor, selecciona un producto de la lista para comenzar.</p>;
-    }
 
     return (
         <div>
-            <h3>Simulador para: {product.name}</h3>
-            <div className="simulator-container">
-                <section className="form-section">
-                    <form onSubmit={handleSimulate}>
-                        {/* ... campos del formulario ... */}
-                        <div className="form-group">
-                            <label>Capital Solicitado ($)</label>
-                            <input type="number" name="capital_solicitado" value={formData.capital_solicitado} onChange={handleFormChange} min={product.min_amount} max={product.max_amount} required />
-                        </div>
-                        <div className="form-group">
-                            <label>Plazo (Meses)</label>
-                            <input type="number" name="meses" value={formData.meses} onChange={handleFormChange} required />
-                        </div>
-                        {/* ... otros campos ... */}
-                        <button type="submit" disabled={loading}>{loading ? 'Calculando...' : 'Calcular Préstamo'}</button>
-                    </form>
-                </section>
-                <section className="results-section">
-                    <h3>Resultados de la Simulación</h3>
-                    {error && <p style={{color: 'red'}}>{error}</p>}
-                    {success && <p style={{color: 'green'}}>{success}</p>}
-                    {simulationResult && (
-                        <div>
-                            {/* ... tabla de amortización ... */}
-                            <div className="summary">
-                                <h3>Resumen del Préstamo</h3>
-                                <p>Total a Pagar: <span>${simulationResult.summary.total_a_pagar.toFixed(2)}</span></p>
-                            </div>
-                            <button onClick={handleApply} disabled={applying} className="apply-button">
-                                {applying ? 'Enviando Solicitud...' : 'Aplicar a este Préstamo'}
-                            </button>
-                        </div>
-                    )}
-                </section>
-            </div>
+            <h3>Simulador de Préstamos</h3>
+            <form onSubmit={handleSimulate}>
+                <div>
+                    <label>Producto de Préstamo:</label>
+                    <select value={selectedProduct} onChange={(e) => setSelectedProduct(e.target.value)}>
+                        <option value="">Seleccione un producto</option>
+                        {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                </div>
+                <div>
+                    <label>Monto a Solicitar ($):</label>
+                    <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} min="1" required />
+                </div>
+                <div>
+                    <label>Plazo (meses):</label>
+                    <input type="number" value={term} onChange={(e) => setTerm(e.target.value)} min="1" required />
+                </div>
+                <div>
+                    <label>Método de Cálculo de Comisión:</label>
+                    <select value={commissionMethod} onChange={(e) => setCommissionMethod(e.target.value)}>
+                        <option value="A">A) Sobre Saldo de Capital</option>
+                        <option value="B">B) Sobre Monto Original</option>
+                        <option value="C">C) Cuota Fija</option>
+                    </select>
+                </div>
+                <button type="submit">Simular</button>
+            </form>
+            {error && <p className="error">{error}</p>}
+            {simulation && (
+                <div className="simulation-results">
+                    <h4>Resultado de la Simulación</h4>
+                    <p>Cuota Mensual: ${simulation.monthly_payment.toFixed(2)}</p>
+                    <p>Total a Pagar: ${simulation.total_payment.toFixed(2)}</p>
+                    <p><strong>Tasa Efectiva Anual (TEA): {(simulation.tea_annual * 100).toFixed(2)}%</strong></p>
+                    <h5>Tabla de Amortización:</h5>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Mes</th>
+                                <th>Saldo Inicial</th>
+                                <th>Cuota</th>
+                                <th>Interés</th>
+                                <th>Comisión</th>
+                                <th>Amortización</th>
+                                <th>Saldo Final</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {simulation.amortization_table.map(row => (
+                                <tr key={row.month}>
+                                    <td>{row.month}</td>
+                                    <td>${row.initial_balance.toFixed(2)}</td>
+                                    <td>${row.payment.toFixed(2)}</td>
+                                    <td>${row.interest.toFixed(2)}</td>
+                                    <td>${row.commission.toFixed(2)}</td>
+                                    <td>${row.principal.toFixed(2)}</td>
+                                    <td>${row.final_balance.toFixed(2)}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
         </div>
     );
-}
+};
