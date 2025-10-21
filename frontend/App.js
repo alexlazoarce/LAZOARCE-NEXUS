@@ -3,11 +3,9 @@ function App() {
     const [userRoles, setUserRoles] = React.useState([]);
     const [view, setView] = React.useState('auth');
     const [loadingProfile, setLoadingProfile] = React.useState(true);
-
     const [viewingContractId, setViewingContractId] = React.useState(null);
     const [viewingPaySlipsForLogId, setViewingPaySlipsForLogId] = React.useState(null);
     const [managingPaymentsForApp, setManagingPaymentsForApp] = React.useState(null);
-
     const [accountingView, setAccountingView] = React.useState('journal');
     const [hrView, setHrView] = React.useState('employees');
     const [crmView, setCrmView] = React.useState('leads');
@@ -24,14 +22,19 @@ function App() {
             const response = await fetch(`${API_BASE_URL}/api/profile`, {
                 headers: { 'Authorization': `Bearer ${currentToken}` }
             });
-            if (response.status === 401) { handleLogout(); return; }
+            if (response.status === 401) {
+                handleLogout();
+                return;
+            }
             if (!response.ok) throw new Error('Error al cargar perfil de usuario.');
             const data = await response.json();
-            // CORRECCIÓN: Se asume que el backend devuelve un array de roles en la clave 'roles'.
-            // Si la clave es 'role' (singular), sería: setUserRoles([data.role] || []);
             setUserRoles(data.roles || []);
-        } catch (error) { console.error(error.message); setUserRoles([]); }
-        finally { setLoadingProfile(false); }
+        } catch (error) {
+            console.error(error.message);
+            setUserRoles([]);
+        } finally {
+            setLoadingProfile(false);
+        }
     };
 
     React.useEffect(() => {
@@ -65,7 +68,14 @@ function App() {
 
     const AccountingPortal = () => (
         <div>
-            <nav><button onClick={() => setAccountingView('journal')}>Libro Diario</button><button onClick={() => setAccountingView('ledger')}>Libro Mayor</button><button onClick={() => setAccountingView('trial_balance')}>Balanza</button><button onClick={() => setAccountingView('balance_sheet')}>Balance General</button><button onClick={() => setAccountingView('income_statement')}>Estado de Resultados</button></nav><hr />
+            <nav>
+                <button onClick={() => setAccountingView('journal')}>Libro Diario</button>
+                <button onClick={() => setAccountingView('ledger')}>Libro Mayor</button>
+                <button onClick={() => setAccountingView('trial_balance')}>Balanza</button>
+                <button onClick={() => setAccountingView('balance_sheet')}>Balance General</button>
+                <button onClick={() => setAccountingView('income_statement')}>Estado de Resultados</button>
+            </nav>
+            <hr />
             {accountingView === 'journal' && <JournalView token={token} />}
             {accountingView === 'ledger' && <GeneralLedgerView token={token} />}
             {accountingView === 'trial_balance' && <TrialBalanceView token={token} />}
@@ -78,7 +88,11 @@ function App() {
         if (viewingPaySlipsForLogId) return <PaySlipsView token={token} payrollLogId={viewingPaySlipsForLogId} onBack={() => setViewingPaySlipsForLogId(null)} />;
         return (
             <div>
-                <nav><button onClick={() => setHrView('employees')}>Gestión de Empleados</button><button onClick={() => setHrView('payroll')}>Procesar Nómina</button></nav><hr/>
+                <nav>
+                    <button onClick={() => setHrView('employees')}>Gestión de Empleados</button>
+                    <button onClick={() => setHrView('payroll')}>Procesar Nómina</button>
+                </nav>
+                <hr />
                 {hrView === 'employees' && <EmployeeManagement token={token} />}
                 {hrView === 'payroll' && <PayrollView token={token} onViewPaySlips={setViewingPaySlipsForLogId} />}
             </div>
@@ -87,7 +101,11 @@ function App() {
 
     const CRMPortal = () => (
         <div>
-            <nav><button onClick={() => setCrmView('leads')}>Leads</button><button onClick={() => setCrmView('opportunities')}>Oportunidades</button></nav><hr/>
+            <nav>
+                <button onClick={() => setCrmView('leads')}>Leads</button>
+                <button onClick={() => setCrmView('opportunities')}>Oportunidades</button>
+            </nav>
+            <hr />
             {crmView === 'leads' && <LeadManagementView token={token} />}
             {crmView === 'opportunities' && <OpportunityPipelineView token={token} />}
         </div>
@@ -95,7 +113,11 @@ function App() {
 
     const MarketingPortal = () => (
         <div>
-            <nav><button onClick={() => setMarketingView('lists')}>Listas de Correo</button><button onClick={() => setMarketingView('campaigns')}>Campañas</button></nav><hr/>
+            <nav>
+                <button onClick={() => setMarketingView('lists')}>Listas de Correo</button>
+                <button onClick={() => setMarketingView('campaigns')}>Campañas</button>
+            </nav>
+            <hr />
             {marketingView === 'lists' && <MailingListView token={token} />}
             {marketingView === 'campaigns' && <CampaignView token={token} />}
         </div>
@@ -104,16 +126,13 @@ function App() {
     const renderView = () => {
         if (loadingProfile) return <p>Cargando...</p>;
         if (!token || view === 'auth') return <Auth onLogin={handleLogin} />;
-
         if (viewingContractId) return <ContractView token={token} applicationId={viewingContractId} onBack={() => setViewingContractId(null)} />;
         if (managingPaymentsForApp) return <PaymentView token={token} application={managingPaymentsForApp} onBack={() => setManagingPaymentsForApp(null)} />;
-
         const isAdmin = userRoles.includes('Admin') || userRoles.includes('Administrador General');
         const isContador = userRoles.includes('Contador');
         const isEjecutivo = userRoles.includes('Ejecutivo de Crédito');
         const isCobrador = userRoles.includes('Cobrador');
         const isSupport = userRoles.includes('Soporte');
-
         switch (view) {
             case 'dashboard': return isAdmin ? <AdminDashboard token={token} onManagePayments={setManagingPaymentsForApp} /> : <MyApplications token={token} onViewContract={setViewingContractId} />;
             case 'products': return <LoanProducts token={token} />;
@@ -137,13 +156,11 @@ function App() {
 
     const NavigationView = () => {
         if (loadingProfile || !token || viewingContractId || viewingPaySlipsForLogId || managingPaymentsForApp) return null;
-        
         const isAdmin = userRoles.includes('Admin') || userRoles.includes('Administrador General');
         const isContador = userRoles.includes('Contador');
         const isEjecutivo = userRoles.includes('Ejecutivo de Crédito');
         const isCobrador = userRoles.includes('Cobrador');
         const isSupport = userRoles.includes('Soporte');
-
         return (
             <nav>
                 <button onClick={() => setView('dashboard')}>{isAdmin ? 'Panel de Admin' : 'Mis Solicitudes'}</button>
@@ -159,7 +176,7 @@ function App() {
                 {(isAdmin || isContador) && <button onClick={() => setView('tax')}>Impuestos</button>}
                 {isAdmin && <button onClick={() => setView('hr')}>RRHH</button>}
                 {isAdmin && (
-                    <div style={{border: '1px solid grey', padding: '5px', marginTop: '5px'}}>
+                    <div style={{ border: '1px solid grey', padding: '5px', marginTop: '5px' }}>
                         <strong>Configuración:</strong>
                         <button onClick={() => setView('templates')}>Plantillas</button>
                         <button onClick={() => setView('audit')}>Auditoría</button>
