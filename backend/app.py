@@ -9,7 +9,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, date, timedelta
 from dotenv import load_dotenv
 from sqlalchemy import func, Boolean, Date, DateTime, Float, Integer, String, Text, ForeignKey, UniqueConstraint
-from sqlalchemy.orm import relationship, backref
+from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import JSONB
 from flask_cors import CORS
 
@@ -34,7 +34,6 @@ mailing_list_members = db.Table('mailing_list_members',
 # === MODELOS DE LA APLICACIÓN ===
 # --- Modelos de Seguridad y Tenants ---
 class Tenant(db.Model):
-    """Soporte Multi-tenant - Empresas/Organizaciones"""
     __tablename__ = 'tenant'
     id = db.Column(Integer, primary_key=True)
     company_name = db.Column(String(100), unique=True, nullable=False, index=True)
@@ -43,23 +42,21 @@ class Tenant(db.Model):
     is_active = db.Column(Boolean, default=True)
     created_at = db.Column(DateTime, default=func.current_timestamp())
     config = db.Column(JSONB, default=dict)
-    users = db.relationship('User', backref='tenant', lazy='dynamic', cascade="all, delete-orphan")
-    roles = db.relationship('Role', backref='tenant', lazy='dynamic', cascade="all, delete-orphan")
-    loan_products = db.relationship('LoanProduct', backref='tenant', lazy='dynamic', cascade="all, delete-orphan")
+    users = relationship('User', backref='tenant', lazy='dynamic', cascade="all, delete-orphan")
+    roles = relationship('Role', backref='tenant', lazy='dynamic', cascade="all, delete-orphan")
+    loan_products = relationship('LoanProduct', backref='tenant', lazy='dynamic', cascade="all, delete-orphan")
 
 class Role(db.Model):
-    """Roles de usuario con soporte multi-tenant"""
     __tablename__ = 'role'
     id = db.Column(Integer, primary_key=True)
     name = db.Column(String(80), nullable=False, index=True)
     description = db.Column(String(255))
     tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=True, index=True)
     is_active = db.Column(Boolean, default=True)
-    users = db.relationship('User', secondary=user_roles, back_populates='roles_m2m')
+    users = relationship('User', secondary=user_roles, back_populates='roles_m2m')
     __table_args__ = (UniqueConstraint('name', 'tenant_id', name='_role_name_tenant_uc'),)
 
 class User(db.Model):
-    """Usuarios con autenticación y perfil completo"""
     __tablename__ = 'user'
     id = db.Column(Integer, primary_key=True)
     email = db.Column(String(120), unique=True, nullable=False, index=True)
@@ -72,26 +69,25 @@ class User(db.Model):
     created_at = db.Column(DateTime, default=func.current_timestamp())
     tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=True, index=True)
     role_id = db.Column(Integer, ForeignKey('role.id'), nullable=True)
-    roles_m2m = db.relationship('Role', secondary=user_roles, back_populates='users')
-    profile = db.relationship('ClientProfile', backref='user', uselist=False, cascade="all, delete-orphan")
-    employee = db.relationship('Employee', backref='user', uselist=False, cascade="all, delete-orphan")
-    applications = db.relationship('LoanApplication', backref='applicant', lazy='dynamic', cascade="all, delete-orphan")
-    audit_logs = db.relationship('AuditLog', backref='user', lazy='dynamic', cascade="all, delete-orphan")
+    roles_m2m = relationship('Role', secondary=user_roles, back_populates='users')
+    profile = relationship('ClientProfile', backref='user', uselist=False, cascade="all, delete-orphan")
+    employee = relationship('Employee', backref='user', uselist=False, cascade="all, delete-orphan")
+    applications = relationship('LoanApplication', backref='applicant', lazy='dynamic', cascade="all, delete-orphan")
+    audit_logs = relationship('AuditLog', backref='user', lazy='dynamic', cascade="all, delete-orphan")
     
-    def set_password(self, password): 
+    def set_password(self, password):
         self.password_hash = generate_password_hash(password)
     
-    def check_password(self, password): 
+    def check_password(self, password):
         return check_password_hash(self.password_hash, password)
     
     @property
     def role(self):
-        if self.role_id: 
+        if self.role_id:
             return db.session.get(Role, self.role_id)
         return None
 
 class ClientProfile(db.Model):
-    """Perfil detallado de cliente"""
     __tablename__ = 'client_profile'
     id = db.Column(Integer, primary_key=True)
     user_id = db.Column(Integer, ForeignKey('user.id'), unique=True, nullable=False)
@@ -107,7 +103,7 @@ class LoanProduct(db.Model):
     name = db.Column(String(100), nullable=False)
     tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False)
 
-class ProductoCredito(LoanProduct): 
+class ProductoCredito(LoanProduct):
     __mapper_args__ = {'polymorphic_identity': 'producto_credito'}
 
 class Payment(db.Model):
@@ -123,28 +119,29 @@ class LoanApplication(db.Model):
     user_id = db.Column(Integer, ForeignKey('user.id'), nullable=False)
     product_id = db.Column(Integer, ForeignKey('loan_product.id'), nullable=False)
     status = db.Column(String(50), default='Pendiente')
-    applicant = db.relationship('User')
+    applicant = relationship('User')
 
 # --- Modelos Contables ---
-class Account(db.Model): 
+class Account(db.Model):
     __tablename__ = 'account'
     id = db.Column(Integer, primary_key=True)
 
-class JournalEntry(db.Model): 
+class JournalEntry(db.Model):
     __tablename__ = 'journal_entry'
     id = db.Column(Integer, primary_key=True)
 
-class Transaction(db.Model): 
+class Transaction(db.Model):
     __tablename__ = 'transaction'
     id = db.Column(Integer, primary_key=True)
 
 # --- Modelos de RRHH ---
-class Employee(db.Model): 
+class Employee(db.Model):
     __tablename__ = 'employee'
     id = db.Column(Integer, primary_key=True)
+    user_id = db.Column(Integer, ForeignKey('user.id'), unique=True, nullable=False)
     salario_base = db.Column(Float)
 
-class Empleado(Employee): 
+class Empleado(Employee):
     __mapper_args__ = {'polymorphic_identity': 'empleado'}
 
 class PaySlip(db.Model):
@@ -157,7 +154,7 @@ class PaySlip(db.Model):
     salario_base = db.Column(Float)
     employee_id = db.Column(Integer, ForeignKey('employee.id'))
 
-class Planilla(PaySlip): 
+class Planilla(PaySlip):
     __mapper_args__ = {'polymorphic_identity': 'planilla'}
 
 # --- Modelos de Firma y Contratos (Integración) ---
@@ -181,68 +178,68 @@ class FirmaElectronica(db.Model):
     firma_id = db.Column(String(50), unique=True)
     clientes = relationship("Cliente", back_populates="firma_electronica")
 
-class CertificadoValidacion(db.Model): 
+class CertificadoValidacion(db.Model):
     __tablename__ = 'certificado_validacion'
     id = db.Column(Integer, primary_key=True)
 
 # --- Modelos de Módulos ---
-class ContractTemplate(db.Model): 
+class ContractTemplate(db.Model):
     __tablename__ = 'contract_template'
     id = db.Column(Integer, primary_key=True)
 
-class GeneratedContract(db.Model): 
+class GeneratedContract(db.Model):
     __tablename__ = 'generated_contract'
     id = db.Column(Integer, primary_key=True)
 
-class Contact(db.Model): 
+class Contact(db.Model):
     __tablename__ = 'crm_contact'
     id = db.Column(Integer, primary_key=True)
 
-class Interaction(db.Model): 
+class Interaction(db.Model):
     __tablename__ = 'crm_interaction'
     id = db.Column(Integer, primary_key=True)
 
-class Opportunity(db.Model): 
+class Opportunity(db.Model):
     __tablename__ = 'crm_opportunity'
     id = db.Column(Integer, primary_key=True)
 
-class Product(db.Model): 
+class Product(db.Model):
     __tablename__ = 'inventory_product'
     id = db.Column(Integer, primary_key=True)
 
-class StockMovement(db.Model): 
+class StockMovement(db.Model):
     __tablename__ = 'inventory_stock_movement'
     id = db.Column(Integer, primary_key=True)
 
-class Quote(db.Model): 
+class Quote(db.Model):
     __tablename__ = 'sales_quote'
     id = db.Column(Integer, primary_key=True)
 
-class SalesOrder(db.Model): 
+class SalesOrder(db.Model):
     __tablename__ = 'sales_order'
     id = db.Column(Integer, primary_key=True)
 
-class SalesOrderItem(db.Model): 
+class SalesOrderItem(db.Model):
     __tablename__ = 'sales_order_item'
     id = db.Column(Integer, primary_key=True)
 
-class Supplier(db.Model): 
+class Supplier(db.Model):
     __tablename__ = 'purchasing_supplier'
     id = db.Column(Integer, primary_key=True)
 
-class PurchaseOrder(db.Model): 
+class PurchaseOrder(db.Model):
     __tablename__ = 'purchasing_order'
     id = db.Column(Integer, primary_key=True)
 
-class PurchaseOrderItem(db.Model): 
+class PurchaseOrderItem(db.Model):
     __tablename__ = 'purchasing_order_item'
     id = db.Column(Integer, primary_key=True)
 
-class EmailLog(db.Model): 
+class EmailLog(db.Model):
     __tablename__ = 'email_log'
     id = db.Column(Integer, primary_key=True)
 
-class Document(db.Model): 
+class Document(db.Model):
     __tablename__ = 'document'
     id = db.Column(Integer, primary_key=True)
     filename = db.Column(String)
@@ -251,34 +248,34 @@ class Document(db.Model):
     created_at = db.Column(DateTime, default=func.current_timestamp())
     updated_at = db.Column(DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp())
 
-class DocumentVersion(db.Model): 
+class DocumentVersion(db.Model):
     __tablename__ = 'document_version'
     id = db.Column(Integer, primary_key=True)
     filepath = db.Column(String)
 
-class Channel(db.Model): 
+class Channel(db.Model):
     __tablename__ = 'messaging_channel'
     id = db.Column(Integer, primary_key=True)
     name = db.Column(String)
     description = db.Column(String)
     channel_type = db.Column(String)
 
-class Message(db.Model): 
+class Message(db.Model):
     __tablename__ = 'messaging_message'
     id = db.Column(Integer, primary_key=True)
     content = db.Column(Text)
     user_id = db.Column(Integer, ForeignKey('user.id'))
     created_at = db.Column(DateTime, default=func.current_timestamp())
-    author = db.relationship('User')
+    author = relationship('User')
 
-class SignableTemplate(db.Model): 
+class SignableTemplate(db.Model):
     __tablename__ = 'sign_template'
     id = db.Column(Integer, primary_key=True)
     name = db.Column(String)
     description = db.Column(String)
     content = db.Column(Text)
 
-class SignatureRequest(db.Model): 
+class SignatureRequest(db.Model):
     __tablename__ = 'sign_request'
     id = db.Column(Integer, primary_key=True)
     signer_name = db.Column(String)
@@ -287,7 +284,7 @@ class SignatureRequest(db.Model):
     created_at = db.Column(DateTime, default=func.current_timestamp())
     final_document_content = db.Column(Text)
 
-class Form(db.Model): 
+class Form(db.Model):
     __tablename__ = 'form'
     id = db.Column(Integer, primary_key=True)
     name = db.Column(String)
@@ -295,13 +292,13 @@ class Form(db.Model):
     fields = db.Column(JSONB)
     public_token = db.Column(String, unique=True)
 
-class FormSubmission(db.Model): 
+class FormSubmission(db.Model):
     __tablename__ = 'form_submission'
     id = db.Column(Integer, primary_key=True)
     data = db.Column(JSONB)
     submitted_at = db.Column(DateTime, default=func.current_timestamp())
 
-class Project(db.Model): 
+class Project(db.Model):
     __tablename__ = 'project'
     id = db.Column(Integer, primary_key=True)
     name = db.Column(String)
@@ -310,14 +307,14 @@ class Project(db.Model):
     budget = db.Column(Float)
     end_date = db.Column(Date)
 
-class Task(db.Model): 
+class Task(db.Model):
     __tablename__ = 'task'
     id = db.Column(Integer, primary_key=True)
     title = db.Column(String)
     status = db.Column(String)
     due_date = db.Column(Date)
 
-class Ticket(db.Model): 
+class Ticket(db.Model):
     __tablename__ = 'ticket'
     id = db.Column(Integer, primary_key=True)
     subject = db.Column(String)
@@ -325,15 +322,15 @@ class Ticket(db.Model):
     status = db.Column(String)
     priority = db.Column(String)
     updated_at = db.Column(DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp())
-    updates = db.relationship('TicketUpdate')
+    updates = relationship('TicketUpdate')
 
-class TicketUpdate(db.Model): 
+class TicketUpdate(db.Model):
     __tablename__ = 'ticket_update'
     id = db.Column(Integer, primary_key=True)
     comment = db.Column(Text)
-    author = db.relationship('User')
+    author = relationship('User')
 
-class FixedAsset(db.Model): 
+class FixedAsset(db.Model):
     __tablename__ = 'fixed_asset'
     id = db.Column(Integer, primary_key=True)
     name = db.Column(String)
@@ -343,90 +340,90 @@ class FixedAsset(db.Model):
     purchase_date = db.Column(Date)
     useful_life = db.Column(Integer)
     salvage_value = db.Column(Float)
-    depreciation_entries = db.relationship('DepreciationEntry')
+    depreciation_entries = relationship('DepreciationEntry')
 
-class DepreciationEntry(db.Model): 
+class DepreciationEntry(db.Model):
     __tablename__ = 'depreciation_entry'
     id = db.Column(Integer, primary_key=True)
     entry_date = db.Column(Date)
     amount = db.Column(Float)
 
-class MailingList(db.Model): 
+class MailingList(db.Model):
     __tablename__ = 'mailing_list'
     id = db.Column(Integer, primary_key=True)
 
-class AuditLog(db.Model): 
+class AuditLog(db.Model):
     __tablename__ = 'audit_log'
     id = db.Column(Integer, primary_key=True)
 
-class NotificationTemplate(db.Model): 
+class NotificationTemplate(db.Model):
     __tablename__ = 'notification_template'
     id = db.Column(Integer, primary_key=True)
 
-class BankAccount(db.Model): 
+class BankAccount(db.Model):
     __tablename__ = 'bank_account'
     id = db.Column(Integer, primary_key=True)
 
-class BankTransaction(db.Model): 
+class BankTransaction(db.Model):
     __tablename__ = 'bank_transaction'
     id = db.Column(Integer, primary_key=True)
 
-class CashBox(db.Model): 
+class CashBox(db.Model):
     __tablename__ = 'cash_box'
     id = db.Column(Integer, primary_key=True)
 
-class CashTransaction(db.Model): 
+class CashTransaction(db.Model):
     __tablename__ = 'cash_transaction'
     id = db.Column(Integer, primary_key=True)
 
-class TaxType(db.Model): 
+class TaxType(db.Model):
     __tablename__ = 'tax_type'
     id = db.Column(Integer, primary_key=True)
 
-class TaxDeclaration(db.Model): 
+class TaxDeclaration(db.Model):
     __tablename__ = 'tax_declaration'
     id = db.Column(Integer, primary_key=True)
 
-class Material(db.Model): 
+class Material(db.Model):
     __tablename__ = 'material'
     id = db.Column(Integer, primary_key=True)
 
-class MaterialRequest(db.Model): 
+class MaterialRequest(db.Model):
     __tablename__ = 'material_request'
     id = db.Column(Integer, primary_key=True)
 
-class ConstructionProject(db.Model): 
+class ConstructionProject(db.Model):
     __tablename__ = 'construction_project'
     id = db.Column(Integer, primary_key=True)
 
-class BudgetItem(db.Model): 
+class BudgetItem(db.Model):
     __tablename__ = 'budget_item'
     id = db.Column(Integer, primary_key=True)
 
-class ProgressReport(db.Model): 
+class ProgressReport(db.Model):
     __tablename__ = 'progress_report'
     id = db.Column(Integer, primary_key=True)
 
-class Certification(db.Model): 
+class Certification(db.Model):
     __tablename__ = 'certification'
     id = db.Column(Integer, primary_key=True)
 
 # === MOCK DE SERVICIOS Y UTILIDADES ===
 class MockService:
-    def __init__(self, name): 
+    def __init__(self, name):
         self.name = name
     
-    def __call__(self, *args, **kwargs): 
+    def __call__(self, *args, **kwargs):
         return self
     
-    def send_email(self, *args, **kwargs): 
+    def send_email(self, *args, **kwargs):
         return True, "OK"
     
-    def log_action(self, *args, **kwargs): 
+    def log_action(self, *args, **kwargs):
         pass
     
-    def get_asset_details(self, *args, **kwargs): 
-        class A: 
+    def get_asset_details(self, *args, **kwargs):
+        class A:
             id = 1
             name = 'A1'
             description = 'D'
@@ -437,43 +434,43 @@ class MockService:
             depreciation_entries = []
         return A()
     
-    def get_asset_book_value(self, *args, **kwargs): 
+    def get_asset_book_value(self, *args, **kwargs):
         return 900
     
-    def get_assets_for_tenant(self, *args, **kwargs): 
-        class A: 
+    def get_assets_for_tenant(self, *args, **kwargs):
+        class A:
             id = 1
             name = 'A1'
             purchase_cost = 1000
             status = 'Active'
         return [A()]
     
-    def create_asset(self, *args, **kwargs): 
-        class A: 
+    def create_asset(self, *args, **kwargs):
+        class A:
             id = 2
         return A()
     
-    def calculate_monthly_depreciation(self, *args, **kwargs): 
-        class E: 
+    def calculate_monthly_depreciation(self, *args, **kwargs):
+        class E:
             id = 3
             amount = 100
         return E()
     
-    def get_projects_for_tenant(self, *args, **kwargs): 
-        class P: 
+    def get_projects_for_tenant(self, *args, **kwargs):
+        class P:
             id = 1
             name = 'P1'
             status = 'In Progress'
             end_date = datetime.now().date()
         return [P()]
     
-    def create_project(self, *args, **kwargs): 
-        class P: 
+    def create_project(self, *args, **kwargs):
+        class P:
             id = 2
         return P()
     
-    def get_project_details(self, *args, **kwargs): 
-        class P: 
+    def get_project_details(self, *args, **kwargs):
+        class P:
             id = 1
             name = 'P1'
             description = 'D'
@@ -481,27 +478,27 @@ class MockService:
             budget = 100
         return P()
     
-    def get_tasks_for_project(self, *args, **kwargs): 
-        class T: 
+    def get_tasks_for_project(self, *args, **kwargs):
+        class T:
             id = 1
             title = 'T1'
             status = 'To Do'
             due_date = datetime.now().date()
         return [T()]
     
-    def create_task(self, *args, **kwargs): 
-        class T: 
+    def create_task(self, *args, **kwargs):
+        class T:
             id = 2
         return T()
     
-    def update_task_status(self, *args, **kwargs): 
-        class T: 
+    def update_task_status(self, *args, **kwargs):
+        class T:
             id = 1
             status = 'Done'
         return T()
     
-    def get_tickets_for_tenant(self, *args, **kwargs): 
-        class T: 
+    def get_tickets_for_tenant(self, *args, **kwargs):
+        class T:
             id = 1
             subject = 'S1'
             status = 'Open'
@@ -509,13 +506,13 @@ class MockService:
             updated_at = datetime.utcnow()
         return [T()]
     
-    def create_ticket(self, *args, **kwargs): 
-        class T: 
+    def create_ticket(self, *args, **kwargs):
+        class T:
             id = 2
         return T()
     
-    def get_ticket_details(self, *args, **kwargs): 
-        class T: 
+    def get_ticket_details(self, *args, **kwargs):
+        class T:
             id = 1
             subject = 'S1'
             description = 'D'
@@ -524,24 +521,24 @@ class MockService:
             updates = []
         return T()
     
-    def add_ticket_update(self, *args, **kwargs): 
-        class U: 
+    def add_ticket_update(self, *args, **kwargs):
+        class U:
             id = 3
         return U()
     
-    def assign_ticket(self, *args, **kwargs): 
-        class T: 
+    def assign_ticket(self, *args, **kwargs):
+        class T:
             id = 1
         return T()
     
-    def change_ticket_status(self, *args, **kwargs): 
-        class T: 
+    def change_ticket_status(self, *args, **kwargs):
+        class T:
             id = 1
             status = 'Closed'
         return T()
     
-    def get_documents_for_tenant(self, *args, **kwargs): 
-        class D: 
+    def get_documents_for_tenant(self, *args, **kwargs):
+        class D:
             id = 1
             filename = 'doc1.pdf'
             description = 'Test Document'
@@ -550,37 +547,37 @@ class MockService:
             updated_at = datetime.utcnow()
         return [D()]
     
-    def create_document(self, *args, **kwargs): 
-        class D: 
+    def create_document(self, *args, **kwargs):
+        class D:
             id = 1
         return D()
     
-    def add_new_version(self, *args, **kwargs): 
-        class V: 
+    def add_new_version(self, *args, **kwargs):
+        class V:
             id = 2
         return V()
     
-    def get_document_version(self, *args, **kwargs): 
-        class V: 
+    def get_document_version(self, *args, **kwargs):
+        class V:
             id = 1
             filepath = '/path/to/file'
         return V()
     
-    def get_user_channels(self, *args, **kwargs): 
-        class C: 
+    def get_user_channels(self, *args, **kwargs):
+        class C:
             id = 1
             name = 'Channel1'
             description = 'Test Channel'
             channel_type = 'public'
         return [C()]
     
-    def create_channel(self, *args, **kwargs): 
-        class C: 
+    def create_channel(self, *args, **kwargs):
+        class C:
             id = 1
         return C()
     
-    def get_messages_for_channel(self, *args, **kwargs): 
-        class M: 
+    def get_messages_for_channel(self, *args, **kwargs):
+        class M:
             id = 1
             content = 'Test Message'
             user_id = 1
@@ -588,25 +585,25 @@ class MockService:
             author = type('User', (), {'full_name': 'Test User'})()
         return [M()]
     
-    def post_message(self, *args, **kwargs): 
-        class M: 
+    def post_message(self, *args, **kwargs):
+        class M:
             id = 1
         return M()
     
-    def get_templates_for_tenant(self, *args, **kwargs): 
-        class T: 
+    def get_templates_for_tenant(self, *args, **kwargs):
+        class T:
             id = 1
             name = 'Template1'
             description = 'Test Template'
         return [T()]
     
-    def create_template(self, *args, **kwargs): 
-        class T: 
+    def create_template(self, *args, **kwargs):
+        class T:
             id = 1
         return T()
     
-    def get_signature_requests(self, *args, **kwargs): 
-        class R: 
+    def get_signature_requests(self, *args, **kwargs):
+        class R:
             id = 1
             signer_name = 'Test Signer'
             signer_email = 'test@example.com'
@@ -614,75 +611,75 @@ class MockService:
             created_at = datetime.utcnow()
         return [R()]
     
-    def create_signature_request(self, *args, **kwargs): 
-        class R: 
+    def create_signature_request(self, *args, **kwargs):
+        class R:
             id = 1
         return R()
     
-    def get_request_by_token(self, *args, **kwargs): 
-        class R: 
+    def get_request_by_token(self, *args, **kwargs):
+        class R:
             id = 1
             signer_name = 'Test Signer'
             final_document_content = 'Document Content'
             status = 'sent'
         return R()
     
-    def send_signature_request(self, *args, **kwargs): 
+    def send_signature_request(self, *args, **kwargs):
         pass
     
-    def sign_document(self, *args, **kwargs): 
+    def sign_document(self, *args, **kwargs):
         pass
     
-    def get_forms_for_tenant(self, *args, **kwargs): 
-        class F: 
+    def get_forms_for_tenant(self, *args, **kwargs):
+        class F:
             id = 1
             name = 'Form1'
             public_token = 'token123'
         return [F()]
     
-    def create_form(self, *args, **kwargs): 
-        class F: 
+    def create_form(self, *args, **kwargs):
+        class F:
             id = 1
             public_token = 'token123'
         return F()
     
-    def get_submissions_for_form(self, *args, **kwargs): 
-        class S: 
+    def get_submissions_for_form(self, *args, **kwargs):
+        class S:
             id = 1
             data = {}
             submitted_at = datetime.utcnow()
         return [S()]
     
-    def get_form_by_token(self, *args, **kwargs): 
-        class F: 
+    def get_form_by_token(self, *args, **kwargs):
+        class F:
             id = 1
             name = 'Form1'
             description = 'Test Form'
             fields = []
         return F()
     
-    def submit_form(self, *args, **kwargs): 
+    def submit_form(self, *args, **kwargs):
         pass
     
-    def get_balance_sheet(self, *args, **kwargs): 
+    def get_balance_sheet(self, *args, **kwargs):
         return {}
     
-    def get_income_statement(self, *args, **kwargs): 
+    def get_income_statement(self, *args, **kwargs):
         return {}
 
-def validacion_identidad_estricta(data): 
+def validacion_identidad_estricta(data):
     return True
 
-def capturar_datos_biometricos(): 
+def capturar_datos_biometricos():
     return {"biometric_data": "hash"}
 
-def generar_contrato_integracion(data): 
+def generar_contrato_integracion(data):
     return "CONTRATO-123"
 
-def firma_electronica_avanzada(contrato_id, data, datos_biometricos): 
+def firma_electronica_avanzada(contrato_id, data, datos_biometricos):
     return {"valida": True, "firma_id": "FIRMA-456"}
 
-def calcular_planilla(salario_base): 
+def calcular_planilla(salario_base):
     return {'success': True, 'salario_base': salario_base, 'isss': 100, 'afp': 100, 'renta': 50, 'salario_neto': salario_base - 250}
 
 # --- APP FACTORY ---
@@ -700,7 +697,7 @@ def create_app(config_object=None, testing_config=None):
         UPLOAD_FOLDER=os.path.join(app.instance_path, 'Uploads')
     )
     
-    if testing_config: 
+    if testing_config:
         app.config.from_mapping(testing_config)
     
     os.makedirs(app.instance_path, exist_ok=True)
@@ -728,7 +725,7 @@ def create_app(config_object=None, testing_config=None):
             'Ticket': Ticket, 'TicketUpdate': TicketUpdate, 'FixedAsset': FixedAsset, 'DepreciationEntry': DepreciationEntry,
             'BankAccount': BankAccount, 'BankTransaction': BankTransaction, 'CashBox': CashBox, 'CashTransaction': CashTransaction,
             'TaxType': TaxType, 'TaxDeclaration': TaxDeclaration, 'Material': Material, 'MaterialRequest': MaterialRequest,
-            'ConstructionProject': ConstructionProject, 'BudgetItem': BudgetItem, 'ProgressReport': ProgressReport, 
+            'ConstructionProject': ConstructionProject, 'BudgetItem': BudgetItem, 'ProgressReport': ProgressReport,
             'Certification': Certification
         }
         
@@ -756,7 +753,7 @@ def create_app(config_object=None, testing_config=None):
     
     # Decorador de autorización
     def role_required(required_roles):
-        if not isinstance(required_roles, list): 
+        if not isinstance(required_roles, list):
             required_roles = [required_roles]
         
         def decorator(fn):
@@ -767,9 +764,9 @@ def create_app(config_object=None, testing_config=None):
                 user_roles = set(claims.get('roles', []))
                 user_identity = get_jwt_identity()
                 g.current_user = app.models['User'].query.filter_by(email=user_identity).first()
-                if not g.current_user: 
+                if not g.current_user:
                     return jsonify({"msg": "Usuario no encontrado"}), 404
-                if g.current_user.role: 
+                if g.current_user.role:
                     user_roles.add(g.current_user.role.name)
                 if not any(role in user_roles for role in required_roles):
                     return jsonify({"msg": "Acceso no autorizado para este rol"}), 403
@@ -779,7 +776,7 @@ def create_app(config_object=None, testing_config=None):
     
     # Rutas base
     @app.route('/api/health')
-    def health_check(): 
+    def health_check():
         return jsonify({"status": "healthy"})
     
     @app.route('/api/login', methods=['POST'])
@@ -788,7 +785,7 @@ def create_app(config_object=None, testing_config=None):
         user = app.models['User'].query.filter_by(email=data.get('email')).first()
         if user and user.check_password(data.get('password')):
             user_roles = [r.name for r in user.roles_m2m] + ([user.role.name] if user.role else [])
-            if not user_roles: 
+            if not user_roles:
                 user_roles = ['Cliente']
             access_token = create_access_token(identity=user.email, additional_claims={'roles': list(set(user_roles)), 'user_id': user.id, 'tenant_id': user.tenant_id})
             return jsonify(access_token=access_token)
@@ -1521,7 +1518,7 @@ def create_app(config_object=None, testing_config=None):
     
     # Error Handlers
     @app.errorhandler(404)
-    def not_found(error): 
+    def not_found(error):
         return jsonify({"message": "Endpoint no encontrado"}), 404
     
     @app.errorhandler(500)

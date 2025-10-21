@@ -1015,6 +1015,118 @@ class Certification(db.Model):
     def __repr__(self):
         return f'<Certification {self.id} for Project {self.project_id}>'
 
+class PatientRecord(db.Model):
+    """Ficha de paciente o historial clínico."""
+    __tablename__ = 'health_patient_record'
+    id = db.Column(Integer, primary_key=True)
+    user_id = db.Column(Integer, ForeignKey('user.id'), nullable=True, index=True)
+    contact_id = db.Column(Integer, ForeignKey('crm_contact.id'), nullable=True, index=True)
+    full_name = db.Column(String(200), nullable=False)
+    birth_date = db.Column(Date)
+    medical_history_summary = db.Column(Text)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    created_at = db.Column(DateTime, default=func.current_timestamp())
+    appointments = db.relationship('MedicalAppointment', backref='patient', lazy='dynamic')
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'contact_id': self.contact_id,
+            'full_name': self.full_name,
+            'birth_date': self.birth_date.isoformat() if self.birth_date else None,
+            'medical_history_summary': self.medical_history_summary
+        }
+
+class MedicalAppointment(db.Model):
+    """Citas médicas."""
+    __tablename__ = 'health_appointment'
+    id = db.Column(Integer, primary_key=True)
+    patient_id = db.Column(Integer, ForeignKey('health_patient_record.id'), nullable=False, index=True)
+    doctor_id = db.Column(Integer, ForeignKey('user.id'), nullable=False, index=True)
+    appointment_time = db.Column(DateTime, nullable=False, index=True)
+    status = db.Column(String(50), default='Programada', index=True)
+    reason = db.Column(Text)
+    notes = db.Column(Text)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    doctor = db.relationship('User', foreign_keys=[doctor_id])
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'patient_id': self.patient_id,
+            'patient_name': self.patient.full_name,
+            'doctor_name': self.doctor.full_name,
+            'appointment_time': self.appointment_time.isoformat(),
+            'status': self.status,
+            'reason': self.reason
+        }
+
+class Prescription(db.Model):
+    """Recetas médicas generadas en una cita."""
+    __tablename__ = 'health_prescription'
+    id = db.Column(Integer, primary_key=True)
+    appointment_id = db.Column(Integer, ForeignKey('health_appointment.id'), nullable=False, index=True)
+    medication_details = db.Column(Text, nullable=False)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    issued_at = db.Column(DateTime, default=func.current_timestamp())
+    appointment = db.relationship('MedicalAppointment')
+
+class LabOrder(db.Model):
+    """Órdenes de laboratorio."""
+    __tablename__ = 'health_lab_order'
+    id = db.Column(Integer, primary_key=True)
+    appointment_id = db.Column(Integer, ForeignKey('health_appointment.id'), nullable=False, index=True)
+    test_details = db.Column(Text, nullable=False)
+    status = db.Column(String(50), default='Solicitado', index=True)
+    results = db.Column(Text)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    appointment = db.relationship('MedicalAppointment')
+
+class Student(db.Model):
+    """Registro de un estudiante."""
+    __tablename__ = 'education_student'
+    id = db.Column(Integer, primary_key=True)
+    user_id = db.Column(Integer, ForeignKey('user.id'), nullable=True, unique=True)
+    full_name = db.Column(String(200), nullable=False)
+    student_code = db.Column(String(50), unique=True)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    enrollments = db.relationship('Enrollment', backref='student', lazy='dynamic')
+    def to_dict(self):
+        return {'id': self.id, 'full_name': self.full_name, 'student_code': self.student_code}
+
+class Course(db.Model):
+    """Cursos o asignaturas."""
+    __tablename__ = 'education_course'
+    id = db.Column(Integer, primary_key=True)
+    name = db.Column(String(200), nullable=False)
+    course_code = db.Column(String(50), unique=True)
+    teacher_id = db.Column(Integer, ForeignKey('user.id'))
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    teacher = db.relationship('User')
+    enrollments = db.relationship('Enrollment', backref='course', lazy='dynamic')
+    def to_dict(self):
+        return {'id': self.id, 'name': self.name, 'course_code': self.course_code, 'teacher_name': self.teacher.full_name if self.teacher else 'N/A'}
+
+class Enrollment(db.Model):
+    """Inscripción de un estudiante en un curso."""
+    __tablename__ = 'education_enrollment'
+    id = db.Column(Integer, primary_key=True)
+    student_id = db.Column(Integer, ForeignKey('education_student.id'), nullable=False)
+    course_id = db.Column(Integer, ForeignKey('education_course.id'), nullable=False)
+    enrollment_date = db.Column(Date, default=date.today)
+    final_grade = db.Column(Float)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    grades = db.relationship('Grade', backref='enrollment', lazy='dynamic')
+    __table_args__ = (UniqueConstraint('student_id', 'course_id', name='_student_course_uc'),)
+
+class Grade(db.Model):
+    """Calificaciones de un estudiante en una inscripción."""
+    __tablename__ = 'education_grade'
+    id = db.Column(Integer, primary_key=True)
+    enrollment_id = db.Column(Integer, ForeignKey('education_enrollment.id'), nullable=False)
+    grade_name = db.Column(String(100))
+    score = db.Column(Float, nullable=False)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
 class AuditLog(db.Model):
     """Registro de auditoría"""
     __tablename__ = 'audit_log'
