@@ -1342,6 +1342,32 @@ class Certification(db.Model):
         return f'<Certification {self.id} for Project {self.project_id}>'
 
 
+class RFI(db.Model):
+    """Request for Information (RFI) para un proyecto de construcción."""
+    __tablename__ = 'construction_rfi'
+    id = db.Column(Integer, primary_key=True)
+    project_id = db.Column(Integer, ForeignKey('construction_project.id'), nullable=False, index=True)
+    subject = db.Column(String(255), nullable=False)
+    question = db.Column(Text, nullable=False)
+    answer = db.Column(Text)
+    status = db.Column(String(50), default='Abierto', index=True) # Abierto, Respondido, Cerrado
+    created_by_id = db.Column(Integer, ForeignKey('user.id'))
+    answered_by_id = db.Column(Integer, ForeignKey('user.id'))
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    created_at = db.Column(DateTime, default=datetime.utcnow)
+
+class Milestone(db.Model):
+    """Hitos de facturación para un proyecto de construcción."""
+    __tablename__ = 'construction_milestone'
+    id = db.Column(Integer, primary_key=True)
+    project_id = db.Column(Integer, ForeignKey('construction_project.id'), nullable=False, index=True)
+    name = db.Column(String(200), nullable=False)
+    due_date = db.Column(Date)
+    amount = db.Column(Float, nullable=False)
+    status = db.Column(String(50), default='Pendiente', index=True) # Pendiente, Facturado, Pagado
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+
 # --- MODELOS PARA SALUD (LAN-H7S) ---
 
 class PatientRecord(db.Model):

@@ -203,7 +203,7 @@ def create_app(config_object=None, testing_config=None):
             'BankAccount': BankAccount, 'BankTransaction': BankTransaction, 'CashBox': CashBox, 'CashTransaction': CashTransaction,
             'TaxType': TaxType, 'TaxDeclaration': TaxDeclaration,
             'Material': Material, 'MaterialRequest': MaterialRequest,
-            'ConstructionProject': ConstructionProject, 'BudgetItem': BudgetItem, 'ProgressReport': ProgressReport, 'Certification': Certification,
+            'ConstructionProject': ConstructionProject, 'BudgetItem': BudgetItem, 'ProgressReport': ProgressReport, 'Certification': Certification, 'RFI': RFI, 'Milestone': Milestone,
             'PatientRecord': PatientRecord, 'MedicalAppointment': MedicalAppointment, 'Prescription': Prescription, 'LabOrder': LabOrder,
             'Student': Student, 'Course': Course, 'Enrollment': Enrollment, 'Grade': Grade,
             'Vehicle': Vehicle, 'Driver': Driver, 'Route': Route, 'Delivery': Delivery,

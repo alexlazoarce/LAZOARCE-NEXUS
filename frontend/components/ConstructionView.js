@@ -106,7 +106,15 @@ const ConstructionView = () => {
                                         ))}
                                     </tbody>
                                 </table>
-                                {/* Aquí irían los reportes de avance y certificaciones */}
+
+                                <h4 className="mt-4">RFIs (Request for Information)</h4>
+                                {/* Placeholder for RFIs */}
+                                <p>No hay RFIs para este proyecto.</p>
+
+                                <h4 className="mt-4">Hitos de Facturación</h4>
+                                {/* Placeholder for Milestones */}
+                                <p>No hay hitos de facturación para este proyecto.</p>
+
                             </div>
                         </div>
                     ) : (

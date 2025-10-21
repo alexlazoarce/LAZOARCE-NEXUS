@@ -1,4 +1,4 @@
-from .models import db, ConstructionProject, BudgetItem, ProgressReport, Certification
+from .models import db, ConstructionProject, BudgetItem, ProgressReport, Certification, RFI, Milestone
 from sqlalchemy.exc import SQLAlchemyError
 from flask_jwt_extended import get_jwt_identity
 from datetime import date
@@ -127,4 +127,40 @@ def get_certifications_for_project_service(project_id):
         certifications = Certification.query.filter_by(project_id=project_id, tenant_id=tenant_id).all()
         return [c.to_dict() for c in certifications], 200
     except SQLAlchemyError as e:
+        return {'error': str(e)}, 500
+
+# --- RFI Service ---
+def create_rfi_service(project_id, data):
+    tenant_id, user_id = _get_current_user_info()
+    try:
+        new_rfi = RFI(
+            tenant_id=tenant_id,
+            project_id=project_id,
+            created_by_id=user_id,
+            subject=data['subject'],
+            question=data['question']
+        )
+        db.session.add(new_rfi)
+        db.session.commit()
+        return {'message': 'RFI created'}, 201
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return {'error': str(e)}, 500
+
+# --- Milestone Service ---
+def create_milestone_service(project_id, data):
+    tenant_id, _ = _get_current_user_info()
+    try:
+        new_milestone = Milestone(
+            tenant_id=tenant_id,
+            project_id=project_id,
+            name=data['name'],
+            due_date=date.fromisoformat(data['due_date']) if data.get('due_date') else None,
+            amount=data['amount']
+        )
+        db.session.add(new_milestone)
+        db.session.commit()
+        return {'message': 'Milestone created'}, 201
+    except (SQLAlchemyError, ValueError) as e:
+        db.session.rollback()
         return {'error': str(e)}, 500
