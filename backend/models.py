@@ -62,7 +62,7 @@ class Role(db.Model):
     tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
     is_active = db.Column(Boolean, default=True)
     
-    users = db.relationship('User', secondary=user_roles, back_populates='users')
+    users = db.relationship('User', secondary=user_roles, back_populates='roles')
     __table_args__ = (UniqueConstraint('name', 'tenant_id', name='_role_name_tenant_uc'),)
 
     def __repr__(self):
@@ -546,6 +546,78 @@ class StockMovement(db.Model):
 
     def __repr__(self):
         return f'<StockMovement {self.movement_type} of {self.quantity} for Product {self.product_id}>'
+
+
+# --- MODELOS PARA VENTAS (LAN-SLS2) ---
+
+class Quote(db.Model):
+    """Cotizaciones de Venta"""
+    __tablename__ = 'sales_quote'
+
+    id = db.Column(Integer, primary_key=True)
+    contact_id = db.Column(Integer, ForeignKey('crm_contact.id'), nullable=False, index=True)
+    opportunity_id = db.Column(Integer, ForeignKey('crm_opportunity.id'), nullable=True, index=True)
+
+    status = db.Column(String(50), default='Borrador', index=True) # Borrador, Enviada, Aceptada, Rechazada
+    total_amount = db.Column(Float)
+
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    created_by_id = db.Column(Integer, ForeignKey('user.id'))
+
+    valid_until = db.Column(Date)
+    created_at = db.Column(DateTime, default=func.current_timestamp())
+    
+    items = db.relationship('SalesOrderItem', backref='quote', lazy='dynamic', cascade="all, delete-orphan") # Relación con items
+
+    def __repr__(self):
+        return f'<Quote {self.id}>'
+
+class SalesOrder(db.Model):
+    """Órdenes de Venta"""
+    __tablename__ = 'sales_order'
+
+    id = db.Column(Integer, primary_key=True)
+    contact_id = db.Column(Integer, ForeignKey('crm_contact.id'), nullable=False, index=True)
+    quote_id = db.Column(Integer, ForeignKey('sales_quote.id'), nullable=True, index=True)
+
+    status = db.Column(String(50), default='Pendiente', index=True) # Pendiente, Confirmada, Enviada, Completada, Cancelada
+    total_amount = db.Column(Float)
+
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    created_by_id = db.Column(Integer, ForeignKey('user.id'))
+
+    order_date = db.Column(Date, default=date.today)
+
+    items = db.relationship('SalesOrderItem', backref='sales_order', lazy='dynamic', cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f'<SalesOrder {self.id}>'
+
+class SalesOrderItem(db.Model):
+    """Líneas de una Orden de Venta"""
+    __tablename__ = 'sales_order_item'
+
+    id = db.Column(Integer, primary_key=True)
+    
+    # Puede ser parte de una Quote o una SalesOrder
+    sales_order_id = db.Column(Integer, ForeignKey('sales_order.id'), nullable=True, index=True)
+    quote_id = db.Column(Integer, ForeignKey('sales_quote.id'), nullable=True, index=True) # Nueva columna para quote_id
+    
+    product_id = db.Column(Integer, ForeignKey('inventory_product.id'), nullable=False, index=True)
+
+    quantity = db.Column(Integer, nullable=False)
+    price_per_unit = db.Column(Float, nullable=False)
+
+    total_price = db.Column(Float, nullable=False)
+    
+    # Validación para asegurar que es item de Quote O SalesOrder, pero no ambos
+    __table_args__ = (
+        db.CheckConstraint('(sales_order_id IS NOT NULL AND quote_id IS NULL) OR (sales_order_id IS NULL AND quote_id IS NOT NULL)', 
+                           name='_sales_item_one_parent_check'),
+    )
+
+    def __repr__(self):
+        return f'<SalesOrderItem {self.quantity} x Product {self.product_id}>'
 
 
 # --- MODELOS DE MÓDULOS EXTENDIDOS (MailingList, AuditLog, NotificationTemplate) ---

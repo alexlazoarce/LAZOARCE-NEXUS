@@ -16,6 +16,7 @@ from io import BytesIO
 from random import randint, choice
 
 # --- DEFINICIÓN GLOBAL DE EXTENSIONES ---
+# Se necesita definir SQLAlchemy globalmente antes de create_app si se usa en modelos importados
 try:
     from .database import db as global_db
     db = global_db
@@ -37,8 +38,8 @@ try:
         firma_electronica_avanzada
     )
     from .payroll_service import calcular_planilla
-    # Se incluyen los nuevos servicios CRM, Contract, e Inventory
-    from . import audit_service, contract_service, crm_service, inventory_service
+    # Se incluyen los nuevos servicios CRM, Contract, Inventory y Sales
+    from . import audit_service, contract_service, crm_service, inventory_service, sales_service
     
     # Mock de servicios si no existen realmente
     class MockService:
@@ -50,12 +51,18 @@ try:
         def create_template(*args, **kwargs): return {'id': 1}
         def create_product(*args, **kwargs): return {'id': 1}
         def record_stock_movement(*args, **kwargs): return {'id': 1}
+        def update_opportunity_stage(*args, **kwargs): pass
+        def create_quote(*args, **kwargs): return {'id': 1}
+        def get_sales_orders(*args, **kwargs): return []
+        def convert_quote_to_sales_order(*args, **kwargs): return {'id': 1}
+        def confirm_sales_order(*args, **kwargs): return {'id': 1}
     
     # Reasignación para los mocks
     if not isinstance(audit_service, object) or not hasattr(audit_service, 'log_action'): audit_service = MockService()
     if not isinstance(contract_service, object) or not hasattr(contract_service, 'create_template'): contract_service = MockService()
     if not isinstance(crm_service, object) or not hasattr(crm_service, 'create_contact'): crm_service = MockService()
     if not isinstance(inventory_service, object) or not hasattr(inventory_service, 'create_product'): inventory_service = MockService()
+    if not isinstance(sales_service, object) or not hasattr(sales_service, 'create_quote'): sales_service = MockService()
     
 except ImportError as e:
     print(f"⚠️ Error importando servicios: {e}. Usando Mocks.")
@@ -69,12 +76,17 @@ except ImportError as e:
         def create_template(*args, **kwargs): return {'id': 1}
         def create_product(*args, **kwargs): return {'id': 1}
         def record_stock_movement(*args, **kwargs): return {'id': 1}
+        def update_opportunity_stage(*args, **kwargs): pass
+        def create_quote(*args, **kwargs): return {'id': 1}
+        def get_sales_orders(*args, **kwargs): return []
+        def convert_quote_to_sales_order(*args, **kwargs): return {'id': 1}
+        def confirm_sales_order(*args, **kwargs): return {'id': 1}
     
     calcular_prestamo_completo = create_journal_entry = validacion_identidad_estricta = capturar_datos_biometricos = mock_func
     generar_contrato_integracion = lambda data: 'CONTRATO-MOCK-123'
     firma_electronica_avanzada = lambda c, d, b: {'valida': True, 'firma_id': 'FIRM-1', 'certificado_id': 'CERT-1', 'error': None}
     calcular_planilla = lambda s: {"success": True, "salario_base": s, "isss": 0, "afp": 0, "renta": 0, "salario_neto": s}
-    audit_service = contract_service = crm_service = inventory_service = MockService()
+    audit_service = contract_service = crm_service = inventory_service = sales_service = MockService()
 # -----------------------------------------------------------
 
 
@@ -124,18 +136,19 @@ def create_app(config_object=None, testing_config=None):
                 JournalEntry, Cliente, ContratoIntegracion, ProductoCredito,
                 Empleado, Planilla, ClientProfile, Tenant, AuditLog, Payment,
                 NotificationTemplate, Employee, ContractTemplate, GeneratedContract,
-                Contact, Interaction, Opportunity, Product, StockMovement # Nuevos modelos
+                Contact, Interaction, Opportunity, Product, StockMovement,
+                Quote, SalesOrder, SalesOrderItem
             )
             app.services = {
                 'audit_service': audit_service,
                 'contract_service': contract_service,
                 'crm_service': crm_service,
-                'inventory_service': inventory_service
+                'inventory_service': inventory_service,
+                'sales_service': sales_service
             }
             
         except ImportError as e:
             app.logger.error(f"❌ Error al importar modelos: {e}. Se usarán Mocks.")
-            # Definición de MockModel si falla la importación
             class MockModel:
                 def __init__(self, **kwargs): pass
                 def query(self): return self
@@ -145,10 +158,9 @@ def create_app(config_object=None, testing_config=None):
                 def get(self, id): return None
                 def get_or_404(self, id): return None
             
-            Role = User = LoanProduct = LoanApplication = Account = Transaction = JournalEntry = Cliente = ContratoIntegracion = ProductoCredito = Empleado = Planilla = ClientProfile = Tenant = AuditLog = Payment = NotificationTemplate = Employee = ContractTemplate = GeneratedContract = Contact = Interaction = Opportunity = Product = StockMovement = MockModel
-            app.services = {'audit_service': lambda: None, 'contract_service': lambda: None, 'crm_service': lambda: None, 'inventory_service': lambda: None}
+            Role = User = LoanProduct = LoanApplication = Account = Transaction = JournalEntry = Cliente = ContratoIntegracion = ProductoCredito = Empleado = Planilla = ClientProfile = Tenant = AuditLog = Payment = NotificationTemplate = Employee = ContractTemplate = GeneratedContract = Contact = Interaction = Opportunity = Product = StockMovement = Quote = SalesOrder = SalesOrderItem = MockModel
+            app.services = {'audit_service': lambda: None, 'contract_service': lambda: None, 'crm_service': lambda: None, 'inventory_service': lambda: None, 'sales_service': lambda: None}
             
-        # Asignar modelos al contexto de la app
         app.models = {
             'Role': Role, 'User': User, 'LoanProduct': LoanProduct, 'LoanApplication': LoanApplication, 
             'Account': Account, 'Transaction': Transaction, 'JournalEntry': JournalEntry, 'Cliente': Cliente,
@@ -156,7 +168,8 @@ def create_app(config_object=None, testing_config=None):
             'Planilla': Planilla, 'Employee': Employee, 'AuditLog': AuditLog,
             'ContractTemplate': ContractTemplate, 'GeneratedContract': GeneratedContract,
             'Contact': Contact, 'Interaction': Interaction, 'Opportunity': Opportunity,
-            'Product': Product, 'StockMovement': StockMovement # Nuevos modelos
+            'Product': Product, 'StockMovement': StockMovement,
+            'Quote': Quote, 'SalesOrder': SalesOrder, 'SalesOrderItem': SalesOrderItem
         }
 
     # --- DECORADORES DE AUTORIZACIÓN (Unificado) ---
@@ -391,6 +404,35 @@ def create_app(config_object=None, testing_config=None):
         data = request.get_json()
         app.services['inventory_service'].record_stock_movement(product_id, data, g.current_user.id)
         return jsonify({"message": f"Ruta para registrar movimiento de stock para el producto {product_id}."}), 201
+            
+    ## RUTAS PARA VENTAS (LAN-SLS2)
+    @app.route('/api/sales/quotes', methods=['POST'])
+    @jwt_required()
+    @role_required(['Ejecutivo de Crédito', 'Administrador General'])
+    def create_sales_quote():
+        data = request.get_json()
+        app.services['sales_service'].create_quote(data, g.current_user.id)
+        return jsonify({"message": "Ruta para crear cotización de venta implementada."}), 201
+
+    @app.route('/api/sales/orders', methods=['GET'])
+    @jwt_required()
+    def get_sales_orders():
+        # Lógica para llamar a sales_service.get_sales_orders
+        return jsonify([]), 200
+
+    @app.route('/api/sales/quotes/<int:quote_id>/convert', methods=['POST'])
+    @jwt_required()
+    @role_required(['Ejecutivo de Crédito', 'Administrador General'])
+    def convert_quote_to_order(quote_id):
+        app.services['sales_service'].convert_quote_to_sales_order(quote_id, g.current_user.id)
+        return jsonify({"message": f"Ruta para convertir cotización {quote_id} a orden de venta."}), 201
+
+    @app.route('/api/sales/orders/<int:order_id>/confirm', methods=['POST'])
+    @jwt_required()
+    @role_required(['Administrador General'])
+    def confirm_sales_order(order_id):
+        app.services['sales_service'].confirm_sales_order(order_id, g.current_user.id)
+        return jsonify({"message": f"Ruta para confirmar la orden de venta {order_id} y ajustar stock."}), 200
 
     # --- REGISTRO DE COMANDOS CLI (Se mantiene el del HEAD) ---
     @app.cli.command("init-db")
