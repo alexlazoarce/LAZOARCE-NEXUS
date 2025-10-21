@@ -27,6 +27,8 @@ function App() {
             if (response.status === 401) { handleLogout(); return; }
             if (!response.ok) throw new Error('Error al cargar perfil de usuario.');
             const data = await response.json();
+            // CORRECCIÓN: Se asume que el backend devuelve un array de roles en la clave 'roles'.
+            // Si la clave es 'role' (singular), sería: setUserRoles([data.role] || []);
             setUserRoles(data.roles || []);
         } catch (error) { console.error(error.message); setUserRoles([]); }
         finally { setLoadingProfile(false); }
@@ -106,11 +108,11 @@ function App() {
         if (viewingContractId) return <ContractView token={token} applicationId={viewingContractId} onBack={() => setViewingContractId(null)} />;
         if (managingPaymentsForApp) return <PaymentView token={token} application={managingPaymentsForApp} onBack={() => setManagingPaymentsForApp(null)} />;
 
-        const isAdmin = userRoles.includes('Admin');
+        const isAdmin = userRoles.includes('Admin') || userRoles.includes('Administrador General');
         const isContador = userRoles.includes('Contador');
         const isEjecutivo = userRoles.includes('Ejecutivo de Crédito');
         const isCobrador = userRoles.includes('Cobrador');
-        const isSupport = userRoles.includes('Soporte'); // Future role
+        const isSupport = userRoles.includes('Soporte');
 
         switch (view) {
             case 'dashboard': return isAdmin ? <AdminDashboard token={token} onManagePayments={setManagingPaymentsForApp} /> : <MyApplications token={token} onViewContract={setViewingContractId} />;
@@ -135,7 +137,8 @@ function App() {
 
     const NavigationView = () => {
         if (loadingProfile || !token || viewingContractId || viewingPaySlipsForLogId || managingPaymentsForApp) return null;
-        const isAdmin = userRoles.includes('Admin');
+        
+        const isAdmin = userRoles.includes('Admin') || userRoles.includes('Administrador General');
         const isContador = userRoles.includes('Contador');
         const isEjecutivo = userRoles.includes('Ejecutivo de Crédito');
         const isCobrador = userRoles.includes('Cobrador');
