@@ -145,8 +145,8 @@ class LoanProduct(db.Model):
     plazo_maximo = db.Column(Integer, nullable=True)
     
     # Límites (unificados)
-    min_amount = db.Column(Float, nullable=False, default=0.0)
-    max_amount = db.Column(Float, nullable=False, default=0.0)
+    min_amount = db.Column(Float, default=0.0)
+    max_amount = db.Column(Float, default=0.0)
     
     # Comisiones y costos (unificados)
     comision_apertura = db.Column(Float, default=0.0)
@@ -354,8 +354,8 @@ class FirmaElectronica(db.Model):
     
     id = db.Column(db.Integer, primary_key=True)
     firma_id = db.Column(db.String(50), unique=True, nullable=False)
-    documento_id = db.Column(db.String(50), nullable=False)
-    cliente_dui = db.Column(db.String(12), nullable=False)
+    documento_id = db.Column(String(50), nullable=False)
+    cliente_dui = db.Column(String(12), nullable=False)
     hash_documento = db.Column(String(64), nullable=False)
     fecha_firma = db.Column(DateTime, nullable=False)
     
@@ -501,9 +501,54 @@ class Opportunity(db.Model):
         return f'<Opportunity {self.name}>'
 
 
+# --- MODELOS PARA INVENTARIO (LAN-INV9) ---
+
+class Product(db.Model):
+    """Productos del Inventario"""
+    __tablename__ = 'inventory_product'
+
+    id = db.Column(Integer, primary_key=True)
+    sku = db.Column(String(100), unique=True, nullable=False, index=True)
+    name = db.Column(String(200), nullable=False, index=True)
+    description = db.Column(Text)
+
+    price = db.Column(Float, nullable=False)
+    stock = db.Column(Integer, default=0)
+
+    min_stock_level = db.Column(Integer, default=0) # Para alertas
+
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    is_active = db.Column(Boolean, default=True)
+
+    movements = db.relationship('StockMovement', backref='product', lazy='dynamic')
+
+    __table_args__ = (UniqueConstraint('sku', 'tenant_id', name='_product_sku_tenant_uc'),)
+
+    def __repr__(self):
+        return f'<Product {self.name}>'
+
+class StockMovement(db.Model):
+    """Movimientos de Stock (Entradas y Salidas)"""
+    __tablename__ = 'inventory_stock_movement'
+
+    id = db.Column(Integer, primary_key=True)
+    product_id = db.Column(Integer, ForeignKey('inventory_product.id'), nullable=False, index=True)
+
+    movement_type = db.Column(String(50), nullable=False, index=True) # Entrada, Salida, Ajuste
+    quantity = db.Column(Integer, nullable=False)
+
+    notes = db.Column(Text)
+
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    user_id = db.Column(Integer, ForeignKey('user.id')) # Usuario que registró el movimiento
+
+    created_at = db.Column(DateTime, default=func.current_timestamp())
+
+    def __repr__(self):
+        return f'<StockMovement {self.movement_type} of {self.quantity} for Product {self.product_id}>'
+
+
 # --- MODELOS DE MÓDULOS EXTENDIDOS (MailingList, AuditLog, NotificationTemplate) ---
-# Se incluyen modelos base que no entraron en las secciones principales pero son necesarios
-# para las tablas intermedias o funcionalidades base del sistema 2.0.
 
 class MailingList(db.Model):
     """Lista de correos para campañas de marketing"""

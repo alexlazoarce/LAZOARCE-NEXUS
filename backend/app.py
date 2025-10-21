@@ -16,7 +16,6 @@ from io import BytesIO
 from random import randint, choice
 
 # --- DEFINICIÓN GLOBAL DE EXTENSIONES ---
-# Se necesita definir SQLAlchemy globalmente antes de create_app si se usa en modelos importados
 try:
     from .database import db as global_db
     db = global_db
@@ -38,24 +37,44 @@ try:
         firma_electronica_avanzada
     )
     from .payroll_service import calcular_planilla
-    # Se incluyen los nuevos servicios CRM y Contract (asumidos del HEAD)
-    from . import audit_service, contract_service, crm_service 
+    # Se incluyen los nuevos servicios CRM, Contract, e Inventory
+    from . import audit_service, contract_service, crm_service, inventory_service
     
-except ImportError as e:
-    print(f"⚠️ Error importando servicios: {e}. Usando Mocks.")
-    def mock_func(*args, **kwargs): return {} # Retorna dict vacío para FEA/Payroll
+    # Mock de servicios si no existen realmente
     class MockService:
         def log_action(*args, **kwargs): pass
         def create_contact(*args, **kwargs): return {'id': 1}
         def get_contacts(*args, **kwargs): return []
         def create_interaction(*args, **kwargs): return {'id': 1}
         def create_opportunity(*args, **kwargs): return {'id': 1}
-        
+        def create_template(*args, **kwargs): return {'id': 1}
+        def create_product(*args, **kwargs): return {'id': 1}
+        def record_stock_movement(*args, **kwargs): return {'id': 1}
+    
+    # Reasignación para los mocks
+    if not isinstance(audit_service, object) or not hasattr(audit_service, 'log_action'): audit_service = MockService()
+    if not isinstance(contract_service, object) or not hasattr(contract_service, 'create_template'): contract_service = MockService()
+    if not isinstance(crm_service, object) or not hasattr(crm_service, 'create_contact'): crm_service = MockService()
+    if not isinstance(inventory_service, object) or not hasattr(inventory_service, 'create_product'): inventory_service = MockService()
+    
+except ImportError as e:
+    print(f"⚠️ Error importando servicios: {e}. Usando Mocks.")
+    def mock_func(*args, **kwargs): return {}
+    class MockService:
+        def log_action(*args, **kwargs): pass
+        def create_contact(*args, **kwargs): return {'id': 1}
+        def get_contacts(*args, **kwargs): return []
+        def create_interaction(*args, **kwargs): return {'id': 1}
+        def create_opportunity(*args, **kwargs): return {'id': 1}
+        def create_template(*args, **kwargs): return {'id': 1}
+        def create_product(*args, **kwargs): return {'id': 1}
+        def record_stock_movement(*args, **kwargs): return {'id': 1}
+    
     calcular_prestamo_completo = create_journal_entry = validacion_identidad_estricta = capturar_datos_biometricos = mock_func
     generar_contrato_integracion = lambda data: 'CONTRATO-MOCK-123'
     firma_electronica_avanzada = lambda c, d, b: {'valida': True, 'firma_id': 'FIRM-1', 'certificado_id': 'CERT-1', 'error': None}
     calcular_planilla = lambda s: {"success": True, "salario_base": s, "isss": 0, "afp": 0, "renta": 0, "salario_neto": s}
-    audit_service = contract_service = crm_service = MockService()
+    audit_service = contract_service = crm_service = inventory_service = MockService()
 # -----------------------------------------------------------
 
 
@@ -66,7 +85,6 @@ def create_app(config_object=None, testing_config=None):
     app = Flask(__name__)
     CORS(app)
 
-    # Cargar variables de entorno (del HEAD)
     load_dotenv()
 
     # === CONFIGURACIÓN (Fusionado del 2.0 + HEAD) ===
@@ -82,7 +100,6 @@ def create_app(config_object=None, testing_config=None):
         UPLOAD_FOLDER='uploads'
     )
     
-    # Sobrescribir con config_object o testing_config
     if config_object:
          app.config.from_object(config_object)
     if testing_config:
@@ -101,19 +118,19 @@ def create_app(config_object=None, testing_config=None):
 
     # --- CARGA DINÁMICA DE MODELOS Y SERVICIOS ---
     with app.app_context():
-        # Intenta cargar modelos
         try:
             from .models import (
                 Role, User, LoanProduct, LoanApplication, Account, Transaction,
                 JournalEntry, Cliente, ContratoIntegracion, ProductoCredito,
                 Empleado, Planilla, ClientProfile, Tenant, AuditLog, Payment,
                 NotificationTemplate, Employee, ContractTemplate, GeneratedContract,
-                Contact, Interaction, Opportunity # Nuevos modelos CRM/Contract
+                Contact, Interaction, Opportunity, Product, StockMovement # Nuevos modelos
             )
             app.services = {
                 'audit_service': audit_service,
                 'contract_service': contract_service,
-                'crm_service': crm_service
+                'crm_service': crm_service,
+                'inventory_service': inventory_service
             }
             
         except ImportError as e:
@@ -128,8 +145,8 @@ def create_app(config_object=None, testing_config=None):
                 def get(self, id): return None
                 def get_or_404(self, id): return None
             
-            Role = User = LoanProduct = LoanApplication = Account = Transaction = JournalEntry = Cliente = ContratoIntegracion = ProductoCredito = Empleado = Planilla = ClientProfile = Tenant = AuditLog = Payment = NotificationTemplate = Employee = ContractTemplate = GeneratedContract = Contact = Interaction = Opportunity = MockModel
-            app.services = {'audit_service': lambda: None, 'contract_service': lambda: None, 'crm_service': lambda: None}
+            Role = User = LoanProduct = LoanApplication = Account = Transaction = JournalEntry = Cliente = ContratoIntegracion = ProductoCredito = Empleado = Planilla = ClientProfile = Tenant = AuditLog = Payment = NotificationTemplate = Employee = ContractTemplate = GeneratedContract = Contact = Interaction = Opportunity = Product = StockMovement = MockModel
+            app.services = {'audit_service': lambda: None, 'contract_service': lambda: None, 'crm_service': lambda: None, 'inventory_service': lambda: None}
             
         # Asignar modelos al contexto de la app
         app.models = {
@@ -138,7 +155,8 @@ def create_app(config_object=None, testing_config=None):
             'ContratoIntegracion': ContratoIntegracion, 'ProductoCredito': ProductoCredito, 'Empleado': Empleado,
             'Planilla': Planilla, 'Employee': Employee, 'AuditLog': AuditLog,
             'ContractTemplate': ContractTemplate, 'GeneratedContract': GeneratedContract,
-            'Contact': Contact, 'Interaction': Interaction, 'Opportunity': Opportunity
+            'Contact': Contact, 'Interaction': Interaction, 'Opportunity': Opportunity,
+            'Product': Product, 'StockMovement': StockMovement # Nuevos modelos
         }
 
     # --- DECORADORES DE AUTORIZACIÓN (Unificado) ---
@@ -301,9 +319,7 @@ def create_app(config_object=None, testing_config=None):
         new_status = request.get_json().get('status')
         if not new_status: return jsonify({"error": "El campo 'status' es requerido."}), 400
         application.status = new_status
-        # Si el estado es "Aprobado", se podría generar el contrato aquí
         if new_status == 'Aprobado':
-            # Llamada simulada al servicio de contratos
             pass 
         db.session.commit()
         return jsonify({"message": f"Estado de la solicitud {app_id} actualizado a '{new_status}'."})
@@ -352,10 +368,34 @@ def create_app(config_object=None, testing_config=None):
         except Exception as e:
             db.session.rollback()
             return jsonify({'error': 'Error al guardar el registro de la planilla.', 'detalle': str(e)}), 500
-    
+            
+    ## RUTAS PARA INVENTARIO (LAN-INV9)
+    @app.route('/api/inventory/products', methods=['POST'])
+    @jwt_required()
+    @role_required(['Administrador General'])
+    def create_inventory_product():
+        data = request.get_json()
+        app.services['inventory_service'].create_product(data, g.current_user.id)
+        return jsonify({"message": "Ruta para crear producto de inventario implementada."}), 201
+
+    @app.route('/api/inventory/products', methods=['GET'])
+    @jwt_required()
+    def get_inventory_products():
+        # Lógica para llamar a inventory_service.get_products
+        return jsonify([]), 200
+
+    @app.route('/api/inventory/products/<int:product_id>/movements', methods=['POST'])
+    @jwt_required()
+    @role_required(['Administrador General'])
+    def record_inventory_movement(product_id):
+        data = request.get_json()
+        app.services['inventory_service'].record_stock_movement(product_id, data, g.current_user.id)
+        return jsonify({"message": f"Ruta para registrar movimiento de stock para el producto {product_id}."}), 201
+
     # --- REGISTRO DE COMANDOS CLI (Se mantiene el del HEAD) ---
     @app.cli.command("init-db")
     def init_db_command():
+        """Inicializa la base de datos y crea los datos por defecto."""
         with app.app_context():
             Role, User = app.models.get('Role'), app.models.get('User')
             db.create_all()
