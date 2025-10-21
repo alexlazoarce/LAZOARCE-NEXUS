@@ -1,16 +1,11 @@
-"""
-MODELOS DE BASE DE DATOS - SISTEMA INTEGRADO LAZO ARCE (FUSIONADO FINAL)
-
-Versión: 2.1 | Multi-tenant | Integración de Firma Electrónica, Payroll y Módulos LAN
-
-"""
+# MODELOS DE BASE DE DATOS - SISTEMA INTEGRADO LAZO ARCE (FUSIONADO FINAL)
+# Versión: 2.1 | Multi-tenant | Integración de Firma Electrónica, Payroll y Módulos LAN
 
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime, date, timedelta
+from datetime import datetime, date
 from sqlalchemy import func, Boolean, Date, DateTime, Float, Integer, String, Text, ForeignKey, UniqueConstraint
-from sqlalchemy.orm import relationship, backref
-from sqlalchemy.dialects.postgresql import JSONB, JSON
+from sqlalchemy.orm import relationship
 
 # Inicializar SQLAlchemy (Debe ser inicializado en el app factory)
 db = SQLAlchemy()
@@ -18,18 +13,16 @@ db = SQLAlchemy()
 # === TABLAS INTERMEDIAS (Many-to-Many) ===
 
 user_roles = db.Table('user_roles',
-    db.Column('user_id', Integer, ForeignKey('user.id'), primary_key=True),
-    db.Column('role_id', Integer, ForeignKey('role.id'), primary_key=True),
+    db.Column('user_id', Integer, ForeignKey('user.id'), primary_key=True, comment='Foreign key al usuario'),
+    db.Column('role_id', Integer, ForeignKey('role.id'), primary_key=True, comment='Foreign key al rol'),
     schema='public'
 )
 
-# Se incluye mailing_list_members del 2.0 (asumiendo que MailingList existe en el módulo)
 mailing_list_members = db.Table('mailing_list_members',
-    db.Column('mailing_list_id', Integer, ForeignKey('mailing_list.id'), primary_key=True),
-    db.Column('user_id', Integer, ForeignKey('user.id'), primary_key=True),
+    db.Column('mailing_list_id', Integer, ForeignKey('mailing_list.id'), primary_key=True, comment='Foreign key a la lista de correo'),
+    db.Column('user_id', Integer, ForeignKey('user.id'), primary_key=True, comment='Foreign key al usuario'),
     schema='public'
 )
-
 
 # === MODELOS DE SEGURIDAD Y TENANTS ===
 
@@ -43,7 +36,8 @@ class Tenant(db.Model):
     domain = db.Column(String(100), unique=True)
     is_active = db.Column(Boolean, default=True)
     created_at = db.Column(DateTime, default=func.current_timestamp())
-    config = db.Column(JSONB, default=dict)
+    # Asumiendo que JSONB o JSON están disponibles (PostgreSQL o SQLite/MySQL JSON support)
+    config = db.Column(Text, default='{}') 
     
     users = db.relationship('User', backref='tenant', lazy='dynamic')
     roles = db.relationship('Role', backref='tenant', lazy='dynamic')
@@ -59,10 +53,10 @@ class Role(db.Model):
     id = db.Column(Integer, primary_key=True)
     name = db.Column(String(80), nullable=False, index=True)
     description = db.Column(String(255))
-    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=True, index=True) # Hago nullable para roles base/superuser
     is_active = db.Column(Boolean, default=True)
     
-    users = db.relationship('User', secondary=user_roles, back_populates='users')
+    users = db.relationship('User', secondary=user_roles, back_populates='roles')
     __table_args__ = (UniqueConstraint('name', 'tenant_id', name='_role_name_tenant_uc'),)
 
     def __repr__(self):
@@ -76,7 +70,7 @@ class User(db.Model):
     email = db.Column(String(120), unique=True, nullable=False, index=True)
     password_hash = db.Column(String(256), nullable=False)
     
-    # Campos de perfil/legales (fusionados del 2.0 y HEAD)
+    # Campos de perfil/legales
     full_name = db.Column(String(120), nullable=True) 
     dui = db.Column(String(20), unique=True, nullable=True, index=True)
     nit = db.Column(String(20), unique=True, nullable=True, index=True)
@@ -86,12 +80,12 @@ class User(db.Model):
     created_at = db.Column(DateTime, default=func.current_timestamp())
     
     # Relaciones
-    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
-    role_id = db.Column(Integer, ForeignKey('role.id'), nullable=False)  
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=True, index=True) # Hago nullable para Superuser
+    role_id = db.Column(Integer, ForeignKey('role.id'), nullable=True) # Se usa el rol principal, pero la tabla user_roles da Many-to-Many
     roles = db.relationship('Role', secondary=user_roles, back_populates='users')
     
-    profile = db.relationship('ClientProfile', backref='user', uselist=False)
-    employee = db.relationship('Employee', backref='user', uselist=False)
+    profile = db.relationship('ClientProfile', backref='user', uselist=False, cascade="all, delete-orphan")
+    employee = db.relationship('Employee', backref='user', uselist=False, cascade="all, delete-orphan")
     applications = db.relationship('LoanApplication', backref='applicant', lazy='dynamic')
     audit_logs = db.relationship('AuditLog', backref='user', lazy='dynamic')
     
@@ -103,7 +97,9 @@ class User(db.Model):
     
     @property
     def role(self):
-        return Role.query.get(self.role_id)
+        if self.role_id:
+            return db.session.get(Role, self.role_id)
+        return None
     
     def __repr__(self):
         return f'<User {self.email}>'
@@ -128,7 +124,6 @@ class ClientProfile(db.Model):
     reference_name = db.Column(String(120))
     reference_phone = db.Column(String(20))
 
-
 # --- MODELOS DE PRÉSTAMOS ---
 
 class LoanProduct(db.Model):
@@ -139,27 +134,22 @@ class LoanProduct(db.Model):
     name = db.Column(String(100), nullable=False, index=True)
     description = db.Column(Text)
     
-    # Campos de ProductoCredito (HEAD)
     loan_type = db.Column(String(50), nullable=True)
     tasa_interes_anual = db.Column(Float, nullable=False) 
     plazo_maximo = db.Column(Integer, nullable=True)
     
-    # Límites (unificados)
     min_amount = db.Column(Float, default=0.0)
     max_amount = db.Column(Float, default=0.0)
     
-    # Comisiones y costos (unificados)
     comision_apertura = db.Column(Float, default=0.0)
     comision_administracion = db.Column(Float, default=0.0)
     seguro = db.Column(Float, default=0.0)
     
-    # Configuración de cálculo
     comisiones_generan_intereses = db.Column(Boolean, default=False)
     comisiones_se_agregan_capital = db.Column(Boolean, default=False)
     comisiones_se_descuentan_capital = db.Column(Boolean, default=True)
     aplicar_tea = db.Column(Boolean, default=True)
     
-    # Estado y tenant
     tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
     is_active = db.Column(Boolean, default=True)
     created_at = db.Column(DateTime, default=func.current_timestamp())
@@ -181,7 +171,6 @@ class LoanApplication(db.Model):
     amount_requested = db.Column(Float, nullable=False)
     term_months = db.Column(Integer, nullable=False) 
     
-    # Campos de estado y cálculo
     status = db.Column(String(50), default='Solicitud Recibida', nullable=False)
     application_date = db.Column(DateTime, default=func.current_timestamp())
     monthly_payment = db.Column(Float, nullable=True)
@@ -198,6 +187,15 @@ class LoanApplication(db.Model):
     def __repr__(self):
         return f'<LoanApplication {self.id} - {self.status}>'
 
+# (Falta definir la clase Payment que está referenciada en LoanApplication, se añade un Mock)
+class Payment(db.Model):
+    """Mock de Pagos para LoanApplication"""
+    __tablename__ = 'payment'
+    id = db.Column(Integer, primary_key=True)
+    amount = db.Column(Float, nullable=False)
+    date = db.Column(DateTime, default=func.current_timestamp())
+    loan_application_id = db.Column(Integer, ForeignKey('loan_application.id'), nullable=False)
+    # Otros campos...
 
 # --- MODELOS CONTABLES ---
 
@@ -272,7 +270,7 @@ class Employee(db.Model):
     user_id = db.Column(Integer, ForeignKey('user.id'), unique=True, nullable=True)
     payslips = db.relationship('PaySlip', backref='employee', lazy='dynamic')
 
-    # Datos legales del 2.0 (se mantienen para Employee)
+    # Datos legales
     dui = db.Column(String(20), unique=True, index=True)
     nit = db.Column(String(20), unique=True, index=True)
     isss_number = db.Column(String(20), unique=True)
@@ -288,12 +286,10 @@ class PaySlip(db.Model):
     id = db.Column(Integer, primary_key=True)
     employee_id = db.Column(Integer, ForeignKey('employee.id'), nullable=False, index=True)
     
-    # Campos del 2.0 (Periodo)
     period_start = db.Column(Date, nullable=True)
     period_end = db.Column(Date, nullable=True)
     payment_date = db.Column(Date, nullable=True)
     
-    # Campos de Planilla (HEAD)
     base_salary = db.Column(Float, nullable=False)
     isss_employee = db.Column(Float, nullable=False) 
     afp_employee = db.Column(Float, nullable=False)  
@@ -302,29 +298,31 @@ class PaySlip(db.Model):
     
     fecha_calculo = db.Column(DateTime, default=func.current_timestamp()) 
     
-    # Campos del 2.0 (Estado y Totales)
     gross_salary = db.Column(Float, nullable=True)
     total_deductions = db.Column(Float, nullable=True)
     is_paid = db.Column(Boolean, default=False)
     paid_at = db.Column(DateTime)
 
-# --- MODELOS DE FIRMA ELECTRÓNICA Y CONTRATOS ---
+# --- MODELOS DE FIRMA ELECTRÓNICA Y CONTRATOS (Integración) ---
 
 class Cliente(db.Model):
-    """Perfil específico de Cliente (Del HEAD)"""
+    """Perfil específico de Cliente (Del HEAD - Usado en módulos FEA)"""
     __tablename__ = 'cliente'
     
-    id = db.Column(db.Integer, primary_key=True)
-    nombre_completo = db.Column(db.String(200), nullable=False)
-    dui = db.Column(db.String(12), unique=True, nullable=False)
-    email = db.Column(db.String(120), unique=True, nullable=False)
+    id = db.Column(Integer, primary_key=True)
+    nombre_completo = db.Column(String(200), nullable=False)
+    dui = db.Column(String(12), unique=True, nullable=False)
+    email = db.Column(String(120), unique=True, nullable=False)
     
     telefono = db.Column(String(20), nullable=False)
     direccion = db.Column(String(255), nullable=False)
     estado = db.Column(String(20), default='PENDIENTE', nullable=False)
     
-    contrato_integracion_id = db.Column(db.String(50), db.ForeignKey('contrato_integracion.contrato_id'))
-    firma_electronica_id = db.Column(db.String(50), db.ForeignKey('firma_electronica.firma_id'))
+    contrato_integracion_id = db.Column(String(50), ForeignKey('contrato_integracion.contrato_id'))
+    firma_electronica_id = db.Column(String(50), ForeignKey('firma_electronica.firma_id'))
+    
+    contrato_integracion = relationship("ContratoIntegracion", back_populates="clientes", foreign_keys=[contrato_integracion_id])
+    firma_electronica = relationship("FirmaElectronica", back_populates="clientes", foreign_keys=[firma_electronica_id])
     
     __table_args__ = (UniqueConstraint('dui'), UniqueConstraint('email'))
 
@@ -332,11 +330,11 @@ class ContratoIntegracion(db.Model):
     """Contrato de Integración y Documentos (Del HEAD)"""
     __tablename__ = 'contrato_integracion'
     
-    id = db.Column(db.Integer, primary_key=True)
-    contrato_id = db.Column(db.String(50), unique=True, nullable=False)
-    cliente_dui = db.Column(db.String(12), nullable=False)
+    id = db.Column(Integer, primary_key=True)
+    contrato_id = db.Column(String(50), unique=True, nullable=False)
+    cliente_dui = db.Column(String(12), nullable=False)
     cliente_nombre = db.Column(String(200), nullable=False)
-    contrato_html = db.Column(db.Text, nullable=False)
+    contrato_html = db.Column(Text, nullable=False)
     
     estado = db.Column(String(50), default="PENDIENTE_FIRMA")
     fecha_creacion = db.Column(DateTime, default=datetime.utcnow)
@@ -345,14 +343,13 @@ class ContratoIntegracion(db.Model):
     tipo_firma = db.Column(String(20))
     documento_firmado_url = db.Column(String(255))
     
-    __table_args__ = (UniqueConstraint('contrato_id'),)
-
+    clientes = relationship("Cliente", back_populates="contrato_integracion", foreign_keys=[Cliente.contrato_integracion_id])
 
 class FirmaElectronica(db.Model):
     """Registro de Firma Electrónica (Del HEAD)"""
     __tablename__ = 'firma_electronica'
     
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(Integer, primary_key=True)
     firma_id = db.Column(String(50), unique=True, nullable=False)
     documento_id = db.Column(String(50), nullable=False)
     cliente_dui = db.Column(String(12), nullable=False)
@@ -363,13 +360,13 @@ class FirmaElectronica(db.Model):
     score_confianza = db.Column(Float)
     metodo_validacion = db.Column(String(50))
     
-    __table_args__ = (UniqueConstraint('firma_id'),)
+    clientes = relationship("Cliente", back_populates="firma_electronica", foreign_keys=[Cliente.firma_electronica_id])
 
 class CertificadoValidacion(db.Model):
     """Certificado de Validación de Firma (Del HEAD)"""
     __tablename__ = 'certificado_validacion'
     
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(Integer, primary_key=True)
     certificado_id = db.Column(String(50), unique=True, nullable=False)
     firma_id = db.Column(String(50), nullable=False)
     documento_id = db.Column(String(50), nullable=False)
@@ -396,6 +393,8 @@ class ContractTemplate(db.Model):
     created_at = db.Column(DateTime, default=func.current_timestamp())
     updated_at = db.Column(DateTime, default=func.current_timestamp(), onupdate=func.current_timestamp())
 
+    created_by = db.relationship('User', foreign_keys=[created_by_id], backref='created_templates')
+
     __table_args__ = (UniqueConstraint('name', 'tenant_id', name='_contract_template_tenant_uc'),)
 
     def __repr__(self):
@@ -408,7 +407,6 @@ class GeneratedContract(db.Model):
     id = db.Column(Integer, primary_key=True)
     template_id = db.Column(Integer, ForeignKey('contract_template.id'), nullable=False, index=True)
 
-    # Relacionado a qué entidad pertenece este contrato (ej. una solicitud de préstamo)
     related_entity = db.Column(String(50), index=True) # E.g., 'LoanApplication'
     related_entity_id = db.Column(Integer, index=True)
 
@@ -422,11 +420,10 @@ class GeneratedContract(db.Model):
     created_at = db.Column(DateTime, default=func.current_timestamp())
 
     template = db.relationship('ContractTemplate')
-    generated_by = db.relationship('User')
+    generated_by = db.relationship('User', foreign_keys=[generated_by_id], backref='generated_contracts')
 
     def __repr__(self):
         return f'<GeneratedContract {self.id} for {self.related_entity}:{self.related_entity_id}>'
-
 
 # --- MODELOS PARA CRM (LAN-CRM3) ---
 
@@ -439,7 +436,6 @@ class Contact(db.Model):
     email = db.Column(String(120), index=True)
     phone = db.Column(String(50))
 
-    # Puede estar vinculado a un usuario del sistema o ser un contacto externo
     user_id = db.Column(Integer, ForeignKey('user.id'), nullable=True)
 
     contact_type = db.Column(String(50), default='Prospecto', index=True) # Prospecto, Cliente
@@ -508,7 +504,7 @@ class Product(db.Model):
     __tablename__ = 'inventory_product'
 
     id = db.Column(Integer, primary_key=True)
-    sku = db.Column(String(100), unique=True, nullable=False, index=True)
+    sku = db.Column(String(100), nullable=False, index=True) # Se quita unique global para que sea unique por tenant
     name = db.Column(String(200), nullable=False, index=True)
     description = db.Column(Text)
 
@@ -543,6 +539,7 @@ class StockMovement(db.Model):
     user_id = db.Column(Integer, ForeignKey('user.id')) # Usuario que registró el movimiento
 
     created_at = db.Column(DateTime, default=func.current_timestamp())
+    user = db.relationship('User', foreign_keys=[user_id], backref='stock_movements')
 
     def __repr__(self):
         return f'<StockMovement {self.movement_type} of {self.quantity} for Product {self.product_id}>'
@@ -568,6 +565,9 @@ class Quote(db.Model):
     created_at = db.Column(DateTime, default=func.current_timestamp())
     
     items = db.relationship('SalesOrderItem', backref='quote', lazy='dynamic', cascade="all, delete-orphan") # Relación con items
+    contact = db.relationship('Contact', backref='quotes')
+    opportunity = db.relationship('Opportunity', backref='quotes')
+    created_by = db.relationship('User', foreign_keys=[created_by_id], backref='created_quotes')
 
     def __repr__(self):
         return f'<Quote {self.id}>'
@@ -589,6 +589,9 @@ class SalesOrder(db.Model):
     order_date = db.Column(Date, default=date.today)
 
     items = db.relationship('SalesOrderItem', backref='sales_order', lazy='dynamic', cascade="all, delete-orphan")
+    contact = db.relationship('Contact', backref='sales_orders')
+    quote = db.relationship('Quote', foreign_keys=[quote_id], backref=backref('sales_order_link', uselist=False))
+    created_by = db.relationship('User', foreign_keys=[created_by_id], backref='created_sales_orders')
 
     def __repr__(self):
         return f'<SalesOrder {self.id}>'
@@ -601,7 +604,7 @@ class SalesOrderItem(db.Model):
     
     # Puede ser parte de una Quote o una SalesOrder
     sales_order_id = db.Column(Integer, ForeignKey('sales_order.id'), nullable=True, index=True)
-    quote_id = db.Column(Integer, ForeignKey('sales_quote.id'), nullable=True, index=True) # Nueva columna para quote_id
+    quote_id = db.Column(Integer, ForeignKey('sales_quote.id'), nullable=True, index=True)
     
     product_id = db.Column(Integer, ForeignKey('inventory_product.id'), nullable=False, index=True)
 
@@ -610,10 +613,12 @@ class SalesOrderItem(db.Model):
 
     total_price = db.Column(Float, nullable=False)
     
+    product = db.relationship('Product')
+
     # Validación para asegurar que es item de Quote O SalesOrder, pero no ambos
     __table_args__ = (
         db.CheckConstraint('(sales_order_id IS NOT NULL AND quote_id IS NULL) OR (sales_order_id IS NULL AND quote_id IS NOT NULL)', 
-                           name='_sales_item_one_parent_check'),
+                            name='_sales_item_one_parent_check'),
     )
 
     def __repr__(self):
@@ -635,6 +640,8 @@ class Supplier(db.Model):
 
     tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
     is_active = db.Column(Boolean, default=True)
+    
+    purchase_orders = db.relationship('PurchaseOrder', backref='supplier_obj', lazy='dynamic') # Renombré backref
 
     def __repr__(self):
         return f'<Supplier {self.name}>'
@@ -657,6 +664,7 @@ class PurchaseOrder(db.Model):
 
     items = db.relationship('PurchaseOrderItem', backref='purchase_order', lazy='dynamic', cascade="all, delete-orphan")
     supplier = db.relationship('Supplier')
+    created_by = db.relationship('User', foreign_keys=[created_by_id], backref='created_purchase_orders')
 
     def __repr__(self):
         return f'<PurchaseOrder {self.id}>'
@@ -680,14 +688,14 @@ class PurchaseOrderItem(db.Model):
         return f'<PurchaseOrderItem {self.quantity} x Product {self.product_id}>'
 
 
-# --- MODELOS DE MÓDULOS EXTENDIDOS (MailingList, AuditLog, NotificationTemplate) ---
+# --- MODELOS DE MÓDULOS EXTENDIDOS ---
 
 class MailingList(db.Model):
     """Lista de correos para campañas de marketing"""
     __tablename__ = 'mailing_list'
     id = db.Column(Integer, primary_key=True)
     name = db.Column(String(100), nullable=False)
-    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=True) # Asumimos que tiene tenant_id
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=True)
     members = db.relationship('User', secondary=mailing_list_members, backref='mailing_lists')
 
     def __repr__(self):
@@ -702,25 +710,35 @@ class AuditLog(db.Model):
     details = db.Column(Text)
     ip_address = db.Column(String(45))
     user_agent = db.Column(String(500))
-    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=True, index=True) # Nullable para acciones de superuser
     timestamp = db.Column(DateTime, default=func.current_timestamp(), index=True)
     
     def __repr__(self):
         return f'<AuditLog {self.action} by {self.user_id}>'
-    
+
 class NotificationTemplate(db.Model):
     """Plantillas de notificación"""
     __tablename__ = 'notification_template'
     id = db.Column(Integer, primary_key=True)
-    slug = db.Column(String(50), unique=True, nullable=False, index=True)
+    slug = db.Column(String(50), nullable=False, index=True) # Eliminado unique global, ahora es por tenant
     name = db.Column(String(100), nullable=False)
     subject = db.Column(String(255), nullable=False)
     body = db.Column(Text, nullable=False)
     type = db.Column(String(20), default='Email')
-    variables = db.Column(JSONB, default=list)
+    # Usamos Text para variables si no se tiene JSONB puro
+    variables = db.Column(Text, default='[]') 
     tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
     is_active = db.Column(Boolean, default=True)
     __table_args__ = (UniqueConstraint('slug', 'tenant_id', name='_notification_template_tenant_uc'),)
 
     def __repr__(self):
         return f'<NotificationTemplate {self.slug}>'
+
+# (Falta definir EmailLog que se usa en el fragmento de app factory, se añade un Mock)
+class EmailLog(db.Model):
+    """Mock de registro de correos enviados"""
+    __tablename__ = 'email_log'
+    id = db.Column(Integer, primary_key=True)
+    recipient = db.Column(String(120), nullable=False)
+    subject = db.Column(String(255), nullable=False)
+    sent_at = db.Column(DateTime, default=func.current_timestamp())

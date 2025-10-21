@@ -1,57 +1,59 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Préstamos - Autenticación</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Préstamos - Autenticación</title>
 </head>
 <body>
-    <div id="root"></div>
+    <div id="root"></div>
 
-    <script>const API_BASE_URL = 'http://127.0.0.1:5001';</script>
-    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script>const API_BASE_URL = 'http://127.0.0.1:5001';</script>
+    
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <script type="text/babel" src="Auth.js"></script>
-    <script type="text/babel" src="LoanProducts.js"></script>
-    <script type="text/babel" src="LoanSimulator.js"></script>
-    <script type="text/babel" src="LoanApplication.js"></script>
-    <script type="text/babel" src="MyApplications.js"></script>
-    <script type="text/babel" src="AdminDashboard.js"></script>
-    <script type="text/babel" src="ContractView.js"></script>
-    <script type="text/babel" src="JournalView.js"></script>
-    <script type="text/babel" src="GeneralLedgerView.js"></script>
-    <script type="text/babel" src="EmployeeManagement.js"></script>
-    <script type="text/babel" src="PayrollView.js"></script>
-    <script type="text/babel" src="ProfileView.js"></script>
-    <script type="text/babel" src="TrialBalanceView.js"></script>
-    <script type="text/babel" src="BalanceSheetView.js"></script>
-    <script type="text/babel" src="IncomeStatementView.js"></script>
-    <script type="text/babel" src="PaySlipsView.js"></script>
-    <script type="text/babel" src="LeadManagementView.js"></script>
-    <script type="text/babel" src="PaymentView.js"></script>
-    <script type="text/babel" src="PortfolioView.js"></script>
-    <script type="text/babel" src="LoanStatementView.js"></script>
-    <script type="text/babel" src="TemplateManagerView.js"></script>
-    <script type="text/babel" src="AuditLogView.js"></script>
-    <script type="text/babel" src="TestingView.js"></script>
-    <script type="text/babel" src="OpportunityPipelineView.js"></script>
-    <script type="text/babel" src="MailingListView.js"></script>
-    <script type="text/babel" src="CampaignView.js"></script>
-    <script type="text/babel" src="ClientTicketsView.js"></script>
-    <script type="text/babel" src="SupportDashboardView.js"></script>
-    <script type="text/babel" src="ContractTemplateView.js"></script>
-    <script type="text/babel" src="CRMView.js"></script>
-    <script type="text/babel" src="InventoryView.js"></script>
-    <script type="text/babel" src="SalesView.js"></script>
-    <script type="text/babel" src="PurchasingView.js"></script>
-    <script type="text/babel" src="AccountingDashboard.js"></script>
-    <script type="text/babel" src="EmailLogView.js"></script>
-    <script type="text/babel" src="App.js"></script>
+    <script type="text/babel" src="Auth.js"></script>
+    <script type="text/babel" src="LoanProducts.js"></script>
+    <script type="text/babel" src="LoanSimulator.js"></script>
+    <script type="text/babel" src="LoanApplication.js"></script>
+    <script type="text/babel" src="MyApplications.js"></script>
+    <script type="text/babel" src="AdminDashboard.js"></script>
+    <script type="text/babel" src="ContractView.js"></script>
+    <script type="text/babel" src="JournalView.js"></script>
+    <script type="text/babel" src="GeneralLedgerView.js"></script>
+    <script type="text/babel" src="EmployeeManagement.js"></script>
+    <script type="text/babel" src="PayrollView.js"></script>
+    <script type="text/babel" src="ProfileView.js"></script>
+    <script type="text/babel" src="TrialBalanceView.js"></script>
+    <script type="text/babel" src="BalanceSheetView.js"></script>
+    <script type="text/babel" src="IncomeStatementView.js"></script>
+    <script type="text/babel" src="PaySlipsView.js"></script>
+    <script type="text/babel" src="LeadManagementView.js"></script>
+    <script type="text/babel" src="PaymentView.js"></script>
+    <script type="text/babel" src="PortfolioView.js"></script>
+    <script type="text/babel" src="LoanStatementView.js"></script>
+    <script type="text/babel" src="TemplateManagerView.js"></script>
+    <script type="text/babel" src="AuditLogView.js"></script>
+    <script type="text/babel" src="TestingView.js"></script>
+    <script type="text/babel" src="OpportunityPipelineView.js"></script>
+    <script type="text/babel" src="MailingListView.js"></script>
+    <script type="text/babel" src="CampaignView.js"></script>
+    <script type="text/babel" src="ClientTicketsView.js"></script>
+    <script type="text/babel" src="SupportDashboardView.js"></script>
+    <script type="text/babel" src="ContractTemplateView.js"></script>
+    <script type="text/babel" src="CRMView.js"></script>
+    <script type="text/babel" src="InventoryView.js"></script>
+    <script type="text/babel" src="SalesView.js"></script>
+    <script type="text/babel" src="PurchasingView.js"></script>
+    <script type="text/babel" src="AccountingDashboard.js"></script>
+    <script type="text/babel" src="EmailLogView.js"></script>
+    <script type="text/babel" src="DocumentView.js"></script>
+    <script type="text/babel" src="App.js"></script>
 
-    <script type="text/babel">
-        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
-    </script>
+    <script type="text/babel">
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
 </body>
 </html>
