@@ -9,7 +9,6 @@ def _get_current_user_info():
     return identity.get('tenant_id'), identity.get('user_id')
 
 # --- Construction Project Service ---
-
 def create_construction_project_service(data):
     tenant_id, user_id = _get_current_user_info()
     try:
@@ -43,7 +42,6 @@ def get_construction_project_details_service(project_id):
         project = ConstructionProject.query.filter_by(id=project_id, tenant_id=tenant_id).first()
         if not project:
             return {'error': 'Project not found'}, 404
-
         details = project.to_dict()
         details['budget_items'] = [item.to_dict() for item in project.budget_items]
         details['progress_reports'] = [report.to_dict() for report in project.progress_reports]
@@ -52,14 +50,12 @@ def get_construction_project_details_service(project_id):
         return {'error': str(e)}, 500
 
 # --- Budget Item Service ---
-
 def add_budget_item_service(project_id, data):
     tenant_id, _ = _get_current_user_info()
     try:
         project = ConstructionProject.query.filter_by(id=project_id, tenant_id=tenant_id).first()
         if not project:
             return {'error': 'Project not found'}, 404
-
         new_item = BudgetItem(
             tenant_id=tenant_id,
             project_id=project_id,
@@ -75,14 +71,12 @@ def add_budget_item_service(project_id, data):
         return {'error': str(e)}, 500
 
 # --- Progress Report Service ---
-
 def add_progress_report_service(project_id, data):
     tenant_id, user_id = _get_current_user_info()
     try:
         project = ConstructionProject.query.filter_by(id=project_id, tenant_id=tenant_id).first()
         if not project:
             return {'error': 'Project not found'}, 404
-
         new_report = ProgressReport(
             tenant_id=tenant_id,
             project_id=project_id,
@@ -99,14 +93,12 @@ def add_progress_report_service(project_id, data):
         return {'error': str(e)}, 500
 
 # --- Certification Service ---
-
 def create_certification_service(project_id, data):
     tenant_id, _ = _get_current_user_info()
     try:
         project = ConstructionProject.query.filter_by(id=project_id, tenant_id=tenant_id).first()
         if not project:
             return {'error': 'Project not found'}, 404
-
         new_certification = Certification(
             tenant_id=tenant_id,
             project_id=project_id,
