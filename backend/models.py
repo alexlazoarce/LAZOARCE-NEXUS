@@ -395,6 +395,72 @@ class NotificationTemplate(db.Model):
     def __repr__(self):
         return f'<NotificationTemplate {self.name}>'
 
+
+# --- MODELOS PARA EDUCACIÓN (LAN-SCH6) ---
+
+class Student(db.Model):
+    """Registro de un estudiante."""
+    __tablename__ = 'education_student'
+    id = db.Column(Integer, primary_key=True)
+    user_id = db.Column(Integer, ForeignKey('user.id'), nullable=True, unique=True)
+    full_name = db.Column(String(200), nullable=False)
+    student_code = db.Column(String(50), unique=True)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+    enrollments = db.relationship('Enrollment', backref='student', lazy='dynamic')
+    payments = db.relationship('TuitionPayment', backref='student', lazy='dynamic')
+
+    def to_dict(self):
+        return {'id': self.id, 'full_name': self.full_name, 'student_code': self.student_code}
+
+class Course(db.Model):
+    """Cursos o asignaturas."""
+    __tablename__ = 'education_course'
+    id = db.Column(Integer, primary_key=True)
+    name = db.Column(String(200), nullable=False)
+    course_code = db.Column(String(50), unique=True)
+    teacher_id = db.Column(Integer, ForeignKey('user.id')) # El profesor es un usuario
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+    teacher = db.relationship('User')
+    enrollments = db.relationship('Enrollment', backref='course', lazy='dynamic')
+
+    def to_dict(self):
+        return {'id': self.id, 'name': self.name, 'course_code': self.course_code, 'teacher_name': self.teacher.full_name if self.teacher else 'N/A'}
+
+class Enrollment(db.Model):
+    """Inscripción de un estudiante en un curso."""
+    __tablename__ = 'education_enrollment'
+    id = db.Column(Integer, primary_key=True)
+    student_id = db.Column(Integer, ForeignKey('education_student.id'), nullable=False)
+    course_id = db.Column(Integer, ForeignKey('education_course.id'), nullable=False)
+    enrollment_date = db.Column(Date, default=date.today)
+    final_grade = db.Column(Float)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+    grades = db.relationship('Grade', backref='enrollment', lazy='dynamic', cascade="all, delete-orphan")
+    __table_args__ = (UniqueConstraint('student_id', 'course_id', 'tenant_id', name='_student_course_tenant_uc'),)
+
+class Grade(db.Model):
+    """Calificaciones de un estudiante en una inscripción."""
+    __tablename__ = 'education_grade'
+    id = db.Column(Integer, primary_key=True)
+    enrollment_id = db.Column(Integer, ForeignKey('education_enrollment.id'), nullable=False)
+    grade_name = db.Column(String(100)) # Ej: "Examen Parcial 1"
+    score = db.Column(Float, nullable=False)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+class TuitionPayment(db.Model):
+    """Pagos de matrícula de un estudiante."""
+    __tablename__ = 'education_tuition_payment'
+    id = db.Column(Integer, primary_key=True)
+    student_id = db.Column(Integer, ForeignKey('education_student.id'), nullable=False)
+    amount = db.Column(Float, nullable=False)
+    payment_date = db.Column(Date, default=date.today)
+    concept = db.Column(String(200)) # Ej: "Matrícula Enero 2025"
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+
 class AuditLog(db.Model):
     """Registro de auditoría"""
     __tablename__ = 'audit_log'
