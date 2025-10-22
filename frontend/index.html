@@ -3,48 +3,95 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Préstamos - Autenticación</title>
+    <title>LAZOARCE UBMS</title>
+    <!-- Considera añadir un enlace a Bootstrap CSS si usas sus clases -->
+    <!-- <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"> -->
 </head>
 <body>
     <div id="root"></div>
-
+    <!-- Variable global para la URL base de la API -->
     <script>const API_BASE_URL = 'http://127.0.0.1:5001';</script>
+    <!-- Scripts de React y Babel (para desarrollo) -->
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
+    <!-- Componentes de la aplicación (Ordenados por Módulo Aproximado) -->
+    <!-- Core & Auth -->
     <script type="text/babel" src="Auth.js"></script>
+    <script type="text/babel" src="ProfileView.js"></script>
+    <!-- Loan Module -->
     <script type="text/babel" src="LoanProducts.js"></script>
     <script type="text/babel" src="LoanSimulator.js"></script>
     <script type="text/babel" src="LoanApplication.js"></script>
     <script type="text/babel" src="MyApplications.js"></script>
     <script type="text/babel" src="AdminDashboard.js"></script>
+    <script type="text/babel" src="PaymentView.js"></script>
+    <script type="text/babel" src="PortfolioView.js"></script> <!-- (Collections) -->
+    <script type="text/babel" src="LoanStatementView.js"></script>
+    <!-- Contract & Signing -->
     <script type="text/babel" src="ContractView.js"></script>
+    <script type="text/babel" src="SignerView.js"></script> <!-- (Public signing page) -->
+    <!-- Accounting Module -->
     <script type="text/babel" src="JournalView.js"></script>
     <script type="text/babel" src="GeneralLedgerView.js"></script>
-    <script type="text/babel" src="EmployeeManagement.js"></script>
-    <script type="text/babel" src="PayrollView.js"></script>
-    <script type="text/babel" src="ProfileView.js"></script>
     <script type="text/babel" src="TrialBalanceView.js"></script>
     <script type="text/babel" src="BalanceSheetView.js"></script>
     <script type="text/babel" src="IncomeStatementView.js"></script>
+    <script type="text/babel" src="AccountingDashboard.js"></script> <!-- (Si existe) -->
+    <script type="text/babel" src="components/CashAndBanksView.js"></script>
+    <script type="text/babel" src="components/TaxView.js"></script>
+    <script type="text/babel" src="AssetManagementView.js"></script> <!-- (Fixed Assets) -->
+    <!-- HR Module -->
+    <script type="text/babel" src="EmployeeManagement.js"></script>
+    <script type="text/babel" src="PayrollView.js"></script>
     <script type="text/babel" src="PaySlipsView.js"></script>
+    <!-- CRM Module -->
     <script type="text/babel" src="LeadManagementView.js"></script>
-    <script type="text/babel" src="PaymentView.js"></script>
-    <script type="text/babel" src="PortfolioView.js"></script>
-    <script type="text/babel" src="LoanStatementView.js"></script>
-    <script type="text/babel" src="TemplateManagerView.js"></script>
-    <script type="text/babel" src="AuditLogView.js"></script>
-    <script type="text/babel" src="TestingView.js"></script>
     <script type="text/babel" src="OpportunityPipelineView.js"></script>
+    <script type="text/babel" src="CRMView.js"></script> <!-- (Si existe como contenedor) -->
+    <!-- Sales & Purchasing Module -->
+    <script type="text/babel" src="InventoryView.js"></script>
+    <script type="text/babel" src="SalesView.js"></script>
+    <script type="text/babel" src="PurchasingView.js"></script>
+    <!-- Marketing Module -->
     <script type="text/babel" src="MailingListView.js"></script>
     <script type="text/babel" src="CampaignView.js"></script>
+    <script type="text/babel" src="EmailLogView.js"></script>
+    <!-- Support Module -->
     <script type="text/babel" src="ClientTicketsView.js"></script>
     <script type="text/babel" src="SupportDashboardView.js"></script>
+    <script type="text/babel" src="SupportTicketView.js"></script> <!-- (Vista detallada si existe) -->
+    <!-- Other Modules -->
+    <script type="text/babel" src="DocumentView.js"></script>
+    <script type="text/babel" src="MessagingView.js"></script>
+    <script type="text/babel" src="FormBuilderView.js"></script>
+    <script type="text/babel" src="ProjectManagementView.js"></script>
+    <script type="text/babel" src="components/MaterialManagementView.js"></script>
+    <script type="text/babel" src="components/ConstructionView.js"></script>
+    <script type="text/babel" src="components/ConstructionProjectsView.js"></script>
+    <script type="text/babel" src="components/BudgetItemsView.js"></script>
+    <script type="text/babel" src="components/ProgressReportsView.js"></script>
+    <script type="text/babel" src="components/CertificationsView.js"></script>
+    <script type="text/babel" src="components/RFIsView.js"></script>
+    <script type="text/babel" src="components/MilestonesView.js"></script>
+    <script type="text/babel" src="components/HealthView.js"></script>
+    <script type="text/babel" src="components/EducationView.js"></script>
+    <script type="text/babel" src="components/LogisticsView.js"></script>
+    <script type="text/babel" src="components/RestaurantView.js"></script>
+    <script type="text/babel" src="components/CommercialKitchenView.js"></script>
+    <script type="text/babel" src="components/FieldOperationsView.js"></script>
+    <script type="text/babel" src="components/TechnicalServiceView.js"></script>
     <script type="text/babel" src="components/SchoolManagementView.js"></script>
+    <!-- Configuration/Admin Tools -->
+    <script type="text/babel" src="TemplateManagerView.js"></script> <!-- Incluye ContractTemplateView? -->
+    <script type="text/babel" src="AuditLogView.js"></script>
+    <script type="text/babel" src="TestingView.js"></script>
+    <!-- Componente Principal App -->
     <script type="text/babel" src="App.js"></script>
-
+    <!-- Renderizado de la App -->
     <script type="text/babel">
+        // Asegúrate que todos los componentes necesarios estén definidos antes de llamar a App
+        // Asumiendo que 'ReactDOM' viene de 'react-dom.development.js' y 'App' de 'App.js'
         ReactDOM.createRoot(document.getElementById('root')).render(<App />);
     </script>
 </body>
