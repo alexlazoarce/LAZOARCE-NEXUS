@@ -137,68 +137,72 @@ def get_trial_balance_service():
         'is_balanced': total_debits.quantize(Decimal('0.01')) == total_credits.quantize(Decimal('0.01'))
     }
 
-def get_balance_sheet(tenant_id):
-    """Genera el Balance General para un tenant específico."""
-    accounts = Account.query.filter_by(tenant_id=tenant_id).all()
+def get_balance_sheet_service():
+    """Service to generate the balance sheet (Balance General)."""
+    # Se reusa la lógica de get_general_ledger_service para obtener los saldos
+    general_ledger = get_general_ledger_service()
     
-    assets = []
-    liabilities = []
-    equity = []
+    report = {'assets': [], 'liabilities': [], 'equity': []}
+    totals = {'assets': Decimal('0.00'), 'liabilities': Decimal('0.00'), 'equity': Decimal('0.00')}
 
-    total_assets = 0
-    total_liabilities = 0
-    total_equity = 0
+    # Asumimos que los reportes se basan en la categoría del Account
+    category_map = {'Asset': 'assets', 'Liability': 'liabilities', 'Equity': 'equity'}
 
-    for acc in accounts:
-        balance = sum(t.amount if t.type == 'Debit' else -t.amount for t in acc.transactions)
+    for account_data in general_ledger:
+        category = account_data['account_category']
+        if category in category_map:
+            key = category_map[category]
+            balance = Decimal(str(account_data['final_balance']))
 
-        if acc.category == 'Asset':
-            assets.append({'account': acc.name, 'balance': balance})
-            total_assets += balance
-        elif acc.category == 'Liability':
-            liabilities.append({'account': acc.name, 'balance': balance})
-            total_liabilities += balance
-        elif acc.category == 'Equity':
-            equity.append({'account': acc.name, 'balance': balance})
-            total_equity += balance
+            report[key].append({
+                'account_name': account_data['account_name'],
+                'balance': float(balance.quantize(Decimal('0.01')))
+            })
+            totals[key] += balance
 
+    liabilities_plus_equity = totals['liabilities'] + totals['equity']
+    
     return {
-        'assets': assets,
-        'liabilities': liabilities,
-        'equity': equity,
-        'total_assets': total_assets,
-        'total_liabilities': total_liabilities,
-        'total_equity': total_equity
+        'report': report,
+        'totals': {
+            'assets': float(totals['assets'].quantize(Decimal('0.01'))),
+            'liabilities': float(totals['liabilities'].quantize(Decimal('0.01'))),
+            'equity': float(totals['equity'].quantize(Decimal('0.01'))),
+            'liabilities_plus_equity': float(liabilities_plus_equity.quantize(Decimal('0.01')))
+        },
+        'accounting_equation_balanced': totals['assets'].quantize(Decimal('0.01')) == liabilities_plus_equity.quantize(Decimal('0.01'))
     }
 
-def get_income_statement(tenant_id):
-    """Genera el Estado de Resultados para un tenant específico."""
-    accounts = Account.query.filter_by(tenant_id=tenant_id).all()
+def get_income_statement_service():
+    """Service to generate the income statement (Estado de Resultados)."""
+    general_ledger = get_general_ledger_service()
 
-    revenues = []
-    expenses = []
-    
-    total_revenues = 0
-    total_expenses = 0
+    report = {'revenues': [], 'expenses': []}
+    totals = {'revenues': Decimal('0.00'), 'expenses': Decimal('0.00')}
 
-    for acc in accounts:
-        balance = sum(t.amount if t.type == 'Credit' else -t.amount for t in acc.transactions)
+    category_map = {'Revenue': 'revenues', 'Expense': 'expenses'}
 
-        if acc.category == 'Revenue':
-            revenues.append({'account': acc.name, 'balance': balance})
-            total_revenues += balance
-        elif acc.category == 'Expense':
-            expenses.append({'account': acc.name, 'balance': balance})
-            total_expenses += balance
+    for account_data in general_ledger:
+        category = account_data['account_category']
+        if category in category_map:
+            key = category_map[category]
+            balance = Decimal(str(account_data['final_balance']))
 
-    net_income = total_revenues - total_expenses
+            report[key].append({
+                'account_name': account_data['account_name'],
+                'balance': float(balance.quantize(Decimal('0.01')))
+            })
+            totals[key] += balance
+
+    net_income = totals['revenues'] - totals['expenses']
 
     return {
-        'revenues': revenues,
-        'expenses': expenses,
-        'total_revenues': total_revenues,
-        'total_expenses': total_expenses,
-        'net_income': net_income
+        'report': report,
+        'totals': {
+            'revenues': float(totals['revenues'].quantize(Decimal('0.01'))),
+            'expenses': float(totals['expenses'].quantize(Decimal('0.01'))),
+        },
+        'net_income': float(net_income.quantize(Decimal('0.01')))
     }
 
 # --- SERVICIOS DE IMPUESTOS ---
