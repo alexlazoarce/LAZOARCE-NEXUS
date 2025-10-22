@@ -580,6 +580,56 @@ class CollaborationSession(db.Model):
     participants = db.relationship('User', secondary=collaboration_session_users, lazy='dynamic')
 
 
+# --- MODELOS PARA GESTIÓN DE LAVANDERÍA (LAN-LDR3) ---
+
+class LaundryService(db.Model):
+    """Tipos de servicio de lavandería."""
+    __tablename__ = 'laundry_service'
+    id = db.Column(Integer, primary_key=True)
+    name = db.Column(String(150), nullable=False)
+    description = db.Column(Text)
+    pricing_method = db.Column(String(50)) # 'por_peso', 'por_prenda'
+    price = db.Column(Float, nullable=False)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+class LaundryOrder(db.Model):
+    """Órdenes de servicio de lavandería."""
+    __tablename__ = 'laundry_order'
+    id = db.Column(Integer, primary_key=True)
+    customer_id = db.Column(Integer, ForeignKey('user.id')) # Vinculado a un usuario cliente
+    total_amount = db.Column(Float)
+    status = db.Column(String(50), default='Recibido', index=True) # Recibido, En Proceso, Listo, Entregado
+    created_at = db.Column(DateTime, default=datetime.utcnow)
+    delivery_route_id = db.Column(Integer, ForeignKey('logistics_route.id')) # Integración con LAN-LOG6
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+    items = db.relationship('LaundryOrderItem', backref='order', lazy='dynamic', cascade="all, delete-orphan")
+    customer = db.relationship('User')
+
+class LaundryOrderItem(db.Model):
+    """Ítems dentro de una orden de lavandería."""
+    __tablename__ = 'laundry_order_item'
+    id = db.Column(Integer, primary_key=True)
+    order_id = db.Column(Integer, ForeignKey('laundry_order.id'), nullable=False)
+    service_id = db.Column(Integer, ForeignKey('laundry_service.id'))
+    description = db.Column(String(255)) # Ej: "Camisa de algodón", "Ropa blanca"
+    quantity = db.Column(Integer) # Para prendas
+    weight_kg = db.Column(Float) # Para peso
+    price = db.Column(Float)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+    service = db.relationship('LaundryService')
+
+class LaundrySupply(db.Model):
+    """Insumos de lavandería."""
+    __tablename__ = 'laundry_supply'
+    id = db.Column(Integer, primary_key=True)
+    name = db.Column(String(150), nullable=False)
+    stock_level = db.Column(Float) # ej. en litros o kg
+    unit = db.Column(String(20)) # 'litros', 'kg'
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+
 class AuditLog(db.Model):
     """Registro de auditoría"""
     __tablename__ = 'audit_log'
