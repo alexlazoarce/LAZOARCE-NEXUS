@@ -124,6 +124,7 @@ function App() {
             case 'construction': return isAdmin ? <ConstructionView token={token} /> : <p>Acceso no autorizado.</p>;
             case 'health': return isAdmin ? <HealthView token={token} /> : <p>Acceso no autorizado.</p>;
             case 'school_management': return isAdmin ? <SchoolManagementView token={token} /> : <p>Acceso no autorizado.</p>;
+            case 'university_management': return isAdmin ? <UniversityManagementView token={token} /> : <p>Acceso no autorizado.</p>;
             case 'logistics': return isAdmin ? <LogisticsView token={token} /> : <p>Acceso no autorizado.</p>;
             case 'restaurant': return isAdmin ? <RestaurantView token={token} /> : <p>Acceso no autorizado.</p>;
             case 'commercial_kitchen': return isAdmin ? <CommercialKitchenView token={token} /> : <p>Acceso no autorizado.</p>;
@@ -167,6 +168,7 @@ function App() {
                 {isAdmin && <button onClick={() => setView('construction')}>Obras y Construcción</button>}
                 {isAdmin && <button onClick={() => setView('health')}>Salud</button>}
                 {isAdmin && <button onClick={() => setView('school_management')}>Gestión Escolar</button>}
+                {isAdmin && <button onClick={() => setView('university_management')}>Gestión Universitaria</button>}
                 {isAdmin && <button onClick={() => setView('logistics')}>Logística</button>}
                 {isAdmin && <button onClick={() => setView('restaurant')}>Restaurantes</button>}
                 {isAdmin && <button onClick={() => setView('commercial_kitchen')}>Cocina Comercial</button>}

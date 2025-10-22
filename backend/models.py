@@ -1464,13 +1464,19 @@ class Student(db.Model):
     user_id = db.Column(Integer, ForeignKey('user.id'), nullable=True, unique=True)
     full_name = db.Column(String(200), nullable=False)
     student_code = db.Column(String(50), unique=True)
+    admission_status = db.Column(String(50), default='Aplicante', index=True) # Aplicante, Admitido, Rechazado
     tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
 
     enrollments = db.relationship('Enrollment', backref='student', lazy='dynamic')
     payments = db.relationship('TuitionPayment', backref='student', lazy='dynamic')
 
     def to_dict(self):
-        return {'id': self.id, 'full_name': self.full_name, 'student_code': self.student_code}
+        return {
+            'id': self.id,
+            'full_name': self.full_name,
+            'student_code': self.student_code,
+            'admission_status': self.admission_status
+        }
 
 class Course(db.Model):
     """Cursos o asignaturas."""
@@ -1518,6 +1524,63 @@ class TuitionPayment(db.Model):
     payment_date = db.Column(Date, default=date.today)
     concept = db.Column(String(200)) # Ej: "Matrícula Enero 2025"
     tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+
+# --- MODELOS PARA GESTIÓN UNIVERSITARIA (LAN-UNV8) ---
+
+class DegreeProgram(db.Model):
+    """Planes de estudio o carreras universitarias."""
+    __tablename__ = 'university_degree_program'
+    id = db.Column(Integer, primary_key=True)
+    name = db.Column(String(200), nullable=False)
+    faculty = db.Column(String(150)) # Facultad
+    credits_required = db.Column(Integer)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+class Scholarship(db.Model):
+    """Becas disponibles."""
+    __tablename__ = 'university_scholarship'
+    id = db.Column(Integer, primary_key=True)
+    name = db.Column(String(200), nullable=False)
+    description = db.Column(Text)
+    amount_or_percentage = db.Column(Float)
+    is_percentage = db.Column(Boolean, default=False)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+class StudentScholarship(db.Model):
+    """Asignación de becas a estudiantes."""
+    __tablename__ = 'university_student_scholarship'
+    id = db.Column(Integer, primary_key=True)
+    student_id = db.Column(Integer, ForeignKey('education_student.id'), nullable=False)
+    scholarship_id = db.Column(Integer, ForeignKey('university_scholarship.id'), nullable=False)
+    awarded_date = db.Column(Date, default=date.today)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+    student = db.relationship('Student')
+    scholarship = db.relationship('Scholarship')
+    __table_args__ = (UniqueConstraint('student_id', 'scholarship_id', 'tenant_id', name='_student_scholarship_tenant_uc'),)
+
+class LibraryResource(db.Model):
+    """Recursos de la biblioteca digital."""
+    __tablename__ = 'university_library_resource'
+    id = db.Column(Integer, primary_key=True)
+    title = db.Column(String(255), nullable=False)
+    author = db.Column(String(150))
+    resource_type = db.Column(String(50)) # Libro, Artículo, Tesis
+    url_or_identifier = db.Column(String(500))
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+class Alumnus(db.Model):
+    """Registro de egresados."""
+    __tablename__ = 'university_alumnus'
+    id = db.Column(Integer, primary_key=True)
+    student_id = db.Column(Integer, ForeignKey('education_student.id'), unique=True, nullable=False)
+    graduation_date = db.Column(Date)
+    contact_email = db.Column(String(120))
+    contact_phone = db.Column(String(50))
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+    student = db.relationship('Student')
 
 
 # --- MODELOS PARA LOGÍSTICA (LAN-LOG6) ---

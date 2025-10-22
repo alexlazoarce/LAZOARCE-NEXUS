@@ -134,6 +134,7 @@ def create_app(config_object=None, testing_config=None):
             from . import construction_service
             from . import health_service
             from . import school_management_service
+            from . import university_management_service
             from . import logistics_service
             from . import restaurant_service
             from . import commercial_kitchen_service
@@ -159,6 +160,7 @@ def create_app(config_object=None, testing_config=None):
                 'construction_service': construction_service,
                 'health_service': health_service,
                 'school_management_service': school_management_service,
+                'university_management_service': university_management_service,
                 'logistics_service': logistics_service,
                 'restaurant_service': restaurant_service,
                 'commercial_kitchen_service': commercial_kitchen_service,
@@ -1254,6 +1256,10 @@ def create_app(config_object=None, testing_config=None):
     # --- RUTAS PARA EDUCACIÓN (LAN-SCH6) ---
     from backend.routes.school_management_routes import school_management_bp
     app.register_blueprint(school_management_bp)
+
+    # --- RUTAS PARA GESTIÓN UNIVERSITARIA (LAN-UNV8) ---
+    from backend.routes.university_management_routes import university_management_bp
+    app.register_blueprint(university_management_bp)
 
     # --- RUTAS PARA LOGÍSTICA (LAN-LOG6) ---
     from backend.routes.logistics_routes import logistics_bp
