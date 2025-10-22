@@ -393,6 +393,243 @@ class MailingList(db.Model):
 
 # Se asume la existencia de los modelos de Recruitment, Gym, Automation, Docs, etc. aquí...
 
+
+# --- MODELOS PARA EDUCACIÓN (LAN-SCH6) ---
+
+class Student(db.Model):
+    """Registro de un estudiante."""
+    __tablename__ = 'education_student'
+    id = db.Column(Integer, primary_key=True)
+    user_id = db.Column(Integer, ForeignKey('user.id'), nullable=True, unique=True)
+    full_name = db.Column(String(200), nullable=False)
+    student_code = db.Column(String(50), unique=True)
+    admission_status = db.Column(String(50), default='Aplicante', index=True) # Aplicante, Admitido, Rechazado
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+    enrollments = db.relationship('Enrollment', backref='student', lazy='dynamic')
+    payments = db.relationship('TuitionPayment', backref='student', lazy='dynamic')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'full_name': self.full_name,
+            'student_code': self.student_code,
+            'admission_status': self.admission_status
+        }
+
+class Course(db.Model):
+    """Cursos o asignaturas."""
+    __tablename__ = 'education_course'
+    id = db.Column(Integer, primary_key=True)
+    name = db.Column(String(200), nullable=False)
+    course_code = db.Column(String(50), unique=True)
+    teacher_id = db.Column(Integer, ForeignKey('user.id')) # El profesor es un usuario
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+    teacher = db.relationship('User')
+    enrollments = db.relationship('Enrollment', backref='course', lazy='dynamic')
+
+    def to_dict(self):
+        return {'id': self.id, 'name': self.name, 'course_code': self.course_code, 'teacher_name': self.teacher.full_name if self.teacher else 'N/A'}
+
+class Enrollment(db.Model):
+    """Inscripción de un estudiante en un curso."""
+    __tablename__ = 'education_enrollment'
+    id = db.Column(Integer, primary_key=True)
+    student_id = db.Column(Integer, ForeignKey('education_student.id'), nullable=False)
+    course_id = db.Column(Integer, ForeignKey('education_course.id'), nullable=False)
+    enrollment_date = db.Column(Date, default=date.today)
+    final_grade = db.Column(Float)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+    grades = db.relationship('Grade', backref='enrollment', lazy='dynamic', cascade="all, delete-orphan")
+    __table_args__ = (UniqueConstraint('student_id', 'course_id', 'tenant_id', name='_student_course_tenant_uc'),)
+
+class Grade(db.Model):
+    """Calificaciones de un estudiante en una inscripción."""
+    __tablename__ = 'education_grade'
+    id = db.Column(Integer, primary_key=True)
+    enrollment_id = db.Column(Integer, ForeignKey('education_enrollment.id'), nullable=False)
+    grade_name = db.Column(String(100)) # Ej: "Examen Parcial 1"
+    score = db.Column(Float, nullable=False)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+class TuitionPayment(db.Model):
+    """Pagos de matrícula de un estudiante."""
+    __tablename__ = 'education_tuition_payment'
+    id = db.Column(Integer, primary_key=True)
+    student_id = db.Column(Integer, ForeignKey('education_student.id'), nullable=False)
+    amount = db.Column(Float, nullable=False)
+    payment_date = db.Column(Date, default=date.today)
+    concept = db.Column(String(200)) # Ej: "Matrícula Enero 2025"
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+
+# --- MODELOS PARA GESTIÓN UNIVERSITARIA (LAN-UNV8) ---
+
+class DegreeProgram(db.Model):
+    """Planes de estudio o carreras universitarias."""
+    __tablename__ = 'university_degree_program'
+    id = db.Column(Integer, primary_key=True)
+    name = db.Column(String(200), nullable=False)
+    faculty = db.Column(String(150)) # Facultad
+    credits_required = db.Column(Integer)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+class Scholarship(db.Model):
+    """Becas disponibles."""
+    __tablename__ = 'university_scholarship'
+    id = db.Column(Integer, primary_key=True)
+    name = db.Column(String(200), nullable=False)
+    description = db.Column(Text)
+    amount_or_percentage = db.Column(Float)
+    is_percentage = db.Column(Boolean, default=False)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+class StudentScholarship(db.Model):
+    """Asignación de becas a estudiantes."""
+    __tablename__ = 'university_student_scholarship'
+    id = db.Column(Integer, primary_key=True)
+    student_id = db.Column(Integer, ForeignKey('education_student.id'), nullable=False)
+    scholarship_id = db.Column(Integer, ForeignKey('university_scholarship.id'), nullable=False)
+    awarded_date = db.Column(Date, default=date.today)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+    student = db.relationship('Student')
+    scholarship = db.relationship('Scholarship')
+    __table_args__ = (UniqueConstraint('student_id', 'scholarship_id', 'tenant_id', name='_student_scholarship_tenant_uc'),)
+
+class LibraryResource(db.Model):
+    """Recursos de la biblioteca digital."""
+    __tablename__ = 'university_library_resource'
+    id = db.Column(Integer, primary_key=True)
+    title = db.Column(String(255), nullable=False)
+    author = db.Column(String(150))
+    resource_type = db.Column(String(50)) # Libro, Artículo, Tesis
+    url_or_identifier = db.Column(String(500))
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+class Alumnus(db.Model):
+    """Registro de egresados."""
+    __tablename__ = 'university_alumnus'
+    id = db.Column(Integer, primary_key=True)
+    student_id = db.Column(Integer, ForeignKey('education_student.id'), unique=True, nullable=False)
+    graduation_date = db.Column(Date)
+    contact_email = db.Column(String(120))
+    contact_phone = db.Column(String(50))
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+    student = db.relationship('Student')
+
+
+# --- MODELOS PARA CREACIÓN DE PLANOS (LAN-CAD) ---
+
+collaboration_session_users = db.Table('cad_collaboration_session_users',
+    db.Column('session_id', Integer, ForeignKey('cad_collaboration_session.id'), primary_key=True),
+    db.Column('user_id', Integer, ForeignKey('user.id'), primary_key=True),
+    schema='public'
+)
+
+class CADProject(db.Model):
+    """Proyectos de diseño CAD."""
+    __tablename__ = 'cad_project'
+    id = db.Column(Integer, primary_key=True)
+    name = db.Column(String(200), nullable=False)
+    description = db.Column(Text)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    created_by_id = db.Column(Integer, ForeignKey('user.id'))
+    created_at = db.Column(DateTime, default=datetime.utcnow)
+
+    files = db.relationship('CADFile', backref='project', lazy='dynamic', cascade="all, delete-orphan")
+
+class CADFile(db.Model):
+    """Archivos de diseño dentro de un proyecto CAD."""
+    __tablename__ = 'cad_file'
+    id = db.Column(Integer, primary_key=True)
+    project_id = db.Column(Integer, ForeignKey('cad_project.id'), nullable=False)
+    filename = db.Column(String(255), nullable=False)
+    file_format = db.Column(String(10)) # DWG, DXF, IFC
+    version = db.Column(Integer, default=1)
+    storage_path = db.Column(String(500)) # Ruta simulada
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+    layers = db.relationship('CADLayer', backref='file', lazy='dynamic', cascade="all, delete-orphan")
+    sessions = db.relationship('CollaborationSession', backref='file', lazy='dynamic', cascade="all, delete-orphan")
+
+class CADLayer(db.Model):
+    """Capas dentro de un archivo CAD."""
+    __tablename__ = 'cad_layer'
+    id = db.Column(Integer, primary_key=True)
+    file_id = db.Column(Integer, ForeignKey('cad_file.id'), nullable=False)
+    name = db.Column(String(100), nullable=False)
+    color = db.Column(String(7)) # e.g., #FF0000
+    is_visible = db.Column(Boolean, default=True)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+class CollaborationSession(db.Model):
+    """Sesiones de colaboración en tiempo real sobre un archivo CAD."""
+    __tablename__ = 'cad_collaboration_session'
+    id = db.Column(Integer, primary_key=True)
+    file_id = db.Column(Integer, ForeignKey('cad_file.id'), nullable=False)
+    session_token = db.Column(String(128), unique=True, nullable=False)
+    start_time = db.Column(DateTime, default=datetime.utcnow)
+    end_time = db.Column(DateTime)
+    is_active = db.Column(Boolean, default=True)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+    participants = db.relationship('User', secondary=collaboration_session_users, lazy='dynamic')
+
+
+# --- MODELOS PARA GESTIÓN DE LAVANDERÍA (LAN-LDR3) ---
+
+class LaundryService(db.Model):
+    """Tipos de servicio de lavandería."""
+    __tablename__ = 'laundry_service'
+    id = db.Column(Integer, primary_key=True)
+    name = db.Column(String(150), nullable=False)
+    description = db.Column(Text)
+    pricing_method = db.Column(String(50)) # 'por_peso', 'por_prenda'
+    price = db.Column(Float, nullable=False)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+class LaundryOrder(db.Model):
+    """Órdenes de servicio de lavandería."""
+    __tablename__ = 'laundry_order'
+    id = db.Column(Integer, primary_key=True)
+    customer_id = db.Column(Integer, ForeignKey('user.id')) # Vinculado a un usuario cliente
+    total_amount = db.Column(Float)
+    status = db.Column(String(50), default='Recibido', index=True) # Recibido, En Proceso, Listo, Entregado
+    created_at = db.Column(DateTime, default=datetime.utcnow)
+    delivery_route_id = db.Column(Integer, ForeignKey('logistics_route.id')) # Integración con LAN-LOG6
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+    items = db.relationship('LaundryOrderItem', backref='order', lazy='dynamic', cascade="all, delete-orphan")
+    customer = db.relationship('User')
+
+class LaundryOrderItem(db.Model):
+    """Ítems dentro de una orden de lavandería."""
+    __tablename__ = 'laundry_order_item'
+    id = db.Column(Integer, primary_key=True)
+    order_id = db.Column(Integer, ForeignKey('laundry_order.id'), nullable=False)
+    service_id = db.Column(Integer, ForeignKey('laundry_service.id'))
+    description = db.Column(String(255)) # Ej: "Camisa de algodón", "Ropa blanca"
+    quantity = db.Column(Integer) # Para prendas
+    weight_kg = db.Column(Float) # Para peso
+    price = db.Column(Float)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+    service = db.relationship('LaundryService')
+
+class LaundrySupply(db.Model):
+    """Insumos de lavandería."""
+    __tablename__ = 'laundry_supply'
+    id = db.Column(Integer, primary_key=True)
+    name = db.Column(String(150), nullable=False)
+    stock_level = db.Column(Float) # ej. en litros o kg
+    unit = db.Column(String(20)) # 'litros', 'kg'
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+
 class AuditLog(db.Model):
     """Registro de auditoría"""
     __tablename__ = 'audit_log'

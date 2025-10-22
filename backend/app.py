@@ -54,6 +54,12 @@ except ImportError as e:
     
 # -----------------------------------------------------------
 
+# --- IMPORTACIONES DE RUTAS (BLUEPRINTS) ---
+from .routes.school_management_routes import school_management_bp
+from .routes.university_management_routes import university_management_bp
+from .routes.cad_routes import cad_bp
+from .routes.laundry_routes import laundry_bp
+
 
 def create_app(config_object=None, testing_config=None):
     """
@@ -98,6 +104,12 @@ def create_app(config_object=None, testing_config=None):
     db.init_app(app)
     jwt.init_app(app)
     migrate.init_app(app, db) 
+
+    # --- REGISTRO DE BLUEPRINTS ---
+    app.register_blueprint(school_management_bp, url_prefix='/api/school')
+    app.register_blueprint(university_management_bp, url_prefix='/api/university')
+    app.register_blueprint(cad_bp, url_prefix='/api/cad')
+    app.register_blueprint(laundry_bp, url_prefix='/api/laundry')
 
     # --- CARGA DINÁMICA DE MODELOS Y SERVICIOS ---
     with app.app_context():
