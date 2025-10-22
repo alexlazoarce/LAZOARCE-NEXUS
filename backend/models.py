@@ -1,4 +1,3 @@
-```python
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, date
@@ -541,6 +540,76 @@ class Document(db.Model):
     created_by = db.relationship('User', foreign_keys=[created_by_id], backref='created_documents')
     def __repr__(self):
         return f'<Document {self.id}: {self.filename}>'
+
+# --- MODELOS NUEVOS DE F2C ---
+# (Estos modelos solo existían en la rama feature-LAN-F2C-contract-formulation)
+
+class RFI(db.Model):
+    """Request for Information (RFI) para un proyecto de construcción."""
+    __tablename__ = 'construction_rfi'
+    id = db.Column(Integer, primary_key=True)
+    project_id = db.Column(Integer, ForeignKey('construction_project.id'), nullable=False, index=True)
+    subject = db.Column(String(255), nullable=False)
+    question = db.Column(Text, nullable=False)
+    answer = db.Column(Text)
+    status = db.Column(String(50), default='Abierto', index=True) # Abierto, Respondido, Cerrado
+    created_by_id = db.Column(Integer, ForeignKey('user.id'))
+    answered_by_id = db.Column(Integer, ForeignKey('user.id'))
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    created_at = db.Column(DateTime, default=datetime.utcnow)
+
+class Milestone(db.Model):
+    """Hitos de facturación para un proyecto de construcción."""
+    __tablename__ = 'construction_milestone'
+    id = db.Column(Integer, primary_key=True)
+    project_id = db.Column(Integer, ForeignKey('construction_project.id'), nullable=False, index=True)
+    name = db.Column(String(200), nullable=False)
+    due_date = db.Column(Date)
+    amount = db.Column(Float, nullable=False)
+    status = db.Column(String(50), default='Pendiente', index=True) # Pendiente, Facturado, Pagado
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+# --- MODELOS PARA COCINA COMERCIAL (LAN-KTC4) ---
+# (Estos modelos solo existían en la rama feature-LAN-F2C-contract-formulation)
+
+class KitchenSpace(db.Model):
+    """Espacios o estaciones de cocina para alquilar."""
+    __tablename__ = 'commercial_kitchen_space'
+    id = db.Column(Integer, primary_key=True)
+    name = db.Column(String(150), nullable=False)
+    description = db.Column(Text)
+    hourly_rate = db.Column(Float)
+    is_available = db.Column(Boolean, default=True)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+class KitchenBooking(db.Model):
+    """Reservas de espacios de cocina."""
+    __tablename__ = 'commercial_kitchen_booking'
+    id = db.Column(Integer, primary_key=True)
+    space_id = db.Column(Integer, ForeignKey('commercial_kitchen_space.id'), nullable=False)
+    user_id = db.Column(Integer, ForeignKey('user.id'), nullable=False) # Quien reserva
+    start_time = db.Column(DateTime, nullable=False)
+    end_time = db.Column(DateTime, nullable=False)
+    total_cost = db.Column(Float)
+    status = db.Column(String(50), default='Confirmada') # Confirmada, Finalizada, Cancelada
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    space = db.relationship('KitchenSpace')
+    user = db.relationship('User')
+
+class HACCPLog(db.Model):
+    """Registros de control HACCP (Análisis de Peligros y Puntos Críticos de Control)."""
+    __tablename__ = 'commercial_kitchen_haccp_log'
+    id = db.Column(Integer, primary_key=True)
+    log_date = db.Column(DateTime, default=datetime.utcnow)
+    control_point = db.Column(String(200), nullable=False) # Ej: "Temperatura de refrigerador"
+    measurement = db.Column(String(100), nullable=False) # Ej: "4°C"
+    is_compliant = db.Column(Boolean, nullable=False)
+    corrective_action = db.Column(Text)
+    verified_by_id = db.Column(Integer, ForeignKey('user.id'))
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    verified_by = db.relationship('User')
+
+# --- FIN DE MODELOS NUEVOS DE F2C ---
 
 class DocumentVersion(db.Model):
     """Representa una versión específica de un archivo de un documento."""
@@ -1232,27 +1301,3 @@ class AuditLog(db.Model):
     created_at = db.Column(DateTime, default=func.current_timestamp())
     def __repr__(self):
         return f'<AuditLog {self.id} for {self.entity}:{self.entity_id}>'
-```
-
-### Cambios realizados
-
-1. **Preservación de duplicados**:
-   - Para modelos duplicados como `ContractTemplate`, `GeneratedContract`, `Contact`, etc., he usado la versión de `Business-Management-System-Connection` cuando incluye relaciones adicionales (como `created_by`, `assigned_to`) para mantener la funcionalidad extendida.
-   - Mantengo los comentarios específicos de `feature-LAN-F2C-contract-formulation` (por ejemplo, "Contenido con placeholders como {{variable}}") para preservar el contexto.
-
-2. **Preservación de registros adicionales**:
-   - Mantengo los modelos `MailingList`, `DocumentVersion`, `AuditLog`, y `NotificationTemplate` de `feature-LAN-F2C-contract-formulation`, ya que no generan conflictos.
-   - Incluyo la tabla intermedia `channel_members` tal como está, ya que es idéntica en ambas ramas.
-
-3. **Resolución de diferencias**:
-   - En `SalesOrderItem`, mantengo el campo `quote_id` y la restricción `CheckConstraint` de `Business-Management-System-Connection`, ya que es una extensión funcional sin conflictos.
-   - En modelos como `Document` y `Channel`, combino las relaciones de ambas ramas (por ejemplo, `created_by` y `versions` en `Document`).
-   - Aseguro que todas las relaciones usen `foreign_keys` explícitos para evitar ambigüedades.
-
-4. **Evitar conflictos**:
-   - Verifiqué que no haya conflictos de nombres de tablas o claves primarias. Todas las tablas tienen `__table_args__` con `UniqueConstraint` adecuados para garantizar integridad.
-   - Mantengo los `to_dict` y `__repr__` métodos para consistencia y facilidad de depuración.
-
-### Notas adicionales
-
-- **Compatibilidad con Supabase

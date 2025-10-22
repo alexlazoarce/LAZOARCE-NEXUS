@@ -1,4 +1,3 @@
-```html
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -62,39 +61,10 @@
     <script type="text/babel" src="components/EducationView.js"></script>
     <script type="text/babel" src="components/LogisticsView.js"></script>
     <script type="text/babel" src="components/RestaurantView.js"></script>
+    <script type="text/babel" src="components/CommercialKitchenView.js"></script>
     <script type="text/babel" src="App.js"></script>
     <script type="text/babel">
         ReactDOM.createRoot(document.getElementById('root')).render(<App />);
     </script>
 </body>
 </html>
-```
-
-### Cambios realizados
-
-1. **Preservación del script `RestaurantView.js`**:
-   - Mantengo la línea `<script type="text/babel" src="components/RestaurantView.js"></script>` de la rama `feature-LAN-F2C-contract-formulation`, ya que no causa conflictos y es necesaria para soportar el componente `<RestaurantView />` referenciado en `App.js`.
-
-2. **Evitar eliminación de contenido**:
-   - No elimino ningún script de la rama `Business-Management-System-Connection`, ya que no hay superposición ni conflictos. La rama `feature-LAN-F2C-contract-formulation` solo agrega el script de `RestaurantView.js` sin afectar otros scripts.
-   - Mantengo todos los scripts existentes (como `Auth.js`, `LoanProducts.js`, etc.) sin modificaciones.
-
-3. **Consistencia y estilo**:
-   - Coloco el script `components/RestaurantView.js` junto con los otros scripts de componentes en la carpeta `components/` (como `CashAndBanksView.js`, `TaxView.js`, etc.) para mantener la coherencia en la estructura del proyecto.
-   - Aseguro que el orden de los scripts sea lógico, manteniendo `App.js` y el script de renderizado final al final, como en el código original.
-
-4. **Evitar errores**:
-   - Verifico que la inclusión de `RestaurantView.js` no introduzca errores, ya que corresponde al componente `<RestaurantView />` utilizado en `App.js` (resuelto previamente) y está alineado con los modelos de restaurante en `models.py`.
-   - Asumo que el archivo `components/RestaurantView.js` existe en el proyecto y está correctamente implementado. Si necesitas que proporcione o verifique el contenido de `RestaurantView.js`, por favor compárteme el archivo o indícalme los detalles.
-
-### Notas adicionales
-
-- **Compatibilidad con el backend**: La inclusión de `RestaurantView.js` es consistente con los modelos `MenuItem`, `Table`, `RestaurantOrder`, y `RestaurantOrderItem` definidos en `models.py` (resuelto previamente). Asegúrate de que el backend tenga las rutas API correspondientes (por ejemplo, `/api/restaurant/*`) para soportar este módulo.
-- **Diferencia en `API_BASE_URL`**: Observo que este archivo define `API_BASE_URL = 'http://127.0.0.1:5001'` en un script inline, mientras que `App.js` usa `const API_BASE_URL = 'http://localhost:5000'`. Esto podría causar conflictos si el backend no está configurado para escuchar en ambos puertos. Recomiendo estandarizar la URL, por ejemplo, usando `http://127.0.0.1:5001` en ambos archivos para evitar errores de conexión. Si necesitas que ajuste esto, por favor confírmame la URL correcta.
-- **Entorno de desarrollo**: El uso de scripts UMD de React y Babel (`react.development.js`, `babel.min.js`) indica un entorno de desarrollo. Para producción, considera usar un sistema de módulos como Vite o Webpack para optimizar la carga de scripts y evitar dependencias externas. Si necesitas ayuda con esto, puedo proporcionar una configuración de ejemplo.
-- **Pruebas recomendadas**:
-  - Verifica que el archivo `components/RestaurantView.js` exista y se cargue correctamente en el navegador.
-  - Confirma que el componente `<RestaurantView />` se renderiza sin errores para usuarios con rol `Admin`, según la lógica de `App.js`.
-  - Prueba las rutas API asociadas con el módulo de restaurante para asegurar que el frontend y el backend estén sincronizados.
-
-Si necesitas que implemente el componente `RestaurantView.js`, que verifique las rutas API correspondientes, que estandarice `API_BASE_URL`, o que realice algún ajuste adicional en el código, por favor indícalos. ¡Estoy aquí para ayudarte!

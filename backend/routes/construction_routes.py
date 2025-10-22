@@ -4,7 +4,7 @@ from backend.construction_service import (
     create_construction_project_service, get_construction_projects_service,
     get_construction_project_details_service, add_budget_item_service,
     add_progress_report_service, create_certification_service,
-    get_certifications_for_project_service
+    get_certifications_for_project_service, create_rfi_service, create_milestone_service
 )
 
 construction_bp = Blueprint('construction_bp', __name__, url_prefix='/api/construction')
@@ -61,4 +61,20 @@ def create_certification(project_id):
 @jwt_required()
 def get_certifications(project_id):
     response, status_code = get_certifications_for_project_service(project_id)
+    return jsonify(response), status_code
+
+# --- RFI Routes ---
+@construction_bp.route('/projects/<int:project_id>/rfis', methods=['POST'])
+@jwt_required()
+def create_rfi(project_id):
+    data = request.get_json()
+    response, status_code = create_rfi_service(project_id, data)
+    return jsonify(response), status_code
+
+# --- Milestone Routes ---
+@construction_bp.route('/projects/<int:project_id>/milestones', methods=['POST'])
+@jwt_required()
+def create_milestone(project_id):
+    data = request.get_json()
+    response, status_code = create_milestone_service(project_id, data)
     return jsonify(response), status_code

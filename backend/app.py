@@ -1,4 +1,3 @@
-```python
 import os
 import click
 from functools import wraps
@@ -45,7 +44,6 @@ user_roles = db.Table('user_roles',
     db.Column('role_id', Integer, ForeignKey('role.id'), primary_key=True, comment='Foreign key al rol'),
     schema='public'
 )
-
 mailing_list_members = db.Table('mailing_list_members',
     db.Column('mailing_list_id', Integer, ForeignKey('mailing_list.id'), primary_key=True, comment='Foreign key a la lista de correo'),
     db.Column('user_id', Integer, ForeignKey('user.id'), primary_key=True, comment='Foreign key al usuario'),
@@ -94,13 +92,10 @@ class User(db.Model):
     employee = relationship('Employee', backref='user', uselist=False, cascade="all, delete-orphan")
     applications = relationship('LoanApplication', backref='applicant', lazy='dynamic', cascade="all, delete-orphan")
     audit_logs = relationship('AuditLog', backref='user', lazy='dynamic', cascade="all, delete-orphan")
-
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
-
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
-
     @property
     def role(self):
         if self.role_id:
@@ -427,16 +422,12 @@ class Certification(db.Model):
 class MockService:
     def __init__(self, name):
         self.name = name
-
     def __call__(self, *args, **kwargs):
         return self
-
     def send_email(self, *args, **kwargs):
         return True, "OK"
-
     def log_action(self, *args, **kwargs):
         pass
-
     def get_asset_details(self, *args, **kwargs):
         class A:
             id = 1
@@ -448,10 +439,8 @@ class MockService:
             salvage_value = 0
             depreciation_entries = []
         return A()
-
     def get_asset_book_value(self, *args, **kwargs):
         return 900
-
     def get_assets_for_tenant(self, *args, **kwargs):
         class A:
             id = 1
@@ -459,18 +448,15 @@ class MockService:
             purchase_cost = 1000
             status = 'Active'
         return [A()]
-
     def create_asset(self, *args, **kwargs):
         class A:
             id = 2
         return A()
-
     def calculate_monthly_depreciation(self, *args, **kwargs):
         class E:
             id = 3
             amount = 100
         return E()
-
     def get_projects_for_tenant(self, *args, **kwargs):
         class P:
             id = 1
@@ -478,12 +464,10 @@ class MockService:
             status = 'In Progress'
             end_date = datetime.now().date()
         return [P()]
-
     def create_project(self, *args, **kwargs):
         class P:
             id = 2
         return P()
-
     def get_project_details(self, *args, **kwargs):
         class P:
             id = 1
@@ -492,7 +476,6 @@ class MockService:
             status = 'In Progress'
             budget = 100
         return P()
-
     def get_tasks_for_project(self, *args, **kwargs):
         class T:
             id = 1
@@ -500,18 +483,15 @@ class MockService:
             status = 'To Do'
             due_date = datetime.now().date()
         return [T()]
-
     def create_task(self, *args, **kwargs):
         class T:
             id = 2
         return T()
-
     def update_task_status(self, *args, **kwargs):
         class T:
             id = 1
             status = 'Done'
         return T()
-
     def get_tickets_for_tenant(self, *args, **kwargs):
         class T:
             id = 1
@@ -520,12 +500,10 @@ class MockService:
             priority = 'High'
             updated_at = datetime.utcnow()
         return [T()]
-
     def create_ticket(self, *args, **kwargs):
         class T:
             id = 2
         return T()
-
     def get_ticket_details(self, *args, **kwargs):
         class T:
             id = 1
@@ -535,23 +513,19 @@ class MockService:
             priority = 'High'
             updates = []
         return T()
-
     def add_ticket_update(self, *args, **kwargs):
         class U:
             id = 3
         return U()
-
     def assign_ticket(self, *args, **kwargs):
         class T:
             id = 1
         return T()
-
     def change_ticket_status(self, *args, **kwargs):
         class T:
             id = 1
             status = 'Closed'
         return T()
-
     def get_documents_for_tenant(self, *args, **kwargs):
         class D:
             id = 1
@@ -561,23 +535,19 @@ class MockService:
             created_at = datetime.utcnow()
             updated_at = datetime.utcnow()
         return [D()]
-
     def create_document(self, *args, **kwargs):
         class D:
             id = 1
         return D()
-
     def add_new_version(self, *args, **kwargs):
         class V:
             id = 2
         return V()
-
     def get_document_version(self, *args, **kwargs):
         class V:
             id = 1
             filepath = '/path/to/file'
         return V()
-
     def get_user_channels(self, *args, **kwargs):
         class C:
             id = 1
@@ -585,12 +555,10 @@ class MockService:
             description = 'Test Channel'
             channel_type = 'public'
         return [C()]
-
     def create_channel(self, *args, **kwargs):
         class C:
             id = 1
         return C()
-
     def get_messages_for_channel(self, *args, **kwargs):
         class M:
             id = 1
@@ -599,24 +567,20 @@ class MockService:
             created_at = datetime.utcnow()
             author = type('User', (), {'full_name': 'Test User'})()
         return [M()]
-
     def post_message(self, *args, **kwargs):
         class M:
             id = 1
         return M()
-
     def get_templates_for_tenant(self, *args, **kwargs):
         class T:
             id = 1
             name = 'Template1'
             description = 'Test Template'
         return [T()]
-
     def create_template(self, *args, **kwargs):
         class T:
             id = 1
         return T()
-
     def get_signature_requests(self, *args, **kwargs):
         class R:
             id = 1
@@ -625,12 +589,10 @@ class MockService:
             status = 'sent'
             created_at = datetime.utcnow()
         return [R()]
-
     def create_signature_request(self, *args, **kwargs):
         class R:
             id = 1
         return R()
-
     def get_request_by_token(self, *args, **kwargs):
         class R:
             id = 1
@@ -638,33 +600,27 @@ class MockService:
             final_document_content = 'Document Content'
             status = 'sent'
         return R()
-
     def send_signature_request(self, *args, **kwargs):
         pass
-
     def sign_document(self, *args, **kwargs):
         pass
-
     def get_forms_for_tenant(self, *args, **kwargs):
         class F:
             id = 1
             name = 'Form1'
             public_token = 'token123'
         return [F()]
-
     def create_form(self, *args, **kwargs):
         class F:
             id = 1
             public_token = 'token123'
         return F()
-
     def get_submissions_for_form(self, *args, **kwargs):
         class S:
             id = 1
             data = {}
             submitted_at = datetime.utcnow()
         return [S()]
-
     def get_form_by_token(self, *args, **kwargs):
         class F:
             id = 1
@@ -672,13 +628,10 @@ class MockService:
             description = 'Test Form'
             fields = []
         return F()
-
     def submit_form(self, *args, **kwargs):
         pass
-
     def get_balance_sheet(self, *args, **kwargs):
         return {}
-
     def get_income_statement(self, *args, **kwargs):
         return {}
 
@@ -711,10 +664,8 @@ def create_app(config_object=None, testing_config=None):
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
         UPLOAD_FOLDER=os.path.join(app.instance_path, 'Uploads')
     )
-
     if testing_config:
         app.config.from_mapping(testing_config)
-
     os.makedirs(app.instance_path, exist_ok=True)
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
@@ -724,11 +675,77 @@ def create_app(config_object=None, testing_config=None):
     migrate.init_app(app, db)
 
     with app.app_context():
+        # Intenta cargar modelos
+        try:
+            from .models import (
+                Role, User, LoanProduct, LoanApplication, Account, Transaction,
+                JournalEntry, Cliente, ContratoIntegracion, ProductoCredito,
+                Empleado, Planilla, ClientProfile, Tenant, AuditLog, Payment,
+                NotificationTemplate, Employee, ContractTemplate, GeneratedContract,
+                Contact, Interaction, Opportunity, Product, StockMovement,
+                Quote, SalesOrder, SalesOrderItem, Supplier, PurchaseOrder, PurchaseOrderItem,
+                EmailLog, Channel, Message, SignableTemplate, SignatureRequest, Form, FormSubmission,
+                Project, Task, Ticket, TicketUpdate, FixedAsset, DepreciationEntry,
+                BankAccount, BankTransaction, CashBox, CashTransaction
+            )
+            from . import (
+                audit_service, contract_service, crm_service, inventory_service,
+                sales_service, purchasing_service, email_service, document_service,
+                messaging_service, sign_service, form_service, project_service,
+                support_service, asset_service, tax_service, material_service,
+                construction_service, health_service, education_service, logistics_service,
+                restaurant_service, commercial_kitchen_service
+            )
+            app.services = {
+                'audit_service': audit_service,
+                'contract_service': contract_service,
+                'crm_service': crm_service,
+                'inventory_service': inventory_service,
+                'sales_service': sales_service,
+                'purchasing_service': purchasing_service,
+                'email_service': email_service,
+                'document_service': document_service,
+                'messaging_service': messaging_service,
+                'sign_service': sign_service,
+                'form_service': form_service,
+                'project_service': project_service,
+                'support_service': support_service,
+                'asset_service': asset_service,
+                'tax_service': tax_service,
+                'material_service': material_service,
+                'construction_service': construction_service,
+                'health_service': health_service,
+                'education_service': education_service,
+                'logistics_service': logistics_service,
+                'restaurant_service': restaurant_service,
+                'commercial_kitchen_service': commercial_kitchen_service
+            }
+        except ImportError as e:
+            app.logger.error(f"❌ Error al importar modelos: {e}. Se usarán Mocks.")
+            class MockModel:
+                def __init__(self, **kwargs): pass
+                def query(self): return self
+                def filter_by(self, **kwargs): return self
+                def first(self): return None
+                def all(self): return []
+                def get(self, id): return None
+                def get_or_404(self, id): return None
+            Role = User = LoanProduct = LoanApplication = Account = Transaction = JournalEntry = Cliente = ContratoIntegracion = ProductoCredito = Empleado = Planilla = ClientProfile = Tenant = AuditLog = Payment = NotificationTemplate = Employee = ContractTemplate = GeneratedContract = Contact = Interaction = Opportunity = Product = StockMovement = Quote = SalesOrder = SalesOrderItem = Supplier = PurchaseOrder = PurchaseOrderItem = EmailLog = MockModel
+            app.services = {
+                'audit_service': lambda: None,
+                'contract_service': lambda: None,
+                'crm_service': lambda: None,
+                'inventory_service': lambda: None,
+                'sales_service': lambda: None,
+                'purchasing_service': lambda: None,
+                'email_service': lambda: None
+            }
+
         # Asignar modelos al contexto de la app
         app.models = {
             'Role': Role, 'User': User, 'LoanProduct': LoanProduct, 'LoanApplication': LoanApplication,
             'Account': Account, 'Transaction': Transaction, 'JournalEntry': JournalEntry, 'Cliente': Cliente,
-            'ContratoIntegracion': ContratoIntegracion, 'ProductoCredito': ProductoCredito, 'Empleado': Empleado,
+            'ContratoIntegracion': ContratoIntegracion, 'ProductoCredito': ProductoCredito,
             'Planilla': Planilla, 'Employee': Employee, 'AuditLog': AuditLog, 'ClientProfile': ClientProfile,
             'Tenant': Tenant, 'Payment': Payment, 'NotificationTemplate': NotificationTemplate,
             'ContractTemplate': ContractTemplate, 'GeneratedContract': GeneratedContract, 'Contact': Contact,
@@ -778,7 +795,6 @@ def create_app(config_object=None, testing_config=None):
     def role_required(required_roles):
         if not isinstance(required_roles, list):
             required_roles = [required_roles]
-
         def decorator(fn):
             @wraps(fn)
             @jwt_required()
@@ -849,6 +865,8 @@ def create_app(config_object=None, testing_config=None):
         if not new_status:
             return jsonify({"error": "El campo 'status' es requerido."}), 400
         application.status = new_status
+        if new_status == 'Aprobado':
+            pass  # Logic for generating contract can be added here
         db.session.commit()
         return jsonify({"message": f"Estado de la solicitud {app_id} actualizado a '{new_status}'."})
 
@@ -1030,7 +1048,6 @@ def create_app(config_object=None, testing_config=None):
 
     # Rutas para gestor de documentos
     documents_bp = Blueprint('documents', __name__, url_prefix='/api/documents')
-
     @documents_bp.route('/', methods=['GET'])
     @jwt_required()
     def list_documents():
@@ -1089,12 +1106,10 @@ def create_app(config_object=None, testing_config=None):
             return send_from_directory(directory, filename, as_attachment=True)
         except FileNotFoundError:
             return jsonify({"error": "Archivo no encontrado en el servidor."}), 404
-
     app.register_blueprint(documents_bp)
 
     # Rutas para mensajería corporativa
     messaging_bp = Blueprint('messaging', __name__, url_prefix='/api/messaging')
-
     @messaging_bp.route('/channels', methods=['GET'])
     @jwt_required()
     def get_channels():
@@ -1142,12 +1157,10 @@ def create_app(config_object=None, testing_config=None):
             return jsonify({'message': 'Mensaje enviado exitosamente', 'message_id': message.id}), 201
         except ValueError as e:
             return jsonify({'error': str(e)}), 400
-
     app.register_blueprint(messaging_bp)
 
     # Rutas para firmar
     sign_bp = Blueprint('signer', __name__, url_prefix='/api/signer')
-
     @sign_bp.route('/templates', methods=['GET'])
     @jwt_required()
     def get_sign_templates():
@@ -1231,12 +1244,10 @@ def create_app(config_object=None, testing_config=None):
             return jsonify({'error': str(e)}), 400
         except Exception:
             return jsonify({'error': 'No se pudo completar la firma.'}), 500
-
     app.register_blueprint(sign_bp)
 
     # Rutas para formularios
     forms_bp = Blueprint('forms', __name__, url_prefix='/api/forms')
-
     @forms_bp.route('/', methods=['GET'])
     @jwt_required()
     def get_forms():
@@ -1287,12 +1298,10 @@ def create_app(config_object=None, testing_config=None):
             return jsonify({'error': str(e)}), 400
         except Exception:
             return jsonify({'error': 'No se pudo procesar el envío.'}), 500
-
     app.register_blueprint(forms_bp)
 
     # Rutas para gestión de proyectos
     projects_bp = Blueprint('projects', __name__, url_prefix='/api/projects')
-
     @projects_bp.route('/', methods=['GET'])
     @jwt_required()
     def get_projects():
@@ -1357,12 +1366,10 @@ def create_app(config_object=None, testing_config=None):
             return jsonify({'message': 'Estado de la tarea actualizado', 'task_id': task.id, 'new_status': task.status})
         except ValueError as e:
             return jsonify({'error': str(e)}), 400
-
     app.register_blueprint(projects_bp)
 
     # Rutas para soporte técnico
     support_bp = Blueprint('support', __name__, url_prefix='/api/support')
-
     @support_bp.route('/tickets', methods=['GET'])
     @jwt_required()
     def get_tickets():
@@ -1435,12 +1442,10 @@ def create_app(config_object=None, testing_config=None):
             return jsonify({'message': 'Estado del ticket actualizado', 'new_status': ticket.status})
         except ValueError as e:
             return jsonify({'error': str(e)}), 400
-
     app.register_blueprint(support_bp)
 
     # Rutas para activos fijos
     assets_bp = Blueprint('assets', __name__, url_prefix='/api/assets')
-
     @assets_bp.route('/', methods=['GET'])
     @jwt_required()
     @role_required(['Contador', 'Administrador General'])
@@ -1491,7 +1496,6 @@ def create_app(config_object=None, testing_config=None):
             return jsonify({'message': 'Depreciación calculada exitosamente', 'entry_id': entry.id, 'amount': entry.amount}), 201
         except (ValueError, NotImplementedError) as e:
             return jsonify({'error': str(e)}), 400
-
     app.register_blueprint(assets_bp)
 
     # Registrar blueprints adicionales
@@ -1511,16 +1515,13 @@ def create_app(config_object=None, testing_config=None):
         with app.app_context():
             Role = app.models.get('Role')
             User = app.models.get('User')
-
             db.create_all()
-
             if Role and Role.query.first() is None:
                 roles = ['Super Administrador', 'Administrador General', 'Ejecutivo de Crédito', 'Cobrador', 'Contador', 'Cliente']
                 for role_name in roles:
                     db.session.add(Role(name=role_name))
                 db.session.commit()
                 print("Roles creados.")
-
             if User and Role and not User.query.filter_by(email='admin@lazoarce.com').first():
                 admin_role = Role.query.filter_by(name='Administrador General').first()
                 if admin_role:
@@ -1529,7 +1530,6 @@ def create_app(config_object=None, testing_config=None):
                     db.session.add(admin_user)
                     db.session.commit()
                     print("Usuario administrador por defecto creado (admin@lazoarce.com / admin).")
-
             click.echo("Base de datos inicializada y poblada con datos por defecto.")
 
     # Error handlers
@@ -1543,4 +1543,3 @@ def create_app(config_object=None, testing_config=None):
         return jsonify({"message": "Error interno del servidor"}), 500
 
     return app
-```
