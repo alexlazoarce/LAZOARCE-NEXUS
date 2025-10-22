@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required
+# Assuming backend.construction_service exists and contains these functions
 from backend.construction_service import (
     create_construction_project_service, get_construction_projects_service,
     get_construction_project_details_service, add_budget_item_service,
@@ -15,6 +16,7 @@ construction_bp = Blueprint('construction_bp', __name__, url_prefix='/api/constr
 @jwt_required()
 def create_project():
     data = request.get_json()
+    # Ensure service returns a tuple (response_data, status_code)
     response, status_code = create_construction_project_service(data)
     return jsonify(response), status_code
 

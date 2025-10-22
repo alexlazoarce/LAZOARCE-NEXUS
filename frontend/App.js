@@ -1,5 +1,12 @@
 import React from 'react';
 
+// Assuming imports for all components like Auth, AdminDashboard, FieldOperationsView etc. exist
+// import Auth from './components/Auth';
+// import AdminDashboard from './components/AdminDashboard';
+// ... other imports ...
+// import FieldOperationsView from './components/FieldOperationsView'; // Import the new component
+
+
 function App() {
     const [token, setToken] = React.useState(localStorage.getItem('jwt_token'));
     const [userRoles, setUserRoles] = React.useState([]);
@@ -25,16 +32,16 @@ function App() {
             const response = await fetch(`${API_BASE_URL}/api/profile`, {
                 headers: { 'Authorization': `Bearer ${currentToken}` }
             });
-            if (response.status === 401) {
+            if (response.status === 401) { // Unauthorized or token expired
                 handleLogout();
                 return;
             }
             if (!response.ok) throw new Error('Error al cargar perfil de usuario.');
             const data = await response.json();
-            setUserRoles(data.roles || []);
+            setUserRoles(data.roles || []); // Ensure roles is always an array
         } catch (error) {
             console.error(error.message);
-            setUserRoles([]);
+            setUserRoles([]); // Reset roles on error
         } finally {
             setLoadingProfile(false);
         }
@@ -44,31 +51,34 @@ function App() {
         const currentToken = localStorage.getItem('jwt_token');
         if (currentToken) {
             setToken(currentToken);
-            fetchProfile(currentToken);
-            setView('dashboard');
+            fetchProfile(currentToken); // Fetch profile on initial load if token exists
+            setView('dashboard'); // Default view for logged-in users
         } else {
-            setView('auth');
-            setLoadingProfile(false);
+            setView('auth'); // Show auth view if no token
+            setLoadingProfile(false); // No profile to load
         }
-    }, []);
+        // No dependencies needed here as it should only run once on mount
+    }, []); // Empty dependency array means run once on mount
 
     const handleLogin = (newToken) => {
         localStorage.setItem('jwt_token', newToken);
         setToken(newToken);
-        fetchProfile(newToken);
-        setView('dashboard');
+        fetchProfile(newToken); // Fetch profile after login
+        setView('dashboard'); // Navigate to dashboard after login
     };
 
     const handleLogout = () => {
         localStorage.removeItem('jwt_token');
         setToken(null);
         setUserRoles([]);
-        setView('auth');
+        setView('auth'); // Navigate back to auth view
+        // Reset any specific view states
         setViewingContractId(null);
         setViewingPaySlipsForLogId(null);
         setManagingPaymentsForApp(null);
     };
 
+    // Sub-portals for different modules (Accounting, HR, CRM, Marketing)
     const AccountingPortal = () => (
         <div>
             <nav>
@@ -79,6 +89,7 @@ function App() {
                 <button onClick={() => setAccountingView('income_statement')}>Estado de Resultados</button>
             </nav>
             <hr />
+            {/* Conditional rendering based on accountingView state */}
             {accountingView === 'journal' && <JournalView token={token} />}
             {accountingView === 'ledger' && <GeneralLedgerView token={token} />}
             {accountingView === 'trial_balance' && <TrialBalanceView token={token} />}
@@ -88,6 +99,7 @@ function App() {
     );
 
     const HRPortal = () => {
+        // If viewing specific payslips, show that component, otherwise show HR nav
         if (viewingPaySlipsForLogId) return <PaySlipsView token={token} payrollLogId={viewingPaySlipsForLogId} onBack={() => setViewingPaySlipsForLogId(null)} />;
         return (
             <div>
@@ -126,21 +138,29 @@ function App() {
         </div>
     );
 
+    // Main view rendering logic based on 'view' state and user roles
     const renderView = () => {
         if (loadingProfile) return <p>Cargando...</p>;
         if (!token || view === 'auth') return <Auth onLogin={handleLogin} />;
+
+        // Handle specific detailed views first
         if (viewingContractId) return <ContractView token={token} applicationId={viewingContractId} onBack={() => setViewingContractId(null)} />;
         if (managingPaymentsForApp) return <PaymentView token={token} application={managingPaymentsForApp} onBack={() => setManagingPaymentsForApp(null)} />;
+        // Note: viewingPaySlipsForLogId handled within HRPortal
+
+        // Determine roles for authorization checks
         const isAdmin = userRoles.includes('Admin') || userRoles.includes('Administrador General');
         const isContador = userRoles.includes('Contador');
         const isEjecutivo = userRoles.includes('Ejecutivo de Crédito');
         const isCobrador = userRoles.includes('Cobrador');
         const isSupport = userRoles.includes('Soporte');
+
+        // Render component based on 'view' state and roles
         switch (view) {
             case 'dashboard': return isAdmin ? <AdminDashboard token={token} onManagePayments={setManagingPaymentsForApp} /> : <MyApplications token={token} onViewContract={setViewingContractId} />;
             case 'products': return <LoanProducts token={token} />;
             case 'simulator': return <LoanSimulator token={token} />;
-            case 'newApplication': return <LoanApplication token={token} onNavigate={setView} />;
+            case 'newApplication': return <LoanApplication token={token} onNavigate={setView} />; // Assume LoanApplication can navigate away
             case 'accounting': return (isAdmin || isContador) ? <AccountingPortal /> : <p>Acceso no autorizado.</p>;
             case 'cash_and_banks': return (isAdmin || isContador) ? <CashAndBanksView token={token} /> : <p>Acceso no autorizado.</p>;
             case 'tax': return (isAdmin || isContador) ? <TaxView token={token} /> : <p>Acceso no autorizado.</p>;
@@ -151,39 +171,49 @@ function App() {
             case 'logistics': return isAdmin ? <LogisticsView token={token} /> : <p>Acceso no autorizado.</p>;
             case 'restaurant': return isAdmin ? <RestaurantView token={token} /> : <p>Acceso no autorizado.</p>;
             case 'commercial_kitchen': return isAdmin ? <CommercialKitchenView token={token} /> : <p>Acceso no autorizado.</p>;
+            case 'field_ops': return isAdmin ? <FieldOperationsView token={token} /> : <p>Acceso no autorizado.</p>; // Added field_ops case
             case 'hr': return isAdmin ? <HRPortal /> : <p>Acceso no autorizado.</p>;
             case 'crm': return (isAdmin || isEjecutivo) ? <CRMPortal /> : <p>Acceso no autorizado.</p>;
             case 'collections': return (isAdmin || isCobrador) ? <PortfolioView token={token} /> : <p>Acceso no autorizado.</p>;
             case 'marketing': return isAdmin ? <MarketingPortal /> : <p>Acceso no autorizado.</p>;
-            case 'support': return (isAdmin || isSupport) ? <SupportDashboardView token={token} /> : <ClientTicketsView token={token} />;
-            case 'templates': return isAdmin ? <TemplateManagerView token={token} /> : <p>Acceso no autorizado.</p>;
-            case 'audit': return isAdmin ? <AuditLogView token={token} /> : <p>Acceso no autorizado.</p>;
-            case 'testing': return isAdmin ? <TestingView token={token} /> : <p>Acceso no autorizado.</p>;
-            case 'profile': return <ProfileView token={token} />;
-            default: return isAdmin ? <AdminDashboard token={token} onManagePayments={setManagingPaymentsForApp} /> : <MyApplications token={token} onViewContract={setViewingContractId} />;
+            case 'support': return (isAdmin || isSupport) ? <SupportDashboardView token={token} /> : <ClientTicketsView token={token} />; // Client view if not admin/support
+            case 'templates': return isAdmin ? <TemplateManagerView token={token} /> : <p>Acceso no autorizado.</p>; // Config: Templates
+            case 'audit': return isAdmin ? <AuditLogView token={token} /> : <p>Acceso no autorizado.</p>; // Config: Audit Log
+            case 'testing': return isAdmin ? <TestingView token={token} /> : <p>Acceso no autorizado.</p>; // Config: Testing Area
+            case 'profile': return <ProfileView token={token} />; // User Profile
+            default: return isAdmin ? <AdminDashboard token={token} onManagePayments={setManagingPaymentsForApp} /> : <MyApplications token={token} onViewContract={setViewingContractId} />; // Fallback to dashboard
         }
     };
 
+    // Navigation component - renders buttons based on roles
     const NavigationView = () => {
-        if (loadingProfile || !token || viewingContractId || viewingPaySlipsForLogId || managingPaymentsForApp) return null;
+        // Don't show nav during loading, auth, or specific detailed views
+        if (loadingProfile || !token || view === 'auth' || viewingContractId || viewingPaySlipsForLogId || managingPaymentsForApp) return null;
+
         const isAdmin = userRoles.includes('Admin') || userRoles.includes('Administrador General');
         const isContador = userRoles.includes('Contador');
         const isEjecutivo = userRoles.includes('Ejecutivo de Crédito');
         const isCobrador = userRoles.includes('Cobrador');
         const isSupport = userRoles.includes('Soporte');
+
         return (
             <nav>
+                {/* Core & Common Modules */}
                 <button onClick={() => setView('dashboard')}>{isAdmin ? 'Panel de Admin' : 'Mis Solicitudes'}</button>
                 <button onClick={() => setView('support')}>Soporte</button>
-                {(isAdmin || isEjecutivo) && <button onClick={() => setView('crm')}>CRM</button>}
-                {(isAdmin || isCobrador) && <button onClick={() => setView('collections')}>Cobranza</button>}
-                {isAdmin && <button onClick={() => setView('marketing')}>Marketing</button>}
                 <button onClick={() => setView('products')}>Productos</button>
                 <button onClick={() => setView('simulator')}>Simulador</button>
-                {!isAdmin && !isContador && !isEjecutivo && !isCobrador && <button onClick={() => setView('newApplication')}>Nueva Solicitud</button>}
+                {!isAdmin && !isContador && !isEjecutivo && !isCobrador && !isSupport && <button onClick={() => setView('newApplication')}>Nueva Solicitud</button>} {/* Only for basic clients? */}
+
+                {/* Role-Specific Modules */}
+                {(isAdmin || isEjecutivo) && <button onClick={() => setView('crm')}>CRM</button>}
+                {(isAdmin || isCobrador) && <button onClick={() => setView('collections')}>Cobranza</button>}
                 {(isAdmin || isContador) && <button onClick={() => setView('accounting')}>Contabilidad</button>}
                 {(isAdmin || isContador) && <button onClick={() => setView('cash_and_banks')}>Caja y Bancos</button>}
                 {(isAdmin || isContador) && <button onClick={() => setView('tax')}>Impuestos</button>}
+
+                {/* Admin-Only Modules */}
+                {isAdmin && <button onClick={() => setView('marketing')}>Marketing</button>}
                 {isAdmin && <button onClick={() => setView('materials')}>Recursos Materiales</button>}
                 {isAdmin && <button onClick={() => setView('construction')}>Obras y Construcción</button>}
                 {isAdmin && <button onClick={() => setView('health')}>Salud</button>}
@@ -191,7 +221,10 @@ function App() {
                 {isAdmin && <button onClick={() => setView('logistics')}>Logística</button>}
                 {isAdmin && <button onClick={() => setView('restaurant')}>Restaurantes</button>}
                 {isAdmin && <button onClick={() => setView('commercial_kitchen')}>Cocina Comercial</button>}
+                {isAdmin && <button onClick={() => setView('field_ops')}>Operaciones de Campo</button>} {/* Added field_ops button */}
                 {isAdmin && <button onClick={() => setView('hr')}>RRHH</button>}
+
+                {/* Admin Configuration Section */}
                 {isAdmin && (
                     <div style={{ border: '1px solid grey', padding: '5px', marginTop: '5px' }}>
                         <strong>Configuración:</strong>
@@ -200,6 +233,8 @@ function App() {
                         <button onClick={() => setView('testing')}>Testing</button>
                     </div>
                 )}
+
+                {/* User Profile & Logout */}
                 <button onClick={() => setView('profile')}>Mi Perfil</button>
                 <button onClick={handleLogout}>Cerrar Sesión</button>
             </nav>
