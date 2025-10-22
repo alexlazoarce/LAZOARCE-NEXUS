@@ -1,3 +1,8 @@
+import React from 'react';
+
+// Asumiendo que useApi() es un hook personalizado que provee una instancia configurada de axios o similar
+// import useApi from './useApi'; // Ejemplo de importación
+
 const ConstructionView = () => {
     const [projects, setProjects] = React.useState([]);
     const [selectedProject, setSelectedProject] = React.useState(null);
@@ -6,50 +11,50 @@ const ConstructionView = () => {
     const [showProjectModal, setShowProjectModal] = React.useState(false);
     const [showBudgetItemModal, setShowBudgetItemModal] = React.useState(false);
 
-    // Assuming useApi() is a custom hook providing an configured axios instance or similar
+    // Asumiendo que useApi() es un hook personalizado que provee una instancia configurada de axios o similar
     const api = useApi();
 
-    // Fetch the list of construction projects
+    // Obtener la lista de proyectos de construcción
     const fetchProjects = async () => {
         try {
             const response = await api.get('/api/construction/projects');
-            setProjects(response.data || []); // Ensure projects is always an array
+            setProjects(response.data || []); // Asegura que projects sea siempre un array
         } catch (error) {
             console.error("Error fetching projects:", error);
             alert('Error al cargar los proyectos de construcción.');
         }
     };
 
-    // Fetch projects when the component mounts
+    // Obtener proyectos cuando el componente se monta
     React.useEffect(() => {
         fetchProjects();
-        // The dependency array is empty, so this runs once on mount
+        // El array de dependencias está vacío, así que esto se ejecuta una vez al montar
     }, []);
 
-    // Fetch detailed information for a selected project
+    // Obtener información detallada de un proyecto seleccionado
     const fetchProjectDetails = async (projectId) => {
-        // Find the project object from the already fetched list to update selectedProject state
+        // Encuentra el objeto del proyecto en la lista ya obtenida para actualizar el estado selectedProject
         const projectFromList = projects.find(p => p.id === projectId);
-        if (!projectFromList) return; // Should not happen if clicking on a list item
+        if (!projectFromList) return; // No debería pasar si se hace clic en un elemento de la lista
 
-        setSelectedProject(projectFromList); // Set basic info immediately for responsiveness
+        setSelectedProject(projectFromList); // Establece la info básica inmediatamente para mejorar la respuesta
 
         try {
             const response = await api.get(`/api/construction/projects/${projectId}`);
-            setProjectDetails(response.data || null); // Update with full details
+            setProjectDetails(response.data || null); // Actualiza con los detalles completos
         } catch (error) {
             console.error("Error fetching project details:", error);
             alert('Error al cargar los detalles del proyecto.');
-            setProjectDetails(null); // Clear details on error
+            setProjectDetails(null); // Limpia los detalles en caso de error
         }
     };
 
-    // Handle the submission of the new project form
+    // Manejar el envío del formulario de nuevo proyecto
     const handleCreateProject = async (event) => {
         event.preventDefault();
         const formData = new FormData(event.target);
         const data = Object.fromEntries(formData.entries());
-        // Basic validation/formatting (could be more robust)
+        // Validación/formateo básico (podría ser más robusto)
         if (!data.name) {
             alert('El nombre del proyecto es obligatorio.');
             return;
@@ -58,25 +63,25 @@ const ConstructionView = () => {
 
         try {
             await api.post('/api/construction/projects', data);
-            setShowProjectModal(false); // Close modal on success
-            fetchProjects(); // Refresh the project list
+            setShowProjectModal(false); // Cierra el modal si tiene éxito
+            fetchProjects(); // Refresca la lista de proyectos
             alert('Proyecto de construcción creado con éxito.');
         } catch (error) {
             console.error("Error creating project:", error);
-            // Provide more specific error if available from API response
+            // Provee un error más específico si está disponible en la respuesta de la API
             const errorMsg = error.response?.data?.error || 'Error al crear el proyecto.';
             alert(errorMsg);
         }
     };
 
-    // Handle the submission of the new budget item form
+    // Manejar el envío del formulario de nueva partida presupuestaria
     const handleAddBudgetItem = async (event) => {
         event.preventDefault();
-        if (!selectedProject) return; // Should not happen if modal is shown correctly
+        if (!selectedProject) return; // No debería pasar si el modal se muestra correctamente
 
         const formData = new FormData(event.target);
         const data = Object.fromEntries(formData.entries());
-        // Basic validation/formatting
+        // Validación/formateo básico
         if (!data.name || !data.amount) {
             alert('El nombre y el monto de la partida son obligatorios.');
             return;
@@ -87,11 +92,10 @@ const ConstructionView = () => {
              return;
         }
 
-
         try {
             await api.post(`/api/construction/projects/${selectedProject.id}/budget_items`, data);
-            setShowBudgetItemModal(false); // Close modal on success
-            fetchProjectDetails(selectedProject.id); // Refresh details to show the new item
+            setShowBudgetItemModal(false); // Cierra el modal si tiene éxito
+            fetchProjectDetails(selectedProject.id); // Refresca los detalles para mostrar el nuevo ítem
             alert('Partida presupuestaria agregada con éxito.');
         } catch (error) {
             console.error("Error adding budget item:", error);
@@ -100,37 +104,37 @@ const ConstructionView = () => {
         }
     };
 
-    // --- Add handlers for Progress Reports, Certifications, RFIs, Milestones similarly ---
-    // Example: const handleAddProgressReport = async (event) => { ... };
-    // Example: const handleCreateRFI = async (event) => { ... };
+    // --- Añadir manejadores para Reportes de Avance, Certificaciones, RFIs, Hitos de forma similar ---
+    // Ejemplo: const handleAddProgressReport = async (event) => { ... };
+    // Ejemplo: const handleCreateRFI = async (event) => { ... };
 
 
     return (
-        <div className="container-fluid"> {/* Using Bootstrap class */}
+        <div className="container-fluid"> {/* Usando clase Bootstrap */}
             <h1>Gestión de Obras y Construcción (LAN-OBR5)</h1>
             <p>Presupuesto de obra, partidas, avance físico, certificaciones y pagos a contratistas.</p>
 
-            <div className="row"> {/* Bootstrap row */}
-                {/* Project List Column */}
-                <div className="col-md-4"> {/* Bootstrap column */}
-                    <div className="card"> {/* Bootstrap card */}
+            <div className="row"> {/* Fila Bootstrap */}
+                {/* Columna Lista de Proyectos */}
+                <div className="col-md-4"> {/* Columna Bootstrap */}
+                    <div className="card"> {/* Tarjeta Bootstrap */}
                         <div className="card-header d-flex justify-content-between align-items-center">
                             Proyectos
-                            {/* Button to open the new project modal */}
+                            {/* Botón para abrir el modal de nuevo proyecto */}
                             <button className="btn btn-sm btn-primary" onClick={() => setShowProjectModal(true)}>+</button>
                         </div>
                         <ul className="list-group list-group-flush">
-                            {/* Render list of projects */}
+                            {/* Renderizar lista de proyectos */}
                             {projects.length === 0 && <li className="list-group-item">No hay proyectos.</li>}
                             {projects.map(p => (
                                 <li
                                     key={p.id}
                                     className={`list-group-item list-group-item-action ${selectedProject?.id === p.id ? 'active' : ''}`}
-                                    onClick={() => fetchProjectDetails(p.id)} // Fetch details when a project is clicked
-                                    style={{ cursor: 'pointer' }} // Indicate clickability
+                                    onClick={() => fetchProjectDetails(p.id)} // Obtener detalles al hacer clic
+                                    style={{ cursor: 'pointer' }} // Indica que se puede hacer clic
                                 >
                                     {p.name}
-                                    {/* Display project status */}
+                                    {/* Mostrar estado del proyecto */}
                                     <span className={`badge float-end ${p.status === 'Completado' ? 'bg-success' : 'bg-secondary'}`}>{p.status}</span>
                                 </li>
                             ))}
@@ -138,13 +142,13 @@ const ConstructionView = () => {
                     </div>
                 </div>
 
-                {/* Project Details Column */}
+                {/* Columna Detalles del Proyecto */}
                 <div className="col-md-8">
                     {selectedProject ? (
                         <div className="card">
                             <div className="card-header">
                                 <h3>Detalles de: {selectedProject.name}</h3>
-                                {/* Display basic project info */}
+                                {/* Mostrar información básica del proyecto */}
                                 <p>
                                     <strong>Ubicación:</strong> {selectedProject.location || 'N/A'} |{' '}
                                     <strong>Presupuesto:</strong> ${selectedProject.budget?.toFixed(2) || '0.00'} |{' '}
@@ -152,13 +156,13 @@ const ConstructionView = () => {
                                 </p>
                             </div>
                             <div className="card-body">
-                                {/* Budget Items Section */}
+                                {/* Sección Partidas Presupuestarias */}
                                 <h4>
                                     Partidas del Presupuesto
-                                    {/* Button to open the add budget item modal */}
+                                    {/* Botón para abrir el modal de agregar partida */}
                                     <button className="btn btn-sm btn-outline-primary ms-2" onClick={() => setShowBudgetItemModal(true)}>+</button>
                                 </h4>
-                                <table className="table table-sm"> {/* Bootstrap table */}
+                                <table className="table table-sm"> {/* Tabla Bootstrap */}
                                     <thead>
                                         <tr>
                                             <th>Código</th>
@@ -167,7 +171,7 @@ const ConstructionView = () => {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {/* Render budget items from projectDetails */}
+                                        {/* Renderizar partidas desde projectDetails */}
                                         {projectDetails?.budget_items && projectDetails.budget_items.length > 0 ? (
                                             projectDetails.budget_items.map(item => (
                                                 <tr key={item.id}>
@@ -182,37 +186,37 @@ const ConstructionView = () => {
                                     </tbody>
                                 </table>
 
-                                {/* --- Sections for Progress Reports, Certifications, RFIs, Milestones --- */}
-                                {/* Add tables/lists similar to Budget Items, using projectDetails data */}
+                                {/* --- Secciones para Reportes de Avance, Certificaciones, RFIs, Hitos --- */}
+                                {/* Añadir tablas/listas similares a Partidas Presupuestarias, usando datos de projectDetails */}
 
                                 <h4 className="mt-4">Reportes de Avance</h4>
-                                {/* Placeholder - Implement table/list using projectDetails?.progress_reports */}
+                                {/* Placeholder - Implementar tabla/lista usando projectDetails?.progress_reports */}
                                 <p>No hay reportes de avance registrados.</p>
 
                                 <h4 className="mt-4">Certificaciones</h4>
-                                {/* Placeholder - Implement table/list using projectDetails?.certifications */}
+                                {/* Placeholder - Implementar tabla/lista usando projectDetails?.certifications */}
                                 <p>No hay certificaciones registradas.</p>
 
                                 <h4 className="mt-4">RFIs (Request for Information)</h4>
-                                {/* Placeholder - Implement table/list using projectDetails?.rfis */}
+                                {/* Placeholder - Implementar tabla/lista usando projectDetails?.rfis */}
                                 <p>No hay RFIs para este proyecto.</p>
 
                                 <h4 className="mt-4">Hitos de Facturación</h4>
-                                {/* Placeholder - Implement table/list using projectDetails?.milestones */}
+                                {/* Placeholder - Implementar tabla/lista usando projectDetails?.milestones */}
                                 <p>No hay hitos de facturación para este proyecto.</p>
 
-                            </div> {/* End card-body */}
-                        </div> /* End card */
+                            </div> {/* Fin card-body */}
+                        </div> /* Fin card */
                     ) : (
-                        /* Message shown when no project is selected */
+                        /* Mensaje mostrado cuando no hay proyecto seleccionado */
                         <div className="alert alert-info">Seleccione un proyecto para ver sus detalles.</div>
                     )}
-                </div> {/* End col-md-8 */}
-            </div> {/* End row */}
+                </div> {/* Fin col-md-8 */}
+            </div> {/* Fin row */}
 
-            {/* --- Modals --- */}
+            {/* --- Modales --- */}
 
-            {/* Modal for creating a new project */}
+            {/* Modal para crear un nuevo proyecto */}
             {showProjectModal && (
                 <div className="modal show" tabIndex="-1" style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)' }}>
                     <div className="modal-dialog">
@@ -254,7 +258,7 @@ const ConstructionView = () => {
                 </div>
             )}
 
-            {/* Modal for adding a new budget item */}
+            {/* Modal para añadir una nueva partida presupuestaria */}
             {showBudgetItemModal && selectedProject && (
                  <div className="modal show" tabIndex="-1" style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)' }}>
                     <div className="modal-dialog">
@@ -288,8 +292,11 @@ const ConstructionView = () => {
                 </div>
             )}
 
-             {/* Add Modals for Progress Report, Certification, RFI, Milestone similarly */}
+             {/* Añadir Modales para Reporte de Avance, Certificación, RFI, Hito de forma similar */}
 
-        </div> /* End container-fluid */
+        </div> /* Fin container-fluid */
     );
 };
+
+// Asumiendo que exportas el componente si estás usando módulos ES6
+// export default ConstructionView;
