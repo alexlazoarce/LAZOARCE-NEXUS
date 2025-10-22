@@ -126,6 +126,7 @@ function App() {
             case 'templates': return isAdmin ? <TemplateManagerView token={token} /> : <p>Acceso no autorizado.</p>;
             case 'audit': return isAdmin ? <AuditLogView token={token} /> : <p>Acceso no autorizado.</p>;
             case 'testing': return isAdmin ? <TestingView token={token} /> : <p>Acceso no autorizado.</p>;
+            case 'school_management': return isAdmin ? <SchoolManagementView token={token} /> : <p>Acceso no autorizado.</p>;
             case 'profile': return <ProfileView token={token} />;
             default: return isAdmin ? <AdminDashboard token={token} onManagePayments={setManagingPaymentsForApp} /> : <MyApplications token={token} onViewContract={setViewingContractId} />;
         }
@@ -150,6 +151,7 @@ function App() {
                 <button onClick={() => setView('simulator')}>Simulador</button>
                 {!isAdmin && !isContador && !isEjecutivo && !isCobrador && <button onClick={() => setView('newApplication')}>Nueva Solicitud</button>}
                 {(isAdmin || isContador) && <button onClick={() => setView('accounting')}>Contabilidad</button>}
+                {isAdmin && <button onClick={() => setView('school_management')}>Gestión Escolar</button>}
                 {isAdmin && <button onClick={() => setView('hr')}>RRHH</button>}
                 {isAdmin && (
                     <div style={{border: '1px solid grey', padding: '5px', marginTop: '5px'}}>
