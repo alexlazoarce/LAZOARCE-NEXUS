@@ -111,6 +111,12 @@ def create_app(config_object=None, testing_config=None):
     app.register_blueprint(cad_bp, url_prefix='/api/cad')
     app.register_blueprint(laundry_bp, url_prefix='/api/laundry')
 
+    # --- REGISTRO DE BLUEPRINTS ---
+    app.register_blueprint(school_management_bp, url_prefix='/api/school')
+    app.register_blueprint(university_management_bp, url_prefix='/api/university')
+    app.register_blueprint(cad_bp, url_prefix='/api/cad')
+    app.register_blueprint(laundry_bp, url_prefix='/api/laundry')
+
     # --- CARGA DINÁMICA DE MODELOS Y SERVICIOS ---
     with app.app_context():
         # Intenta cargar modelos (simulando la lógica de .models)
