@@ -85,23 +85,26 @@ def create_app(config_object=None, testing_config=None):
                 Empleado, Planilla, ClientProfile, Tenant, AuditLog, Payment,
                 NotificationTemplate, Employee,
                 Student, Course, Enrollment, Grade, TuitionPayment, # Modelos LAN-SCH6
-                DegreeProgram, Scholarship, StudentScholarship, LibraryResource, Alumnus # Modelos LAN-UNV8
+                DegreeProgram, Scholarship, StudentScholarship, LibraryResource, Alumnus, # Modelos LAN-UNV8
+                CADProject, CADFile, CADLayer, CollaborationSession # Modelos LAN-CAD
             )
             from . import audit_service
             from . import school_management_service
             from . import university_management_service
+            from . import cad_service
             app.services = {
                 'audit_service': audit_service,
                 'school_management_service': school_management_service,
-                'university_management_service': university_management_service
+                'university_management_service': university_management_service,
+                'cad_service': cad_service
             }
 
         except ImportError as e:
             app.logger.error(f"❌ Error al importar modelos/servicios: {e}.")
             class MockModel:
                 query = type('Query', (), {'filter_by': lambda **kwargs: type('Filter', (), {'first': lambda: None})()})()
-            Role = User = LoanProduct = LoanApplication = Account = Transaction = JournalEntry = Cliente = ContratoIntegracion = ProductoCredito = Empleado = Planilla = ClientProfile = Tenant = AuditLog = Payment = NotificationTemplate = Employee = Student = Course = Enrollment = Grade = TuitionPayment = DegreeProgram = Scholarship = StudentScholarship = LibraryResource = Alumnus = MockModel
-            app.services = {'audit_service': lambda: None, 'school_management_service': lambda: None, 'university_management_service': lambda: None}
+            Role = User = LoanProduct = LoanApplication = Account = Transaction = JournalEntry = Cliente = ContratoIntegracion = ProductoCredito = Empleado = Planilla = ClientProfile = Tenant = AuditLog = Payment = NotificationTemplate = Employee = Student = Course = Enrollment = Grade = TuitionPayment = DegreeProgram = Scholarship = StudentScholarship = LibraryResource = Alumnus = CADProject = CADFile = CADLayer = CollaborationSession = MockModel
+            app.services = {'audit_service': lambda: None, 'school_management_service': lambda: None, 'university_management_service': lambda: None, 'cad_service': lambda: None}
 
         app.models = {
             'Role': Role, 'User': User, 'LoanProduct': LoanProduct, 'LoanApplication': LoanApplication,
@@ -109,7 +112,8 @@ def create_app(config_object=None, testing_config=None):
             'ContratoIntegracion': ContratoIntegracion, 'ProductoCredito': ProductoCredito, 'Empleado': Empleado,
             'Planilla': Planilla, 'Employee': Employee, 'AuditLog': AuditLog,
             'Student': Student, 'Course': Course, 'Enrollment': Enrollment, 'Grade': Grade, 'TuitionPayment': TuitionPayment,
-            'DegreeProgram': DegreeProgram, 'Scholarship': Scholarship, 'StudentScholarship': StudentScholarship, 'LibraryResource': LibraryResource, 'Alumnus': Alumnus
+            'DegreeProgram': DegreeProgram, 'Scholarship': Scholarship, 'StudentScholarship': StudentScholarship, 'LibraryResource': LibraryResource, 'Alumnus': Alumnus,
+            'CADProject': CADProject, 'CADFile': CADFile, 'CADLayer': CADLayer, 'CollaborationSession': CollaborationSession
         }
 
     # --- DECORADORES DE AUTORIZACIÓN ---
@@ -155,6 +159,9 @@ def create_app(config_object=None, testing_config=None):
 
     from .routes.university_management_routes import university_management_bp
     app.register_blueprint(university_management_bp, url_prefix='/api/university')
+
+    from .routes.cad_routes import cad_bp
+    app.register_blueprint(cad_bp, url_prefix='/api/cad')
 
 
     # --- COMANDOS CLI ---

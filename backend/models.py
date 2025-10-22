@@ -522,6 +522,64 @@ class Alumnus(db.Model):
     student = db.relationship('Student')
 
 
+# --- MODELOS PARA CREACIÓN DE PLANOS (LAN-CAD) ---
+
+collaboration_session_users = db.Table('cad_collaboration_session_users',
+    db.Column('session_id', Integer, ForeignKey('cad_collaboration_session.id'), primary_key=True),
+    db.Column('user_id', Integer, ForeignKey('user.id'), primary_key=True),
+    schema='public'
+)
+
+class CADProject(db.Model):
+    """Proyectos de diseño CAD."""
+    __tablename__ = 'cad_project'
+    id = db.Column(Integer, primary_key=True)
+    name = db.Column(String(200), nullable=False)
+    description = db.Column(Text)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+    created_by_id = db.Column(Integer, ForeignKey('user.id'))
+    created_at = db.Column(DateTime, default=datetime.utcnow)
+
+    files = db.relationship('CADFile', backref='project', lazy='dynamic', cascade="all, delete-orphan")
+
+class CADFile(db.Model):
+    """Archivos de diseño dentro de un proyecto CAD."""
+    __tablename__ = 'cad_file'
+    id = db.Column(Integer, primary_key=True)
+    project_id = db.Column(Integer, ForeignKey('cad_project.id'), nullable=False)
+    filename = db.Column(String(255), nullable=False)
+    file_format = db.Column(String(10)) # DWG, DXF, IFC
+    version = db.Column(Integer, default=1)
+    storage_path = db.Column(String(500)) # Ruta simulada
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+    layers = db.relationship('CADLayer', backref='file', lazy='dynamic', cascade="all, delete-orphan")
+    sessions = db.relationship('CollaborationSession', backref='file', lazy='dynamic', cascade="all, delete-orphan")
+
+class CADLayer(db.Model):
+    """Capas dentro de un archivo CAD."""
+    __tablename__ = 'cad_layer'
+    id = db.Column(Integer, primary_key=True)
+    file_id = db.Column(Integer, ForeignKey('cad_file.id'), nullable=False)
+    name = db.Column(String(100), nullable=False)
+    color = db.Column(String(7)) # e.g., #FF0000
+    is_visible = db.Column(Boolean, default=True)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+class CollaborationSession(db.Model):
+    """Sesiones de colaboración en tiempo real sobre un archivo CAD."""
+    __tablename__ = 'cad_collaboration_session'
+    id = db.Column(Integer, primary_key=True)
+    file_id = db.Column(Integer, ForeignKey('cad_file.id'), nullable=False)
+    session_token = db.Column(String(128), unique=True, nullable=False)
+    start_time = db.Column(DateTime, default=datetime.utcnow)
+    end_time = db.Column(DateTime)
+    is_active = db.Column(Boolean, default=True)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+    participants = db.relationship('User', secondary=collaboration_session_users, lazy='dynamic')
+
+
 class AuditLog(db.Model):
     """Registro de auditoría"""
     __tablename__ = 'audit_log'
