@@ -153,9 +153,9 @@ def get_balance_sheet_service():
         if category in category_map:
             key = category_map[category]
             balance = Decimal(str(account_data['final_balance']))
-            
+
             report[key].append({
-                'account_name': account_data['account_name'], 
+                'account_name': account_data['account_name'],
                 'balance': float(balance.quantize(Decimal('0.01')))
             })
             totals[key] += balance
@@ -179,7 +179,7 @@ def get_income_statement_service():
 
     report = {'revenues': [], 'expenses': []}
     totals = {'revenues': Decimal('0.00'), 'expenses': Decimal('0.00')}
-    
+
     category_map = {'Revenue': 'revenues', 'Expense': 'expenses'}
 
     for account_data in general_ledger:
@@ -187,15 +187,15 @@ def get_income_statement_service():
         if category in category_map:
             key = category_map[category]
             balance = Decimal(str(account_data['final_balance']))
-            
+
             report[key].append({
-                'account_name': account_data['account_name'], 
+                'account_name': account_data['account_name'],
                 'balance': float(balance.quantize(Decimal('0.01')))
             })
             totals[key] += balance
 
     net_income = totals['revenues'] - totals['expenses']
-    
+
     return {
         'report': report,
         'totals': {

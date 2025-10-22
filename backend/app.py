@@ -45,13 +45,13 @@ try:
     class MockService:
         def log_action(*args, **kwargs): pass
     audit_service = MockService()
-    
+
 except ImportError as e:
     print(f"⚠️ Error importando servicios: {e}. Usando Mocks.")
     # Mocks para que la app corra
     def mock_func(*args, **kwargs): pass
     calcular_prestamo_completo = create_journal_entry = validacion_identidad_estricta = capturar_datos_biometricos = generar_contrato_integracion = firma_electronica_avanzada = calcular_planilla = mock_func
-    
+
 # -----------------------------------------------------------
 
 # --- IMPORTACIONES DE RUTAS (BLUEPRINTS) ---
@@ -85,13 +85,13 @@ def create_app(config_object=None, testing_config=None):
         DEBUG=True,
         UPLOAD_FOLDER='uploads'
     )
-    
+
     # Sobrescribir con config_object o testing_config
     if config_object:
          app.config.from_object(config_object)
     if testing_config:
         app.config.from_object(testing_config)
-    
+
     # Variables de entorno críticas (con fallback)
     app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', app.config.get('SECRET_KEY'))
     app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', app.config.get('JWT_SECRET_KEY'))
@@ -99,11 +99,17 @@ def create_app(config_object=None, testing_config=None):
 
     # Crear carpeta de uploads
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-    
+
     # --- INICIALIZACIÓN DE EXTENSIONES ---
     db.init_app(app)
     jwt.init_app(app)
-    migrate.init_app(app, db) 
+    migrate.init_app(app, db)
+
+    # --- REGISTRO DE BLUEPRINTS ---
+    app.register_blueprint(school_management_bp, url_prefix='/api/school')
+    app.register_blueprint(university_management_bp, url_prefix='/api/university')
+    app.register_blueprint(cad_bp, url_prefix='/api/cad')
+    app.register_blueprint(laundry_bp, url_prefix='/api/laundry')
 
     # --- REGISTRO DE BLUEPRINTS ---
     app.register_blueprint(school_management_bp, url_prefix='/api/school')
@@ -116,15 +122,15 @@ def create_app(config_object=None, testing_config=None):
         # Intenta cargar modelos (simulando la lógica de .models)
         try:
             from .models import (
-                Role, User, LoanProduct, LoanApplication, Account, Transaction, 
-                JournalEntry, Cliente, ContratoIntegracion, ProductoCredito, 
+                Role, User, LoanProduct, LoanApplication, Account, Transaction,
+                JournalEntry, Cliente, ContratoIntegracion, ProductoCredito,
                 Empleado, Planilla, ClientProfile, Tenant, AuditLog, Payment,
                 NotificationTemplate, Employee
             )
             # Simular carga de servicios (asumiendo que fueron importados arriba)
-            from . import audit_service 
+            from . import audit_service
             app.services = {'audit_service': audit_service}
-            
+
         except ImportError as e:
             app.logger.error(f"❌ Error al importar modelos: {e}. Se usarán Mocks.")
             # Definición de MockModel si falla la importación
@@ -136,13 +142,13 @@ def create_app(config_object=None, testing_config=None):
                 def all(self): return []
                 def get(self, id): return None
                 def get_or_404(self, id): return None
-            
+
             Role = User = LoanProduct = LoanApplication = Account = Transaction = JournalEntry = Cliente = ContratoIntegracion = ProductoCredito = Empleado = Planilla = ClientProfile = Tenant = AuditLog = Payment = NotificationTemplate = Employee = MockModel
             app.services = {'audit_service': lambda: None}
-            
+
         # Asignar modelos al contexto de la app
         app.models = {
-            'Role': Role, 'User': User, 'LoanProduct': LoanProduct, 'LoanApplication': LoanApplication, 
+            'Role': Role, 'User': User, 'LoanProduct': LoanProduct, 'LoanApplication': LoanApplication,
             'Account': Account, 'Transaction': Transaction, 'JournalEntry': JournalEntry, 'Cliente': Cliente,
             'ContratoIntegracion': ContratoIntegracion, 'ProductoCredito': ProductoCredito, 'Empleado': Empleado,
             'Planilla': Planilla, 'Employee': Employee, 'AuditLog': AuditLog
@@ -163,7 +169,7 @@ def create_app(config_object=None, testing_config=None):
                 claims = get_jwt()
                 user_roles = claims.get('roles', [])
                 user_identity = get_jwt_identity()
-                
+
                 # Asumimos que el identity es el email (como en el HEAD), pero verificamos el ID del 2.0
                 g.current_user = User.query.filter_by(email=user_identity).first()
                 if not g.current_user:
@@ -179,22 +185,22 @@ def create_app(config_object=None, testing_config=None):
                 return fn(*args, **kwargs)
             return wrapper
         return decorator
-    
+
     # Registrar alias para el decorador
     app.jinja_env.globals['role_required'] = role_required
     app.jinja_env.globals['require_roles'] = role_required # Alias para compatibilidad
 
     # --- MIDDLEWARE DE AUDITORÍA (Del 2.0) ---
-    
+
     @app.before_request
     def audit_request():
         if request.path.startswith('/api/') and request.method in ['POST', 'PUT', 'DELETE']:
             g.audit_action = f"{request.method} {request.path}"
-    
+
     @app.after_request
     def audit_response(response):
         AuditLog = app.models.get('AuditLog')
-        
+
         if hasattr(g, 'audit_action') and hasattr(g, 'current_user') and AuditLog and g.current_user and hasattr(g.current_user, 'id'):
             try:
                 audit_log = AuditLog(
@@ -208,7 +214,7 @@ def create_app(config_object=None, testing_config=None):
             except Exception as e:
                 app.logger.error(f"Error en auditoría: {str(e)}")
                 db.session.rollback()
-        
+
         return response
 
     # -------------------------------------------------------------------
@@ -228,34 +234,34 @@ def create_app(config_object=None, testing_config=None):
             db_connected = True
         except Exception:
             db_connected = False
-            
+
         return jsonify({
             "status": "healthy",
             "timestamp": datetime.utcnow().isoformat(),
             "database": db_connected,
         })
-    
+
     # --- RUTAS DE AUTENTICACIÓN (Del HEAD/2.0 unificadas) ---
     @app.route('/api/register', methods=['POST'])
     def register():
         User = app.models.get('User')
         Role = app.models.get('Role')
         if not User or not Role: return jsonify({"msg": "Error de sistema (Modelos no cargados)"}), 500
-        
+
         data = request.get_json()
         email = data.get('email')
         password = data.get('password')
         role_name = data.get('role', 'Cliente')
-        
+
         if not email or not password:
             return jsonify({"msg": "Email y contraseña son requeridos"}), 400
         if User.query.filter_by(email=email).first():
             return jsonify({"msg": "El email ya está registrado"}), 400
-        
+
         role = Role.query.filter_by(name=role_name).first()
         if not role:
             return jsonify({"msg": f"El rol '{role_name}' no es válido"}), 400
-            
+
         new_user = User(email=email, role_id=role.id)
         new_user.set_password(password)
         db.session.add(new_user)
@@ -266,25 +272,25 @@ def create_app(config_object=None, testing_config=None):
     def login():
         User = app.models.get('User')
         if not User: return jsonify({"msg": "Error de sistema (Modelo User)"}), 500
-        
+
         data = request.get_json()
         email = data.get('email')
         password = data.get('password')
-        
+
         if not email or not password:
             return jsonify({"msg": "Email y contraseña son requeridos"}), 400
-            
+
         user = User.query.filter_by(email=email).first()
-        
+
         if user and user.check_password(password):
             user_roles = [user.role.name] if user.role else ['Cliente']
             # Se usa el email como identity (HEAD) y se inyectan los roles (2.0)
             access_token = create_access_token(identity=user.email, additional_claims={'roles': user_roles, 'email': user.email, 'user_id': user.id})
-            
+
             # audit_service.log_action('USER_LOGIN', user_id=user.id, details=f"User {user.email} logged in successfully.")
-            
+
             return jsonify(access_token=access_token)
-        
+
         return jsonify({"msg": "Credenciales inválidas"}), 401
 
     @app.route('/api/admin/test')
@@ -297,7 +303,7 @@ def create_app(config_object=None, testing_config=None):
     def get_profile():
         user = g.current_user
         if not user: return jsonify({"msg": "Usuario no encontrado"}), 404
-        
+
         return jsonify({
             "email": user.email,
             "full_name": user.full_name,
@@ -305,7 +311,7 @@ def create_app(config_object=None, testing_config=None):
             "nit": user.nit,
             "role": user.role.name if user.role else 'N/A'
         })
-    
+
     # --- RUTA DE CREACIÓN DE CLIENTE CON FEA (Del HEAD) ---
     @app.route('/api/clientes/nuevo', methods=['POST'])
     @jwt_required()
@@ -329,12 +335,12 @@ def create_app(config_object=None, testing_config=None):
             if not datos_biometricos:
                 return jsonify({'error': 'Error en la captura de datos biométricos.'}), 500
 
-            contrato_id = generar_contrato_integracion(data) 
+            contrato_id = generar_contrato_integracion(data)
             if not contrato_id:
                 return jsonify({'error': 'No se pudo generar el contrato de integración.'}), 500
 
             resultado_firma = firma_electronica_avanzada(contrato_id, data, datos_biometricos)
-            
+
             if not resultado_firma.get('valida'):
                 contrato = ContratoIntegracion.query.filter_by(contrato_id=contrato_id).first()
                 if contrato:
@@ -377,17 +383,17 @@ def create_app(config_object=None, testing_config=None):
         empleado_id = data.get('empleado_id')
         if not empleado_id:
             return jsonify({'error': 'El campo empleado_id es requerido.'}), 400
-            
+
         empleado = Empleado.query.get(empleado_id)
         if not empleado:
             return jsonify({'error': 'Empleado no encontrado.'}), 404
-            
+
         # Asumimos que Empleado tiene atributo salario_base (HEAD)
-        resultado_calculo = calcular_planilla(empleado.salario_base) 
-        
+        resultado_calculo = calcular_planilla(empleado.salario_base)
+
         if not resultado_calculo.get('success'):
             return jsonify({'error': 'Error al calcular la planilla.', 'detalle': resultado_calculo.get('error')}), 500
-            
+
         try:
             # Note: La estructura de Planilla (HEAD) es diferente a PaySlip (2.0), usamos la del HEAD para compatibilidad.
             nueva_planilla = Planilla(
@@ -407,7 +413,7 @@ def create_app(config_object=None, testing_config=None):
 
     # --- RUTAS RESTO DE PRÉSTAMOS/CONTABILIDAD (Monolíticas) ---
     # Se incluyen las rutas de préstamos y la lógica de contabilidad como se fusionó anteriormente.
-    
+
     @app.route('/api/products', methods=['GET', 'POST'])
     @jwt_required()
     @role_required(['Administrador General'])
@@ -420,7 +426,7 @@ def create_app(config_object=None, testing_config=None):
     def submit_loan_application():
         # Lógica de solicitud de préstamo aquí...
         return jsonify({"message": "Ruta de solicitud de préstamo implementada."}), 501
-    
+
     # --- REGISTRO DE COMANDOS CLI (Del HEAD) ---
     @app.cli.command("init-db")
     def init_db_command():
@@ -429,16 +435,16 @@ def create_app(config_object=None, testing_config=None):
             # Esta lógica debe ser compatible con los modelos fusionados
             Role = app.models.get('Role')
             User = app.models.get('User')
-            
+
             db.create_all()
-            
+
             if Role and Role.query.first() is None:
                 roles = ['Super Administrador', 'Administrador General', 'Ejecutivo de Crédito', 'Cobrador', 'Contador', 'Cliente']
                 for role_name in roles:
                     db.session.add(Role(name=role_name))
                 db.session.commit()
                 print("Roles creados.")
-                
+
             if User and Role and not User.query.filter_by(email='admin@lazoarce.com').first():
                  admin_role = Role.query.filter_by(name='Administrador General').first()
                  if admin_role:
@@ -447,18 +453,18 @@ def create_app(config_object=None, testing_config=None):
                     db.session.add(admin_user)
                     db.session.commit()
                     print("Usuario administrador por defecto creado (admin@lazoarce.com / admin).")
-            
+
             click.echo("Base de datos inicializada y poblada con datos por defecto.")
 
     # --- ERROR HANDLERS (Del 2.0) ---
     @app.errorhandler(404)
     def not_found(error): return jsonify({"message": "Endpoint no encontrado"}), 404
-    
+
     @app.errorhandler(500)
     def internal_error(error):
         db.session.rollback()
         return jsonify({"message": "Error interno del servidor"}), 500
-    
+
     return app
 
 # --- LÓGICA DE EJECUCIÓN ---
@@ -472,16 +478,16 @@ if __name__ == '__main__':
         SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     app = create_app(config_object=DevelopmentConfig)
-    
+
     # Inicializar base de datos (seeding) si es necesario
     instance_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance')
     os.makedirs(instance_path, exist_ok=True)
-    
+
     # Nota: setup_database no está definido en este archivo, se debe usar el comando CLI: flask init-db
-    
+
     # Configuración de servidor
     port = int(os.environ.get('PORT', 5000))
     host = os.environ.get('HOST', '127.0.0.1')
     debug = app.config.get('DEBUG', False)
-    
+
     app.run(host=host, port=port, debug=debug)
