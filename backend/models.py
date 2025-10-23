@@ -1,8 +1,7 @@
 """
 MODELOS DE BASE DE DATOS - SISTEMA INTEGRADO LAZO ARCE (FUSIONADO FINAL)
 
-Versión: 2.1 | Multi-tenant | Integración de Firma Electrónica, Payroll y Módulos LAN
-
+Versión: 2.1 | Multi-tenant | Integración de Firma Electrónica, Payroll y MÓDULOS LAN COMPLETOS
 """
 
 from flask_sqlalchemy import SQLAlchemy
@@ -30,6 +29,11 @@ mailing_list_members = db.Table('mailing_list_members',
     schema='public'
 )
 
+collaboration_session_users = db.Table('cad_collaboration_session_users',
+    db.Column('session_id', Integer, ForeignKey('cad_collaboration_session.id'), primary_key=True),
+    db.Column('user_id', Integer, ForeignKey('user.id'), primary_key=True),
+    schema='public'
+)
 
 # === MODELOS DE SEGURIDAD Y TENANTS ===
 
@@ -129,7 +133,6 @@ class ClientProfile(db.Model):
     reference_name = db.Column(String(120))
     reference_phone = db.Column(String(20))
 
-
 # --- MODELOS DE PRÉSTAMOS ---
 
 class LoanProduct(db.Model):
@@ -198,7 +201,6 @@ class LoanApplication(db.Model):
 
     def __repr__(self):
         return f'<LoanApplication {self.id} - {self.status}>'
-
 
 # --- MODELOS CONTABLES ---
 
@@ -348,7 +350,6 @@ class ContratoIntegracion(db.Model):
 
     __table_args__ = (UniqueConstraint('contrato_id'),)
 
-
 class FirmaElectronica(db.Model):
     """Registro de Firma Electrónica (Del HEAD)"""
     __tablename__ = 'firma_electronica'
@@ -378,21 +379,6 @@ class CertificadoValidacion(db.Model):
     pdf_certificado = db.Column(db.Text)
     fecha_generacion = db.Column(db.DateTime, default=datetime.utcnow)
     valido_hasta = db.Column(db.DateTime)
-
-
-# --- MODELOS DE MÓDULOS EXTENDIDOS (MailingList, Recruitment, Gym, Automation, Docs) ---
-# Se asume que estos modelos se definirán y usarán fuera del scope de este archivo,
-# pero se necesita un placeholder para que las tablas intermedias y las relaciones funcionen.
-
-class MailingList(db.Model):
-    __tablename__ = 'mailing_list'
-    id = db.Column(Integer, primary_key=True)
-    name = db.Column(String(100), nullable=False)
-    members = db.relationship('User', secondary=mailing_list_members, backref='mailing_lists')
-    # ... otros campos (tenant_id, etc.)
-
-# Se asume la existencia de los modelos de Recruitment, Gym, Automation, Docs, etc. aquí...
-
 
 # --- MODELOS PARA EDUCACIÓN (LAN-SCH6) ---
 
@@ -464,7 +450,6 @@ class TuitionPayment(db.Model):
     concept = db.Column(String(200)) # Ej: "Matrícula Enero 2025"
     tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
 
-
 # --- MODELOS PARA GESTIÓN UNIVERSITARIA (LAN-UNV8) ---
 
 class DegreeProgram(db.Model):
@@ -521,14 +506,7 @@ class Alumnus(db.Model):
 
     student = db.relationship('Student')
 
-
 # --- MODELOS PARA CREACIÓN DE PLANOS (LAN-CAD) ---
-
-collaboration_session_users = db.Table('cad_collaboration_session_users',
-    db.Column('session_id', Integer, ForeignKey('cad_collaboration_session.id'), primary_key=True),
-    db.Column('user_id', Integer, ForeignKey('user.id'), primary_key=True),
-    schema='public'
-)
 
 class CADProject(db.Model):
     """Proyectos de diseño CAD."""
@@ -579,7 +557,6 @@ class CollaborationSession(db.Model):
 
     participants = db.relationship('User', secondary=collaboration_session_users, lazy='dynamic')
 
-
 # --- MODELOS PARA GESTIÓN DE LAVANDERÍA (LAN-LDR3) ---
 
 class LaundryService(db.Model):
@@ -629,7 +606,6 @@ class LaundrySupply(db.Model):
     unit = db.Column(String(20)) # 'litros', 'kg'
     tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
 
-
 # --- MODELOS PARA GESTIÓN DE LIMPIEZA (LAN-CLN7) ---
 
 class CleaningService(db.Model):
@@ -678,7 +654,6 @@ class CleaningSupply(db.Model):
     unit = db.Column(String(20)) # 'litros', 'unidades'
     tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
 
-
 # --- MODELOS PARA GESTIÓN DE CARPINTERÍA (LAN-WOD1) ---
 
 class CarpentryProject(db.Model):
@@ -719,7 +694,6 @@ class CarpentryMaterial(db.Model):
     unit = db.Column(String(50)) # 'm²', 'unidades', 'metros lineales'
     cost_per_unit = db.Column(Float)
     tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
-
 
 # --- MODELOS PARA GESTIÓN DE TRADUCCIÓN (LAN-TRN5) ---
 
@@ -763,7 +737,6 @@ class TranslationTask(db.Model):
 
     document = db.relationship('TranslationDocument')
     translator = db.relationship('Employee')
-
 
 class AuditLog(db.Model):
     """Registro de auditoría"""

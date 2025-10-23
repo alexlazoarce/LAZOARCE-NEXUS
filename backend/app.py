@@ -63,7 +63,6 @@ from .routes.cleaning_routes import cleaning_bp
 from .routes.carpentry_routes import carpentry_bp
 from .routes.translation_routes import translation_bp
 
-
 def create_app(config_object=None, testing_config=None):
     """
     Application Factory para crear y configurar la aplicación Flask.
@@ -309,7 +308,7 @@ def create_app(config_object=None, testing_config=None):
             "full_name": user.full_name,
             "dui": user.dui,
             "nit": user.nit,
-            "role": user.role.name if user.role else 'N/A'
+            "roles": get_jwt().get('roles', [])
         })
 
     # --- RUTA DE CREACIÓN DE CLIENTE CON FEA (Del HEAD) ---
@@ -429,7 +428,9 @@ def create_app(config_object=None, testing_config=None):
 
     # --- REGISTRO DE COMANDOS CLI (Del HEAD) ---
     @app.cli.command("init-db")
-    def init_db_command():
+    @click.option('--admin-email', default='admin@lazoarce.com', help='Email del administrador')
+    @click.option('--admin-password', default='admin123', help='Contraseña del administrador')
+    def init_db_command(admin_email, admin_password):
         """Inicializa la base de datos y crea los datos por defecto."""
         with app.app_context():
             # Esta lógica debe ser compatible con los modelos fusionados
@@ -443,51 +444,20 @@ def create_app(config_object=None, testing_config=None):
                 for role_name in roles:
                     db.session.add(Role(name=role_name))
                 db.session.commit()
-                print("Roles creados.")
+                print("✅ Roles creados.")
 
-            if User and Role and not User.query.filter_by(email='admin@lazoarce.com').first():
-                 admin_role = Role.query.filter_by(name='Administrador General').first()
-                 if admin_role:
-                    admin_user = User(email='admin@lazoarce.com', role_id=admin_role.id, full_name='Administrador Principal')
-                    admin_user.set_password('admin')
+            # Crear usuario admin si no existe
+            if User and not User.query.filter_by(email=admin_email).first():
+                admin_role = Role.query.filter_by(name='Administrador General').first()
+                if admin_role:
+                    admin_user = User(email=admin_email, role_id=admin_role.id)
+                    admin_user.set_password(admin_password)
                     db.session.add(admin_user)
                     db.session.commit()
-                    print("Usuario administrador por defecto creado (admin@lazoarce.com / admin).")
+                    print(f"✅ Usuario admin creado: {admin_email}:{admin_password}")
+                else:
+                    print("⚠️ No se pudo crear el usuario admin (rol no encontrado)")
 
-            click.echo("Base de datos inicializada y poblada con datos por defecto.")
-
-    # --- ERROR HANDLERS (Del 2.0) ---
-    @app.errorhandler(404)
-    def not_found(error): return jsonify({"message": "Endpoint no encontrado"}), 404
-
-    @app.errorhandler(500)
-    def internal_error(error):
-        db.session.rollback()
-        return jsonify({"message": "Error interno del servidor"}), 500
+            print("🎉 Base de datos inicializada correctamente!")
 
     return app
-
-# --- LÓGICA DE EJECUCIÓN ---
-if __name__ == '__main__':
-    class DevelopmentConfig:
-        DEBUG = True
-        TESTING = False
-        SECRET_KEY = 'dev-secret-key-change-me'
-        JWT_SECRET_KEY = 'jwt-secret-key-change-me'
-        SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URL', 'sqlite:///lazoarce.db')
-        SQLALCHEMY_TRACK_MODIFICATIONS = False
-
-    app = create_app(config_object=DevelopmentConfig)
-
-    # Inicializar base de datos (seeding) si es necesario
-    instance_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance')
-    os.makedirs(instance_path, exist_ok=True)
-
-    # Nota: setup_database no está definido en este archivo, se debe usar el comando CLI: flask init-db
-
-    # Configuración de servidor
-    port = int(os.environ.get('PORT', 5000))
-    host = os.environ.get('HOST', '127.0.0.1')
-    debug = app.config.get('DEBUG', False)
-
-    app.run(host=host, port=port, debug=debug)
