@@ -61,6 +61,7 @@ from .routes.cad_routes import cad_bp
 from .routes.laundry_routes import laundry_bp
 from .routes.cleaning_routes import cleaning_bp
 from .routes.carpentry_routes import carpentry_bp
+from .routes.translation_routes import translation_bp
 
 def create_app(config_object=None, testing_config=None):
     """
@@ -113,6 +114,7 @@ def create_app(config_object=None, testing_config=None):
     app.register_blueprint(laundry_bp, url_prefix='/api/laundry')
     app.register_blueprint(cleaning_bp, url_prefix='/api/cleaning')
     app.register_blueprint(carpentry_bp, url_prefix='/api/carpentry')
+    app.register_blueprint(translation_bp, url_prefix='/api/translation')
 
     # --- CARGA DINÁMICA DE MODELOS Y SERVICIOS ---
     with app.app_context():
@@ -306,7 +308,7 @@ def create_app(config_object=None, testing_config=None):
             "full_name": user.full_name,
             "dui": user.dui,
             "nit": user.nit,
-            "role": user.role.name if user.role else 'N/A'
+            "roles": get_jwt().get('roles', [])
         })
 
     # --- RUTA DE CREACIÓN DE CLIENTE CON FEA (Del HEAD) ---
@@ -426,7 +428,9 @@ def create_app(config_object=None, testing_config=None):
 
     # --- REGISTRO DE COMANDOS CLI (Del HEAD) ---
     @app.cli.command("init-db")
-    def init_db_command():
+    @click.option('--admin-email', default='admin@lazoarce.com', help='Email del administrador')
+    @click.option('--admin-password', default='admin123', help='Contraseña del administrador')
+    def init_db_command(admin_email, admin_password):
         """Inicializa la base de datos y crea los datos por defecto."""
         with app.app_context():
             # Esta lógica debe ser compatible con los modelos fusionados
@@ -440,6 +444,20 @@ def create_app(config_object=None, testing_config=None):
                 for role_name in roles:
                     db.session.add(Role(name=role_name))
                 db.session.commit()
-                print("Roles creados.")
+                print("✅ Roles creados.")
 
-            if User and Role and not User.query.filter_by(email='admin@lazoarce.com').first
+            # Crear usuario admin si no existe
+            if User and not User.query.filter_by(email=admin_email).first():
+                admin_role = Role.query.filter_by(name='Administrador General').first()
+                if admin_role:
+                    admin_user = User(email=admin_email, role_id=admin_role.id)
+                    admin_user.set_password(admin_password)
+                    db.session.add(admin_user)
+                    db.session.commit()
+                    print(f"✅ Usuario admin creado: {admin_email}:{admin_password}")
+                else:
+                    print("⚠️ No se pudo crear el usuario admin (rol no encontrado)")
+
+            print("🎉 Base de datos inicializada correctamente!")
+
+    return app

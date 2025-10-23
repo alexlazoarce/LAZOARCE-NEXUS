@@ -1,8 +1,7 @@
 """
 MODELOS DE BASE DE DATOS - SISTEMA INTEGRADO LAZO ARCE (FUSIONADO FINAL)
 
-Versión: 2.1 | Multi-tenant | Integración de Firma Electrónica, Payroll y Módulos LAN
-
+Versión: 2.1 | Multi-tenant | Integración de Firma Electrónica, Payroll y MÓDULOS LAN COMPLETOS
 """
 
 from flask_sqlalchemy import SQLAlchemy
@@ -134,7 +133,6 @@ class ClientProfile(db.Model):
     reference_name = db.Column(String(120))
     reference_phone = db.Column(String(20))
 
-
 # --- MODELOS DE PRÉSTAMOS ---
 
 class LoanProduct(db.Model):
@@ -203,7 +201,6 @@ class LoanApplication(db.Model):
 
     def __repr__(self):
         return f'<LoanApplication {self.id} - {self.status}>'
-
 
 # --- MODELOS CONTABLES ---
 
@@ -353,7 +350,6 @@ class ContratoIntegracion(db.Model):
 
     __table_args__ = (UniqueConstraint('contrato_id'),)
 
-
 class FirmaElectronica(db.Model):
     """Registro de Firma Electrónica (Del HEAD)"""
     __tablename__ = 'firma_electronica'
@@ -383,21 +379,6 @@ class CertificadoValidacion(db.Model):
     pdf_certificado = db.Column(db.Text)
     fecha_generacion = db.Column(db.DateTime, default=datetime.utcnow)
     valido_hasta = db.Column(db.DateTime)
-
-
-# --- MODELOS DE MÓDULOS EXTENDIDOS (MailingList, Recruitment, Gym, Automation, Docs) ---
-# Se asume que estos modelos se definirán y usarán fuera del scope de este archivo,
-# pero se necesita un placeholder para que las tablas intermedias y las relaciones funcionen.
-
-class MailingList(db.Model):
-    __tablename__ = 'mailing_list'
-    id = db.Column(Integer, primary_key=True)
-    name = db.Column(String(100), nullable=False)
-    members = db.relationship('User', secondary=mailing_list_members, backref='mailing_lists')
-    # ... otros campos (tenant_id, etc.)
-
-# Se asume la existencia de los modelos de Recruitment, Gym, Automation, Docs, etc. aquí...
-
 
 # --- MODELOS PARA EDUCACIÓN (LAN-SCH6) ---
 
@@ -469,7 +450,6 @@ class TuitionPayment(db.Model):
     concept = db.Column(String(200)) # Ej: "Matrícula Enero 2025"
     tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
 
-
 # --- MODELOS PARA GESTIÓN UNIVERSITARIA (LAN-UNV8) ---
 
 class DegreeProgram(db.Model):
@@ -526,7 +506,6 @@ class Alumnus(db.Model):
 
     student = db.relationship('Student')
 
-
 # --- MODELOS PARA CREACIÓN DE PLANOS (LAN-CAD) ---
 
 class CADProject(db.Model):
@@ -578,7 +557,6 @@ class CollaborationSession(db.Model):
 
     participants = db.relationship('User', secondary=collaboration_session_users, lazy='dynamic')
 
-
 # --- MODELOS PARA GESTIÓN DE LAVANDERÍA (LAN-LDR3) ---
 
 class LaundryService(db.Model):
@@ -627,7 +605,6 @@ class LaundrySupply(db.Model):
     stock_level = db.Column(Float) # ej. en litros o kg
     unit = db.Column(String(20)) # 'litros', 'kg'
     tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
-
 
 # --- MODELOS PARA GESTIÓN DE LIMPIEZA (LAN-CLN7) ---
 
@@ -717,6 +694,49 @@ class CarpentryMaterial(db.Model):
     unit = db.Column(String(50)) # 'm²', 'unidades', 'metros lineales'
     cost_per_unit = db.Column(Float)
     tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+# --- MODELOS PARA GESTIÓN DE TRADUCCIÓN (LAN-TRN5) ---
+
+class TranslationProject(db.Model):
+    """Proyectos de traducción."""
+    __tablename__ = 'translation_project'
+    id = db.Column(Integer, primary_key=True)
+    name = db.Column(String(200), nullable=False)
+    customer_id = db.Column(Integer, ForeignKey('user.id'))
+    source_language = db.Column(String(50))
+    target_languages = db.Column(JSON) # Array of strings, e.g., ['en', 'fr']
+    status = db.Column(String(50), default='Pendiente', index=True) # Pendiente, En Progreso, Completado
+    due_date = db.Column(Date)
+    budget = db.Column(Float)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+    customer = db.relationship('User')
+    documents = db.relationship('TranslationDocument', backref='project', lazy='dynamic', cascade="all, delete-orphan")
+    tasks = db.relationship('TranslationTask', backref='project', lazy='dynamic', cascade="all, delete-orphan")
+
+class TranslationDocument(db.Model):
+    """Documentos dentro de un proyecto de traducción."""
+    __tablename__ = 'translation_document'
+    id = db.Column(Integer, primary_key=True)
+    project_id = db.Column(Integer, ForeignKey('translation_project.id'), nullable=False)
+    file_path = db.Column(String(500), nullable=False) # Path to the stored document
+    word_count = db.Column(Integer)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+class TranslationTask(db.Model):
+    """Tareas asignadas a traductores para un proyecto."""
+    __tablename__ = 'translation_task'
+    id = db.Column(Integer, primary_key=True)
+    project_id = db.Column(Integer, ForeignKey('translation_project.id'), nullable=False)
+    document_id = db.Column(Integer, ForeignKey('translation_document.id'))
+    translator_id = db.Column(Integer, ForeignKey('employee.id'))
+    task_type = db.Column(String(50)) # e.g., 'Traducción', 'Revisión'
+    status = db.Column(String(50), default='Asignada', index=True) # Asignada, En Progreso, Completada
+    due_date = db.Column(Date)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+    document = db.relationship('TranslationDocument')
+    translator = db.relationship('Employee')
 
 class AuditLog(db.Model):
     """Registro de auditoría"""
