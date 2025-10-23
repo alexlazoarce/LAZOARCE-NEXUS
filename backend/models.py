@@ -630,6 +630,97 @@ class LaundrySupply(db.Model):
     tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
 
 
+# --- MODELOS PARA GESTIÓN DE LIMPIEZA (LAN-CLN7) ---
+
+class CleaningService(db.Model):
+    """Tipos de servicio de limpieza."""
+    __tablename__ = 'cleaning_service'
+    id = db.Column(Integer, primary_key=True)
+    name = db.Column(String(150), nullable=False)
+    description = db.Column(Text)
+    pricing_method = db.Column(String(50)) # 'por_hora', 'por_area', 'tarifa_fija'
+    price = db.Column(Float, nullable=False)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+class CleaningOrder(db.Model):
+    """Órdenes de servicio de limpieza."""
+    __tablename__ = 'cleaning_order'
+    id = db.Column(Integer, primary_key=True)
+    customer_id = db.Column(Integer, ForeignKey('user.id'))
+    total_amount = db.Column(Float)
+    status = db.Column(String(50), default='Pendiente', index=True) # Pendiente, En Progreso, Completado, Cancelado
+    scheduled_date = db.Column(DateTime)
+    created_at = db.Column(DateTime, default=datetime.utcnow)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+    items = db.relationship('CleaningOrderItem', backref='order', lazy='dynamic', cascade="all, delete-orphan")
+    customer = db.relationship('User')
+
+class CleaningOrderItem(db.Model):
+    """Ítems dentro de una orden de limpieza."""
+    __tablename__ = 'cleaning_order_item'
+    id = db.Column(Integer, primary_key=True)
+    order_id = db.Column(Integer, ForeignKey('cleaning_order.id'), nullable=False)
+    service_id = db.Column(Integer, ForeignKey('cleaning_service.id'))
+    description = db.Column(String(255))
+    quantity = db.Column(Float) # Horas, m², etc.
+    price = db.Column(Float)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+    service = db.relationship('CleaningService')
+
+class CleaningSupply(db.Model):
+    """Insumos de limpieza."""
+    __tablename__ = 'cleaning_supply'
+    id = db.Column(Integer, primary_key=True)
+    name = db.Column(String(150), nullable=False)
+    stock_level = db.Column(Float)
+    unit = db.Column(String(20)) # 'litros', 'unidades'
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+
+# --- MODELOS PARA GESTIÓN DE CARPINTERÍA (LAN-WOD1) ---
+
+class CarpentryProject(db.Model):
+    """Proyectos de carpintería, desde cotización hasta producción."""
+    __tablename__ = 'carpentry_project'
+    id = db.Column(Integer, primary_key=True)
+    name = db.Column(String(200), nullable=False)
+    description = db.Column(Text)
+    customer_id = db.Column(Integer, ForeignKey('user.id'))
+    budget = db.Column(Float)
+    status = db.Column(String(50), default='Cotización', index=True) # Cotización, Aprobado, En Taller, Finalizado
+    start_date = db.Column(Date)
+    end_date = db.Column(Date)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+    customer = db.relationship('User')
+    tasks = db.relationship('CarpentryTask', backref='project', lazy='dynamic', cascade="all, delete-orphan")
+
+class CarpentryTask(db.Model):
+    """Tareas dentro de un proyecto de carpintería."""
+    __tablename__ = 'carpentry_task'
+    id = db.Column(Integer, primary_key=True)
+    project_id = db.Column(Integer, ForeignKey('carpentry_project.id'), nullable=False)
+    description = db.Column(String(500), nullable=False)
+    status = db.Column(String(50), default='Pendiente', index=True) # Pendiente, En Progreso, Completada
+    due_date = db.Column(Date)
+    assigned_to_id = db.Column(Integer, ForeignKey('employee.id'))
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+    assigned_to = db.relationship('Employee')
+
+class CarpentryMaterial(db.Model):
+    """Materiales para proyectos de carpintería."""
+    __tablename__ = 'carpentry_material'
+    id = db.Column(Integer, primary_key=True)
+    name = db.Column(String(150), nullable=False)
+    stock_level = db.Column(Float, default=0.0)
+    unit = db.Column(String(50)) # 'm²', 'unidades', 'metros lineales'
+    cost_per_unit = db.Column(Float)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+
 class AuditLog(db.Model):
     """Registro de auditoría"""
     __tablename__ = 'audit_log'

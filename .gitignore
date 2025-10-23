@@ -11,6 +11,9 @@ venv.bak
 __pycache__/
 *.py[cod]
 *$py.class
+
+# Pycache
+__pycache__/
 *.egg-info/
 .installed.cfg
 *.egg
