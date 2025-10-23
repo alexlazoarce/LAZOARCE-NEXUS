@@ -131,6 +131,7 @@ function App() {
             case 'cad': return isAdmin ? <CADView token={token} /> : <p>Acceso no autorizado.</p>;
             case 'laundry': return isAdmin ? <LaundryView token={token} /> : <p>Acceso no autorizado.</p>;
             case 'cleaning': return isAdmin ? <CleaningView token={token} /> : <p>Acceso no autorizado.</p>;
+            case 'carpentry': return isAdmin ? <CarpentryView token={token} /> : <p>Acceso no autorizado.</p>;
             case 'profile': return <ProfileView token={token} />;
             default: return isAdmin ? <AdminDashboard token={token} onManagePayments={setManagingPaymentsForApp} /> : <MyApplications token={token} onViewContract={setViewingContractId} />;
         }
@@ -160,6 +161,7 @@ function App() {
                 {isAdmin && <button onClick={() => setView('cad')}>Diseño CAD</button>}
                 {isAdmin && <button onClick={() => setView('laundry')}>Lavandería</button>}
                 {isAdmin && <button onClick={() => setView('cleaning')}>Limpieza</button>}
+                {isAdmin && <button onClick={() => setView('carpentry')}>Carpintería</button>}
                 {isAdmin && <button onClick={() => setView('hr')}>RRHH</button>}
                 {isAdmin && (
                     <div style={{border: '1px solid grey', padding: '5px', marginTop: '5px'}}>

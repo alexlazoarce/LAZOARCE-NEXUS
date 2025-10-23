@@ -30,6 +30,11 @@ mailing_list_members = db.Table('mailing_list_members',
     schema='public'
 )
 
+collaboration_session_users = db.Table('cad_collaboration_session_users',
+    db.Column('session_id', Integer, ForeignKey('cad_collaboration_session.id'), primary_key=True),
+    db.Column('user_id', Integer, ForeignKey('user.id'), primary_key=True),
+    schema='public'
+)
 
 # === MODELOS DE SEGURIDAD Y TENANTS ===
 
@@ -524,12 +529,6 @@ class Alumnus(db.Model):
 
 # --- MODELOS PARA CREACIÓN DE PLANOS (LAN-CAD) ---
 
-collaboration_session_users = db.Table('cad_collaboration_session_users',
-    db.Column('session_id', Integer, ForeignKey('cad_collaboration_session.id'), primary_key=True),
-    db.Column('user_id', Integer, ForeignKey('user.id'), primary_key=True),
-    schema='public'
-)
-
 class CADProject(db.Model):
     """Proyectos de diseño CAD."""
     __tablename__ = 'cad_project'
@@ -678,6 +677,46 @@ class CleaningSupply(db.Model):
     unit = db.Column(String(20)) # 'litros', 'unidades'
     tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
 
+# --- MODELOS PARA GESTIÓN DE CARPINTERÍA (LAN-WOD1) ---
+
+class CarpentryProject(db.Model):
+    """Proyectos de carpintería, desde cotización hasta producción."""
+    __tablename__ = 'carpentry_project'
+    id = db.Column(Integer, primary_key=True)
+    name = db.Column(String(200), nullable=False)
+    description = db.Column(Text)
+    customer_id = db.Column(Integer, ForeignKey('user.id'))
+    budget = db.Column(Float)
+    status = db.Column(String(50), default='Cotización', index=True) # Cotización, Aprobado, En Taller, Finalizado
+    start_date = db.Column(Date)
+    end_date = db.Column(Date)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+    customer = db.relationship('User')
+    tasks = db.relationship('CarpentryTask', backref='project', lazy='dynamic', cascade="all, delete-orphan")
+
+class CarpentryTask(db.Model):
+    """Tareas dentro de un proyecto de carpintería."""
+    __tablename__ = 'carpentry_task'
+    id = db.Column(Integer, primary_key=True)
+    project_id = db.Column(Integer, ForeignKey('carpentry_project.id'), nullable=False)
+    description = db.Column(String(500), nullable=False)
+    status = db.Column(String(50), default='Pendiente', index=True) # Pendiente, En Progreso, Completada
+    due_date = db.Column(Date)
+    assigned_to_id = db.Column(Integer, ForeignKey('employee.id'))
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+    assigned_to = db.relationship('Employee')
+
+class CarpentryMaterial(db.Model):
+    """Materiales para proyectos de carpintería."""
+    __tablename__ = 'carpentry_material'
+    id = db.Column(Integer, primary_key=True)
+    name = db.Column(String(150), nullable=False)
+    stock_level = db.Column(Float, default=0.0)
+    unit = db.Column(String(50)) # 'm²', 'unidades', 'metros lineales'
+    cost_per_unit = db.Column(Float)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
 
 class AuditLog(db.Model):
     """Registro de auditoría"""
