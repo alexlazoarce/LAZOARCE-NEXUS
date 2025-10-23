@@ -30,6 +30,11 @@ mailing_list_members = db.Table('mailing_list_members',
     schema='public'
 )
 
+collaboration_session_users = db.Table('cad_collaboration_session_users',
+    db.Column('session_id', Integer, ForeignKey('cad_collaboration_session.id'), primary_key=True),
+    db.Column('user_id', Integer, ForeignKey('user.id'), primary_key=True),
+    schema='public'
+)
 
 # === MODELOS DE SEGURIDAD Y TENANTS ===
 
@@ -524,12 +529,6 @@ class Alumnus(db.Model):
 
 # --- MODELOS PARA CREACIÓN DE PLANOS (LAN-CAD) ---
 
-collaboration_session_users = db.Table('cad_collaboration_session_users',
-    db.Column('session_id', Integer, ForeignKey('cad_collaboration_session.id'), primary_key=True),
-    db.Column('user_id', Integer, ForeignKey('user.id'), primary_key=True),
-    schema='public'
-)
-
 class CADProject(db.Model):
     """Proyectos de diseño CAD."""
     __tablename__ = 'cad_project'
@@ -678,7 +677,6 @@ class CleaningSupply(db.Model):
     unit = db.Column(String(20)) # 'litros', 'unidades'
     tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
 
-
 # --- MODELOS PARA GESTIÓN DE CARPINTERÍA (LAN-WOD1) ---
 
 class CarpentryProject(db.Model):
@@ -719,7 +717,6 @@ class CarpentryMaterial(db.Model):
     unit = db.Column(String(50)) # 'm²', 'unidades', 'metros lineales'
     cost_per_unit = db.Column(Float)
     tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
-
 
 class AuditLog(db.Model):
     """Registro de auditoría"""
