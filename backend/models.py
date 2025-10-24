@@ -795,6 +795,22 @@ class AuditReport(db.Model):
     auditor = db.relationship('Employee')
 
 
+# --- MODELOS PARA PROTECCIÓN DE DATOS (LAN-DPR2) ---
+
+class DataPrivacyRequest(db.Model):
+    """Solicitudes de gestión de datos personales."""
+    __tablename__ = 'data_privacy_request'
+    id = db.Column(Integer, primary_key=True)
+    user_id = db.Column(Integer, ForeignKey('user.id'), nullable=False)
+    request_type = db.Column(String(50), nullable=False) # 'derecho_al_olvido', 'portabilidad'
+    status = db.Column(String(50), default='Pendiente', index=True) # Pendiente, Procesada, Rechazada
+    request_date = db.Column(DateTime, default=db.func.current_timestamp())
+    completion_date = db.Column(DateTime)
+    tenant_id = db.Column(Integer, ForeignKey('tenant.id'), nullable=False, index=True)
+
+    user = db.relationship('User')
+
+
 class AuditLog(db.Model):
     """Registro de auditoría"""
     __tablename__ = 'audit_log'

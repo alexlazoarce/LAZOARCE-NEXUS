@@ -134,6 +134,7 @@ function App() {
             case 'carpentry': return isAdmin ? <CarpentryView token={token} /> : <p>Acceso no autorizado.</p>;
             case 'translation': return isAdmin ? <TranslationView token={token} /> : <p>Acceso no autorizado.</p>;
             case 'controller': return isAdmin ? <ControllerView token={token} /> : <p>Acceso no autorizado.</p>;
+            case 'data_protection': return isAdmin ? <DataProtectionView token={token} /> : <p>Acceso no autorizado.</p>;
             case 'profile': return <ProfileView token={token} />;
             default: return isAdmin ? <AdminDashboard token={token} onManagePayments={setManagingPaymentsForApp} /> : <MyApplications token={token} onViewContract={setViewingContractId} />;
         }
@@ -166,6 +167,7 @@ function App() {
                 {isAdmin && <button onClick={() => setView('carpentry')}>Carpintería</button>}
                 {isAdmin && <button onClick={() => setView('translation')}>Traducción</button>}
                 {isAdmin && <button onClick={() => setView('controller')}>Contraloría</button>}
+                {isAdmin && <button onClick={() => setView('data_protection')}>Protección de Datos</button>}
                 {isAdmin && <button onClick={() => setView('hr')}>RRHH</button>}
                 {isAdmin && (
                     <div style={{border: '1px solid grey', padding: '5px', marginTop: '5px'}}>
