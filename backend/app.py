@@ -62,10 +62,10 @@ from .routes.laundry_routes import laundry_bp
 from .routes.cleaning_routes import cleaning_bp
 from .routes.carpentry_routes import carpentry_bp
 from .routes.translation_routes import translation_bp
-feat-LAN-LDR3-laundry-module
 from .routes.controller_routes import controller_bp
 from .routes.data_protection_routes import data_protection_bp
-Business-Management-System-Connection
+from .routes.controller_routes import controller_bp
+from .routes.data_protection_routes import data_protection_bp
 
 def create_app(config_object=None, testing_config=None):
     """
@@ -119,10 +119,10 @@ def create_app(config_object=None, testing_config=None):
     app.register_blueprint(cleaning_bp, url_prefix='/api/cleaning')
     app.register_blueprint(carpentry_bp, url_prefix='/api/carpentry')
     app.register_blueprint(translation_bp, url_prefix='/api/translation')
-feat-LAN-LDR3-laundry-module
     app.register_blueprint(controller_bp, url_prefix='/api/controller')
     app.register_blueprint(data_protection_bp, url_prefix='/api/data-protection')
-Business-Management-System-Connection
+    app.register_blueprint(controller_bp, url_prefix='/api/controller')
+    app.register_blueprint(data_protection_bp, url_prefix='/api/data-protection')
 
     # --- CARGA DINÁMICA DE MODELOS Y SERVICIOS ---
     with app.app_context():

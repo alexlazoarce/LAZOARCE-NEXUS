@@ -133,10 +133,10 @@ function App() {
             case 'cleaning': return isAdmin ? <CleaningView token={token} /> : <p>Acceso no autorizado.</p>;
             case 'carpentry': return isAdmin ? <CarpentryView token={token} /> : <p>Acceso no autorizado.</p>;
             case 'translation': return isAdmin ? <TranslationView token={token} /> : <p>Acceso no autorizado.</p>;
-feat-LAN-LDR3-laundry-module
             case 'controller': return isAdmin ? <ControllerView token={token} /> : <p>Acceso no autorizado.</p>;
             case 'data_protection': return isAdmin ? <DataProtectionView token={token} /> : <p>Acceso no autorizado.</p>;
-Business-Management-System-Connection
+            case 'controller': return isAdmin ? <ControllerView token={token} /> : <p>Acceso no autorizado.</p>;
+            case 'data_protection': return isAdmin ? <DataProtectionView token={token} /> : <p>Acceso no autorizado.</p>;
             case 'profile': return <ProfileView token={token} />;
             default: return isAdmin ? <AdminDashboard token={token} onManagePayments={setManagingPaymentsForApp} /> : <MyApplications token={token} onViewContract={setViewingContractId} />;
         }
