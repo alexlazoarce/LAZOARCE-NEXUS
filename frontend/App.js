@@ -135,6 +135,7 @@ function App() {
             case 'translation': return isAdmin ? <TranslationView token={token} /> : <p>Acceso no autorizado.</p>;
             case 'controller': return isAdmin ? <ControllerView token={token} /> : <p>Acceso no autorizado.</p>;
             case 'data_protection': return isAdmin ? <DataProtectionView token={token} /> : <p>Acceso no autorizado.</p>;
+            case 'teaching': return isAdmin ? <TeachingView token={token} /> : <p>Acceso no autorizado.</p>;
             case 'controller': return isAdmin ? <ControllerView token={token} /> : <p>Acceso no autorizado.</p>;
             case 'data_protection': return isAdmin ? <DataProtectionView token={token} /> : <p>Acceso no autorizado.</p>;
             case 'profile': return <ProfileView token={token} />;
@@ -171,8 +172,8 @@ feat-LAN-LDR3-laundry-module
                 {isAdmin && <button onClick={() => setView('translation')}>Traducción</button>}
                 {isAdmin && <button onClick={() => setView('controller')}>Contraloría</button>}
                 {isAdmin && <button onClick={() => setView('data_protection')}>Protección de Datos</button>}
+                {isAdmin && <button onClick={() => setView('teaching')}>Enseñanza</button>}
                 {isAdmin && <button onClick={() => setView('hr')}>RRHH</button>}
-=======
                 {isAdmin && <button onClick={() => setView('school_management')}>🧑‍🎓 Gestión Escolar</button>}
                 {isAdmin && <button onClick={() => setView('university_management')}>🎓 Gestión Universitaria</button>}
                 {isAdmin && <button onClick={() => setView('cad')}>📐 Diseño CAD</button>}
