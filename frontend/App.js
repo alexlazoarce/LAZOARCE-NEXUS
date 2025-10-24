@@ -133,6 +133,10 @@ function App() {
             case 'cleaning': return isAdmin ? <CleaningView token={token} /> : <p>Acceso no autorizado.</p>;
             case 'carpentry': return isAdmin ? <CarpentryView token={token} /> : <p>Acceso no autorizado.</p>;
             case 'translation': return isAdmin ? <TranslationView token={token} /> : <p>Acceso no autorizado.</p>;
+feat-LAN-LDR3-laundry-module
+            case 'controller': return isAdmin ? <ControllerView token={token} /> : <p>Acceso no autorizado.</p>;
+            case 'data_protection': return isAdmin ? <DataProtectionView token={token} /> : <p>Acceso no autorizado.</p>;
+Business-Management-System-Connection
             case 'profile': return <ProfileView token={token} />;
             default: return isAdmin ? <AdminDashboard token={token} onManagePayments={setManagingPaymentsForApp} /> : <MyApplications token={token} onViewContract={setViewingContractId} />;
         }
@@ -157,6 +161,18 @@ function App() {
                 <button onClick={() => setView('simulator')}>Simulador</button>
                 {!isAdmin && !isContador && !isEjecutivo && !isCobrador && <button onClick={() => setView('newApplication')}>Nueva Solicitud</button>}
                 {(isAdmin || isContador) && <button onClick={() => setView('accounting')}>Contabilidad</button>}
+feat-LAN-LDR3-laundry-module
+                {isAdmin && <button onClick={() => setView('school_management')}>Gestión Escolar</button>}
+                {isAdmin && <button onClick={() => setView('university_management')}>Gestión Universitaria</button>}
+                {isAdmin && <button onClick={() => setView('cad')}>Diseño CAD</button>}
+                {isAdmin && <button onClick={() => setView('laundry')}>Lavandería</button>}
+                {isAdmin && <button onClick={() => setView('cleaning')}>Limpieza</button>}
+                {isAdmin && <button onClick={() => setView('carpentry')}>Carpintería</button>}
+                {isAdmin && <button onClick={() => setView('translation')}>Traducción</button>}
+                {isAdmin && <button onClick={() => setView('controller')}>Contraloría</button>}
+                {isAdmin && <button onClick={() => setView('data_protection')}>Protección de Datos</button>}
+                {isAdmin && <button onClick={() => setView('hr')}>RRHH</button>}
+=======
                 {isAdmin && <button onClick={() => setView('school_management')}>🧑‍🎓 Gestión Escolar</button>}
                 {isAdmin && <button onClick={() => setView('university_management')}>🎓 Gestión Universitaria</button>}
                 {isAdmin && <button onClick={() => setView('cad')}>📐 Diseño CAD</button>}
@@ -165,6 +181,7 @@ function App() {
                 {isAdmin && <button onClick={() => setView('carpentry')}>🪚 Carpintería</button>}
                 {isAdmin && <button onClick={() => setView('translation')}>🌐 Traducción</button>}
                 {isAdmin && <button onClick={() => setView('hr')}>👥 RRHH</button>}
+Business-Management-System-Connection
                 {isAdmin && (
                     <div style={{border: '1px solid grey', padding: '5px', marginTop: '5px'}}>
                         <strong>🔧 Configuración:</strong>
